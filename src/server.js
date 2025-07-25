@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -20,11 +20,12 @@ const uploadRoutes = require('./routes/uploads');
 const classUpdatesRoutes = require('./routes/class_updates');
 const socketHandler = require('./services/socketService');
 
+// Create Express app
 const app = express();
 const server = http.createServer(app);
 
 // Initialize Socket.io with CORS configuration
-const io = socketIo(server, {
+const io = new Server(server, {
   cors: {
     origin: "*", // Allow all origins for development
     methods: ["GET", "POST"],
@@ -134,4 +135,5 @@ server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
-module.exports = { app, server, io }; 
+// Make io available globally for routes
+global.io = io; 

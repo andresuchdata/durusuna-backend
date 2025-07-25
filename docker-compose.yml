@@ -123,7 +123,6 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      - /app/bun.lock
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs
     networks:

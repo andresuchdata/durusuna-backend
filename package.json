@@ -4,7 +4,7 @@
   "description": "Backend API for Durusuna school communication app",
   "main": "src/server.js",
   "scripts": {
-    "start": "bun run src/server.js",
+    "start": "bun src/server.js",
     "dev": "bun --watch src/server.js",
     "test": "bun test",
     "test:watch": "bun test --watch",
