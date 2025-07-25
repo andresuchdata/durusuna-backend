@@ -61,10 +61,17 @@ router.post('/file', auth, upload.single('file'), async (req, res) => {
       file: enhancedFileInfo,
     });
   } catch (error) {
-    logger.error('Error uploading file:', error);
+    logger.error('Error uploading file:', {
+      error: error.message,
+      stack: error.stack,
+      fileName: req.file?.originalname,
+      fileSize: req.file?.size,
+      mimeType: req.file?.mimetype,
+      folder: req.body?.folder
+    });
     res.status(500).json({ 
       error: 'Failed to upload file',
-      message: error.message 
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Upload failed'
     });
   }
 });
@@ -135,10 +142,16 @@ router.post('/files', auth, upload.array('files', 10), async (req, res) => {
       count: enhancedFiles.length,
     });
   } catch (error) {
-    logger.error('Error uploading files:', error);
+    logger.error('Error uploading files:', {
+      error: error.message,
+      stack: error.stack,
+      fileCount: req.files?.length,
+      files: req.files?.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })),
+      folder: req.body?.folder
+    });
     res.status(500).json({ 
       error: 'Failed to upload files',
-      message: error.message 
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Upload failed'
     });
   }
 });

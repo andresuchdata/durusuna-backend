@@ -50,11 +50,16 @@ class StorageService {
         size: buffer.length,
       };
 
-      // Process images if needed
+      // Process images if needed (but not videos)
       if (mimeType.startsWith('image/') && options.processImage !== false) {
-        const imageInfo = await this.processImage(buffer, options.imageOptions);
-        processedBuffer = imageInfo.buffer;
-        metadata = { ...metadata, ...imageInfo.metadata };
+        try {
+          const imageInfo = await this.processImage(buffer, options.imageOptions);
+          processedBuffer = imageInfo.buffer;
+          metadata = { ...metadata, ...imageInfo.metadata };
+        } catch (imageError) {
+          logger.warn('Image processing failed, uploading original:', imageError.message);
+          // Continue with original buffer if image processing fails
+        }
       }
 
       // Upload to S3
@@ -293,8 +298,8 @@ class StorageService {
     const {
       allowedTypes = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'video/mp4', 'video/quicktime', 'video/x-msvideo',
-        'audio/mpeg', 'audio/wav', 'audio/mp4',
+        'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/avi', 'video/webm',
+        'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac',
         'application/pdf',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -302,7 +307,7 @@ class StorageService {
       ],
       maxSize = 5 * 1024 * 1024, // 5MB default
       maxImageSize = 5 * 1024 * 1024, // 5MB for images
-      maxVideoSize = 10 * 1024 * 1024, // 50MB for videos
+      maxVideoSize = 100 * 1024 * 1024, // 100MB for videos (matches multer limit)
     } = options;
 
     const errors = [];
