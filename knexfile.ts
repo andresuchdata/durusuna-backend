@@ -1,11 +1,14 @@
+import type { Knex } from 'knex';
+
+// Load environment variables
 require('dotenv').config();
 
-module.exports = {
+const config: { [key: string]: Knex.Config } = {
   development: {
     client: 'postgresql',
     connection: {
       host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 5432,
+      port: parseInt(process.env.DB_PORT || '5432'),
       database: process.env.DB_NAME || 'durusuna_dev',
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'password'
@@ -27,7 +30,7 @@ module.exports = {
     client: 'postgresql',
     connection: {
       host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 5432,
+      port: parseInt(process.env.DB_PORT || '5432'),
       database: process.env.DB_NAME_TEST || 'durusuna_test',
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'password'
@@ -47,8 +50,15 @@ module.exports = {
 
   production: {
     client: 'postgresql',
-    connection: {
+    connection: process.env.DATABASE_URL ? {
       connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+    } : {
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
     },
     pool: {
@@ -63,4 +73,6 @@ module.exports = {
       directory: './src/seeds'
     }
   }
-}; 
+};
+
+export default config; 

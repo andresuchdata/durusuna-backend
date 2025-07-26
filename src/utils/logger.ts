@@ -1,11 +1,11 @@
-const winston = require('winston');
-const path = require('path');
+import winston from 'winston';
+import path from 'path';
+import fs from 'fs';
 
 const logDir = 'logs';
 const logLevel = process.env.LOG_LEVEL || 'info';
 
 // Ensure log directory exists
-const fs = require('fs');
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -58,11 +58,11 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-// Create a stream object for Morgan
-logger.stream = {
-  write: (message) => {
+// Create a stream object for Morgan (used by Morgan middleware)
+(logger as any).stream = {
+  write: (message: string) => {
     logger.info(message.trim());
   }
 };
 
-module.exports = logger; 
+export default logger; 

@@ -23,9 +23,13 @@ COPY package*.json bun.lock* tsconfig.json ./
 RUN bun install --frozen-lockfile || bun install
 RUN bun pm cache rm
 
-# Copy application source code
+# Copy application source code and configuration
 COPY src/ ./src/
 COPY tests/ ./tests/
+COPY scripts/ ./scripts/
+COPY knexfile.ts ./
+COPY start-production.sh ./
+RUN chmod +x start-production.sh scripts/migrate.ts
 
 # Create necessary directories and set permissions
 RUN mkdir -p uploads logs && \
@@ -41,5 +45,5 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD bun -e "import('http').then(http => { http.get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }) })" || exit 1
 
-# Start the TypeScript application with Bun
-CMD ["dumb-init", "bun", "src/server.ts"]
+# Start the application with production script
+CMD ["dumb-init", "./start-production.sh"]
