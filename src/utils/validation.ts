@@ -166,6 +166,7 @@ export const classUpdateSchema = Joi.object({
     'any.required': 'Content is required'
   }),
   update_type: Joi.string().valid('announcement', 'homework', 'reminder', 'event').default('announcement'),
+  is_pinned: Joi.boolean().default(false),
   attachments: Joi.array().items(attachmentSchema).max(5).optional().messages({
     'array.max': 'Maximum 5 attachments allowed per update'
   })

@@ -27,6 +27,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.450.0",
     "@aws-sdk/s3-request-presigner": "^3.450.0",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.40.0",
     "compression": "^1.7.4",
@@ -48,6 +50,8 @@
     "pg": "^8.11.1",
     "sharp": "^0.32.4",
     "socket.io": "^4.7.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.0",
     "winston": "^3.10.0",
     "zod": "^4.0.10"

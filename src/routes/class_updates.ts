@@ -267,15 +267,83 @@ router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Re
 });
 
 /**
- * @route GET /api/class-updates/:classId
- * @desc Get class updates for a specific class
- * @access Private
+ * @swagger
+ * /api/class-updates:
+ *   get:
+ *     summary: Get class updates
+ *     description: Retrieve paginated class updates, optionally filtered by class
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: class_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The class ID to filter updates by
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of updates per page
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [announcement, homework, reminder, event]
+ *         description: Filter by update type
+ *     responses:
+ *       200:
+ *         description: Class updates retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 updates:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ClassUpdate'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/PaginationMeta'
+ *       400:
+ *         description: Missing required class_id parameter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Class not found or access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/:classId', authenticate, async (req: Request, res: Response) => {
+router.get('/', authenticate, async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const { classId } = req.params;
+    const { class_id: classId } = req.query;
     const { page = '1', limit = '20', type } = req.query as ClassUpdateQueryParams & { page?: string; limit?: string };
+    
+    if (!classId || typeof classId !== 'string') {
+      return res.status(400).json({ error: 'class_id query parameter is required' });
+    }
+    
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Get current user details
@@ -378,7 +446,6 @@ router.get('/:classId', authenticate, async (req: Request, res: Response) => {
         title: update.title,
         content: update.content,
         update_type: update.update_type,
-        priority: update.priority || 'medium',
         is_pinned: update.is_pinned,
         is_deleted: update.is_deleted,
         attachments: attachments,
@@ -417,9 +484,253 @@ router.get('/:classId', authenticate, async (req: Request, res: Response) => {
 });
 
 /**
- * @route POST /api/class-updates/create
- * @desc Create a new class update
- * @access Private (Teachers only)
+ * @swagger
+ * /api/class-updates/{updateId}/comments:
+ *   get:
+ *     summary: Get comments for a specific class update
+ *     description: Retrieve paginated comments for a class update
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: updateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The class update ID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of comments per page
+ *     responses:
+ *       200:
+ *         description: Comments retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comments:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ClassUpdateComment'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/PaginationMeta'
+ *       404:
+ *         description: Class update not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/:updateId/comments', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { updateId } = req.params;
+    const { page = '1', limit = '20' } = req.query;
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Verify the update exists
+    const update = await db('class_updates')
+      .where('id', updateId)
+      .where('is_deleted', false)
+      .first();
+
+    if (!update) {
+      return res.status(404).json({ error: 'Class update not found' });
+    }
+
+    // Check if user has access to the class
+    let hasAccess = false;
+
+    const currentUser: UserAccess | undefined = await db('users')
+      .where('id', authenticatedReq.user.id)
+      .select('user_type', 'role', 'school_id')
+      .first();
+
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user is an admin teacher - they can view comments for any class in their school
+    if (currentUser.role === 'admin' && currentUser.user_type === 'teacher') {
+      // Verify the class exists and belongs to their school
+      const targetClass = await db('classes')
+        .where('id', update.class_id)
+        .where('school_id', currentUser.school_id)
+        .first();
+
+      hasAccess = !!targetClass;
+    } else {
+      // For non-admin users, check if they're enrolled in the specific class
+      const userClass = await db('user_classes')
+        .where({
+          user_id: authenticatedReq.user.id,
+          class_id: update.class_id
+        })
+        .first();
+
+      hasAccess = !!userClass;
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied to this class' });
+    }
+
+    // Get comments with pagination
+    const comments = await db('class_update_comments')
+      .join('users', 'class_update_comments.author_id', 'users.id')
+      .where('class_update_comments.class_update_id', updateId)
+      .where('class_update_comments.is_deleted', false)
+      .select(
+        'class_update_comments.*',
+        'users.first_name as author_first_name',
+        'users.last_name as author_last_name',
+        'users.email as author_email',
+        'users.avatar_url as author_avatar',
+        'users.user_type as author_user_type'
+      )
+      .orderBy('class_update_comments.created_at', 'asc')
+      .limit(parseInt(limit as string))
+      .offset(offset);
+
+    // Get total count for pagination
+    const totalResult = await db('class_update_comments')
+      .where('class_update_id', updateId)
+      .where('is_deleted', false)
+      .count('* as count')
+      .first();
+
+    const total = parseInt(totalResult?.count as string) || 0;
+
+    // Format comments
+    const formattedComments: ClassUpdateCommentWithAuthor[] = comments.map(comment => ({
+      id: comment.id,
+      class_update_id: comment.class_update_id,
+      author_id: comment.author_id,
+      content: comment.content,
+      reply_to_id: comment.reply_to_id,
+      is_deleted: comment.is_deleted,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      author: {
+        id: comment.author_id,
+        first_name: comment.author_first_name,
+        last_name: comment.author_last_name,
+        email: comment.author_email,
+        avatar_url: comment.author_avatar || "",
+        user_type: comment.author_user_type
+      }
+    }));
+
+    const response = {
+      comments: formattedComments,
+      pagination: {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        total,
+        hasMore: offset + comments.length < total
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    logger.error('Error fetching comments:', error);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/class-updates/create:
+ *   post:
+ *     summary: Create a new class update
+ *     description: Create a new class update (teachers only)
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - class_id
+ *               - content
+ *             properties:
+ *               class_id:
+ *                 type: string
+ *                 format: uuid
+ *                 description: The class ID
+ *               title:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Title of the update
+ *               content:
+ *                 type: string
+ *                 maxLength: 10000
+ *                 description: Content of the update
+ *               update_type:
+ *                 type: string
+ *                 enum: [announcement, homework, reminder, event]
+ *                 default: announcement
+ *                 description: Type of update
+ *               is_pinned:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Whether the update should be pinned
+ *               attachments:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ClassUpdateAttachment'
+ *                 maxItems: 5
+ *                 description: File attachments
+ *     responses:
+ *       201:
+ *         description: Class update created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 update:
+ *                   $ref: '#/components/schemas/ClassUpdate'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied - teachers only
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Class not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/create', authenticate, validate(classUpdateSchema), async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
@@ -429,7 +740,6 @@ router.post('/create', authenticate, validate(classUpdateSchema), async (req: Re
       title,
       content,
       update_type = 'announcement',
-      priority = 'medium',
       is_pinned = false,
       attachments = []
     }: CreateClassUpdateRequest = req.body;
@@ -485,7 +795,6 @@ router.post('/create', authenticate, validate(classUpdateSchema), async (req: Re
         title,
         content,
         update_type,
-        priority,
         attachments: JSON.stringify(attachments),
         reactions: JSON.stringify({}),
         is_pinned,
@@ -518,7 +827,6 @@ router.post('/create', authenticate, validate(classUpdateSchema), async (req: Re
       title: createdUpdate.title,
       content: createdUpdate.content,
       update_type: createdUpdate.update_type,
-      priority: createdUpdate.priority,
       is_pinned: createdUpdate.is_pinned,
       is_deleted: createdUpdate.is_deleted,
       attachments: safeJsonParse(createdUpdate.attachments, []),
@@ -546,9 +854,78 @@ router.post('/create', authenticate, validate(classUpdateSchema), async (req: Re
 });
 
 /**
- * @route POST /api/class-updates/:updateId/reactions
- * @desc Add or toggle a reaction to a class update
- * @access Private
+ * @swagger
+ * /api/class-updates/{updateId}/reactions:
+ *   post:
+ *     summary: Add or toggle a reaction to a class update
+ *     description: Add or remove an emoji reaction to a class update
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: updateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The class update ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - emoji
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *                 description: The emoji to react with
+ *                 example: "👍"
+ *     responses:
+ *       200:
+ *         description: Reaction toggled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 reactions:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: object
+ *                     properties:
+ *                       count:
+ *                         type: integer
+ *                         description: Number of reactions
+ *                       users:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                           format: uuid
+ *                         description: Users who reacted
+ *       400:
+ *         description: Invalid emoji
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Class update not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/:updateId/reactions', authenticate, async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
@@ -710,7 +1087,6 @@ router.get('/update/:updateId', authenticate, async (req: Request, res: Response
       title: update.title,
       content: update.content,
       update_type: update.update_type,
-      priority: update.priority || 'medium',
       is_pinned: update.is_pinned,
       is_deleted: update.is_deleted,
       attachments: safeJsonParse(update.attachments, []),
@@ -763,9 +1139,67 @@ router.get('/update/:updateId', authenticate, async (req: Request, res: Response
 });
 
 /**
- * @route POST /api/class-updates/:updateId/comments
- * @desc Create a comment on a class update
- * @access Private
+ * @swagger
+ * /api/class-updates/{updateId}/comments:
+ *   post:
+ *     summary: Create a comment on a class update
+ *     description: Add a new comment to a class update
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: updateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The class update ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 maxLength: 2000
+ *                 description: Comment content
+ *               reply_to_id:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of parent comment for replies
+ *     responses:
+ *       201:
+ *         description: Comment created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comment:
+ *                   $ref: '#/components/schemas/ClassUpdateComment'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Class update not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/:updateId/comments', authenticate, validate(commentSchema), async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;

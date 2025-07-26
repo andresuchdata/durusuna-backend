@@ -5,7 +5,6 @@ export interface ClassUpdate {
   title?: string;
   content: string;
   update_type: 'announcement' | 'homework' | 'reminder' | 'event';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
   is_pinned: boolean;
   is_deleted: boolean;
   attachments?: ClassUpdateAttachment[];
@@ -79,7 +78,6 @@ export interface CreateClassUpdateRequest {
   title?: string;
   content: string;
   update_type?: 'announcement' | 'homework' | 'reminder' | 'event';
-  priority?: 'low' | 'medium' | 'high' | 'urgent';
   is_pinned?: boolean;
   attachments?: ClassUpdateAttachment[];
 }
@@ -97,7 +95,6 @@ export interface ClassUpdateQueryParams {
   page?: number;
   limit?: number;
   type?: 'announcement' | 'homework' | 'reminder' | 'event';
-  priority?: 'low' | 'medium' | 'high' | 'urgent';
   author_id?: string;
   from_date?: string;
   to_date?: string;
