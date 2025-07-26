@@ -18,6 +18,7 @@
     "lint": "eslint src/",
     "db:migrate": "bun scripts/migrate.ts migrate",
     "db:seed": "bun scripts/migrate.ts seed",
+    "db:setup": "bun scripts/setup.ts",
     "db:rollback": "bun knex migrate:rollback --knexfile knexfile.ts",
     "db:rollback:all": "bun knex migrate:rollback --all --knexfile knexfile.ts",
     "db:reset": "bun run db:rollback:all && bun run db:migrate && bun run db:seed",
