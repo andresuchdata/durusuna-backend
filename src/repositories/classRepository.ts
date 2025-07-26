@@ -1,5 +1,5 @@
 import { Knex } from 'knex';
-import { Class, CreateClassData, UpdateClassData } from '../services/classService';
+import { Class, CreateClassRequest as CreateClassData, UpdateClassRequest as UpdateClassData } from '../types/class';
 
 export class ClassRepository {
   constructor(private db: Knex) {}

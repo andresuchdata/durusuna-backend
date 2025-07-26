@@ -56,6 +56,7 @@ export interface MessageWithSender extends Message {
     role: 'user' | 'admin';
     is_active: boolean;
   };
+  sent_at?: string;
   is_from_me: boolean;
 }
 

@@ -22,6 +22,7 @@ import schoolRoutes from './routes/schools';
 import classRoutes from './routes/classes';
 import lessonRoutes from './routes/lessons';
 import messageRoutes from './routes/messages';
+import conversationRoutes from './routes/conversations';
 import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
 import socketHandler from './services/socketService';
@@ -97,6 +98,7 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/lessons', lessonRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/conversations', conversationRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/class-updates', classUpdatesRoutes);
 
