@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import db from '../config/database';
@@ -50,8 +50,8 @@ interface UserAccess {
  * @desc Upload attachments for class updates
  * @access Private (Teachers only)
  */
-router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: AuthenticatedRequest, res: Response) => {
-
+router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
@@ -65,7 +65,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
 
     // Verify user has permission to upload to this class
     const currentUser: UserAccess | undefined = await db('users')
-      .where('id', req.user.id)
+      .where('id', authReq.user.id)
       .select('user_type', 'role', 'school_id')
       .first();
 
@@ -85,7 +85,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
       const userClass = await db('user_classes')
         .join('users', 'user_classes.user_id', 'users.id')
         .where({
-          'user_classes.user_id': req.user.id,
+          'user_classes.user_id': authReq.user.id,
           'user_classes.class_id': class_id
         })
         .select('users.user_type', 'user_classes.role_in_class')
@@ -141,7 +141,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
           createThumbnail: true,
         },
         customMetadata: {
-          'uploaded-by': req.user.id,
+          'uploaded-by': authReq.user.id,
           'class-id': class_id,
           'upload-context': 'class-update-attachment',
         },
@@ -166,7 +166,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
         isAudio: metadata.isAudio,
         isDocument: metadata.isDocument,
         sizeFormatted: metadata.sizeFormatted,
-        uploadedBy: req.user.id,
+        uploadedBy: authReq.user.id,
         uploadedAt: new Date().toISOString(),
         metadata: file.metadata,
       };
@@ -193,7 +193,8 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
  * @desc Delete a class update attachment
  * @access Private (Author or Teacher)
  */
-router.delete('/attachments/:key(*)', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { key } = req.params;
 
@@ -204,7 +205,7 @@ router.delete('/attachments/:key(*)', authenticate, async (req: AuthenticatedReq
     // Extract class ID from key if possible (depends on your key structure)
     // For now, we'll allow deletion if user has teacher permissions
     const currentUser: UserAccess | undefined = await db('users')
-      .where('id', req.user.id)
+      .where('id', authReq.user.id)
       .select('user_type', 'role')
       .first();
 
@@ -285,7 +286,8 @@ router.delete('/attachments/:key(*)', authenticate, async (req: AuthenticatedReq
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:updateId/comments', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:updateId/comments', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { page = '1', limit = '20' } = req.query;
@@ -305,7 +307,7 @@ router.get('/:updateId/comments', authenticate, async (req: AuthenticatedRequest
     let hasAccess = false;
 
     const currentUser: UserAccess | undefined = await db('users')
-      .where('id', req.user.id)
+      .where('id', authReq.user.id)
       .select('user_type', 'role', 'school_id')
       .first();
 
@@ -326,7 +328,7 @@ router.get('/:updateId/comments', authenticate, async (req: AuthenticatedRequest
       // For non-admin users, check if they're enrolled in the specific class
       const userClass = await db('user_classes')
         .where({
-          user_id: req.user.id,
+          user_id: authReq.user.id,
           class_id: update.class_id
         })
         .first();
@@ -371,7 +373,11 @@ router.get('/:updateId/comments', authenticate, async (req: AuthenticatedRequest
       author_id: comment.author_id,
       content: comment.content,
       reply_to_id: comment.reply_to_id,
+      reactions: safeJsonParse(comment.reactions, {}),
+      is_edited: comment.is_edited || false,
+      edited_at: comment.edited_at,
       is_deleted: comment.is_deleted,
+      deleted_at: comment.deleted_at,
       created_at: comment.created_at,
       updated_at: comment.updated_at,
       author: {
@@ -478,7 +484,8 @@ router.get('/:updateId/comments', authenticate, async (req: AuthenticatedRequest
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:updateId/reactions', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { emoji }: AddReactionRequest = req.body;
@@ -500,11 +507,11 @@ router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedReque
     // Check if user has access to the class
     let hasAccess = false;
 
-    if (req.user.user_type === 'teacher' && req.user.role === 'admin') {
+    if (authReq.user.user_type === 'teacher' && authReq.user.role === 'admin') {
       // Admin teachers can react to updates in any class in their school
       const classInfo = await db('classes')
         .where('id', existingUpdate.class_id)
-        .where('school_id', req.user.school_id)
+        .where('school_id', authReq.user.school_id)
         .first();
       
       hasAccess = !!classInfo;
@@ -512,7 +519,7 @@ router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedReque
       // Regular users need to be enrolled in the class
       const userClass = await db('user_classes')
         .where({
-          user_id: req.user.id,
+          user_id: authReq.user.id,
           class_id: existingUpdate.class_id
         })
         .first();
@@ -533,7 +540,7 @@ router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedReque
     }
 
     // Check if user has already reacted with this emoji
-    const userIndex = reactions[emoji].users.indexOf(req.user.id);
+    const userIndex = reactions[emoji].users.indexOf(authReq.user.id);
     
     if (userIndex > -1) {
       // User has already reacted, remove the reaction
@@ -546,7 +553,7 @@ router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedReque
       }
     } else {
       // User hasn't reacted, add the reaction
-      reactions[emoji].users.push(req.user.id);
+      reactions[emoji].users.push(authReq.user.id);
       reactions[emoji].count += 1;
     }
 
@@ -719,7 +726,8 @@ router.post('/:updateId/reactions', authenticate, async (req: AuthenticatedReque
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
 
@@ -747,7 +755,7 @@ router.get('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Re
     // Check if user has access to the class
     const userClass = await db('user_classes')
       .where({
-        user_id: req.user.id,
+        user_id: authReq.user.id,
         class_id: update.class_id
       })
       .first();
@@ -804,7 +812,11 @@ router.get('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Re
       author_id: comment.author_id,
       content: comment.content,
       reply_to_id: comment.reply_to_id,
+      reactions: safeJsonParse(comment.reactions, {}),
+      is_edited: comment.is_edited || false,
+      edited_at: comment.edited_at,
       is_deleted: comment.is_deleted,
+      deleted_at: comment.deleted_at,
       created_at: comment.created_at,
       updated_at: comment.updated_at,
       author: {
@@ -831,7 +843,8 @@ router.get('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Re
 });
 
 // PUT /api/class-updates/:updateId - Update a class update
-router.put('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { title, content, update_type, attachments } = req.body;
@@ -847,10 +860,10 @@ router.put('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Re
     }
 
     // Check if user is the author or has permission
-    if (existingUpdate.author_id !== req.user.id) {
+    if (existingUpdate.author_id !== authReq.user.id) {
       // Check if user is an admin teacher
       const currentUser = await db('users')
-        .where('id', req.user.id)
+        .where('id', authReq.user.id)
         .select('user_type', 'role', 'school_id')
         .first();
 
@@ -933,7 +946,8 @@ router.put('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Re
 });
 
 // DELETE /api/class-updates/:updateId - Delete a class update
-router.delete('/:updateId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
 
@@ -948,10 +962,10 @@ router.delete('/:updateId', authenticate, async (req: AuthenticatedRequest, res:
     }
 
     // Check if user is the author or has permission
-    if (existingUpdate.author_id !== req.user.id) {
+    if (existingUpdate.author_id !== authReq.user.id) {
       // Check if user is an admin teacher
       const currentUser = await db('users')
-        .where('id', req.user.id)
+        .where('id', authReq.user.id)
         .select('user_type', 'role', 'school_id')
         .first();
 
@@ -1049,7 +1063,8 @@ router.delete('/:updateId', authenticate, async (req: AuthenticatedRequest, res:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:updateId/comments', authenticate, validate(commentSchema), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:updateId/comments', authenticate, validate(commentSchema), async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { content, reply_to_id }: CreateCommentRequest = req.body;
@@ -1067,7 +1082,7 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
     // Check if user has access to the class
     const userClass = await db('user_classes')
       .where({
-        user_id: req.user.id,
+        user_id: authReq.user.id,
         class_id: update.class_id
       })
       .first();
@@ -1095,7 +1110,7 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
       .insert({
         id: commentId,
         class_update_id: updateId,
-        author_id: req.user.id,
+        author_id: authReq.user.id,
         content,
         reply_to_id,
         is_deleted: false,
@@ -1124,7 +1139,11 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
       author_id: commentWithAuthor.author_id,
       content: commentWithAuthor.content,
       reply_to_id: commentWithAuthor.reply_to_id,
+      reactions: safeJsonParse(commentWithAuthor.reactions, {}),
+      is_edited: commentWithAuthor.is_edited || false,
+      edited_at: commentWithAuthor.edited_at,
       is_deleted: commentWithAuthor.is_deleted,
+      deleted_at: commentWithAuthor.deleted_at,
       created_at: commentWithAuthor.created_at,
       updated_at: commentWithAuthor.updated_at,
       author: {
@@ -1150,7 +1169,8 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
  * @desc Pin or unpin a class update
  * @access Private (Teachers only)
  */
-router.put('/:updateId/pin', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:updateId/pin', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { is_pinned } = req.body;
@@ -1166,13 +1186,13 @@ router.put('/:updateId/pin', authenticate, async (req: AuthenticatedRequest, res
     }
 
     // Check if user is a teacher and has access to this class
-    if (req.user.user_type !== 'teacher') {
+    if (authReq.user.user_type !== 'teacher') {
       return res.status(403).json({ error: 'Only teachers can pin/unpin updates' });
     }
 
     const userClass = await db('user_classes')
       .where({
-        user_id: req.user.id,
+        user_id: authReq.user.id,
         class_id: update.class_id
       })
       .first();

@@ -56,9 +56,13 @@ export interface ClassUpdateComment {
   author_id: string;
   content: string;
   reply_to_id?: string;
+  reactions?: Record<string, number>;
+  is_edited: boolean;
+  edited_at?: Date;
   is_deleted: boolean;
+  deleted_at?: Date;
   created_at: Date;
-  updated_at?: Date;
+  updated_at: Date;
 }
 
 export interface ClassUpdateCommentWithAuthor extends ClassUpdateComment {
