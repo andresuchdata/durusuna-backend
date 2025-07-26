@@ -6,7 +6,7 @@ export class UserRepository {
 
   async findById(id: string): Promise<User | null> {
     const user = await this.db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'school_id', 'created_at')
+      .select('*')
       .where('id', id)
       .first();
     
@@ -52,10 +52,12 @@ export class UserRepository {
   }
 
   async findBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
-    return await this.db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'created_at')
+    const users = await this.db('users')
+      .select('*')
       .where('school_id', schoolId)
       .orderBy('last_name', 'asc');
+    
+    return users.map(({ password, ...user }) => user);
   }
 
   async searchUsers(
@@ -66,7 +68,7 @@ export class UserRepository {
   ): Promise<Omit<User, 'password'>[]> {
     const searchPattern = `%${searchTerm}%`;
     
-    return await this.db('users')
+    const users = await this.db('users')
       .where('school_id', currentUserSchoolId)
       .where('id', '!=', currentUserId)
       .where('is_active', true)
@@ -76,17 +78,11 @@ export class UserRepository {
             .orWhere('email', 'ilike', searchPattern)
             .orWhere(this.client.raw("CONCAT(first_name, ' ', last_name)"), 'ilike', searchPattern);
       })
-      .select(
-        'id',
-        'first_name',
-        'last_name',
-        'email',
-        'avatar_url',
-        'user_type',
-        'role'
-      )
+      .select('*')
       .orderBy('first_name', 'asc')
       .limit(limit);
+    
+    return users.map(({ password, ...user }) => user);
   }
 
   async findCurrentUserSchool(userId: string): Promise<{ school_id: string | null } | null> {

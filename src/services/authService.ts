@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+const bcrypt = require('bcryptjs');
 import { AuthRepository } from '../repositories/authRepository';
 import { 
   RegisterUserData, 
@@ -53,8 +53,18 @@ export class AuthService {
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(validatedData.password, saltRounds);
 
+    // Convert date_of_birth string to Date if needed
+    const userData = {
+      ...validatedData,
+      date_of_birth: validatedData.date_of_birth 
+        ? (typeof validatedData.date_of_birth === 'string' 
+            ? new Date(validatedData.date_of_birth) 
+            : validatedData.date_of_birth)
+        : undefined
+    };
+
     // Create user
-    const userId = await this.authRepository.createUser(validatedData, hashedPassword);
+    const userId = await this.authRepository.createUser(userData, hashedPassword);
 
     // Get created user
     const user = await this.authRepository.findUserById(userId);
@@ -139,8 +149,18 @@ export class AuthService {
     // Validate input
     const validatedData = updateProfileSchema.parse(data);
 
+    // Convert date_of_birth string to Date if needed
+    const profileData = {
+      ...validatedData,
+      date_of_birth: validatedData.date_of_birth 
+        ? (typeof validatedData.date_of_birth === 'string' 
+            ? new Date(validatedData.date_of_birth) 
+            : validatedData.date_of_birth)
+        : undefined
+    };
+
     // Update user profile
-    await this.authRepository.updateUserProfile(userId, validatedData);
+    await this.authRepository.updateUserProfile(userId, profileData);
 
     // Return updated user
     const updatedUser = await this.authRepository.findUserById(userId);
