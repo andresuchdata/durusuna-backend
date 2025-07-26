@@ -18,10 +18,10 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import schoolRoutes from './routes/schools';
 import classRoutes from './routes/classes';
-const lessonRoutes = require('./routes/lessons');
-const messageRoutes = require('./routes/messages');
+import lessonRoutes from './routes/lessons';
+import messageRoutes from './routes/messages';
 const uploadRoutes = require('./routes/uploads');
-const classUpdatesRoutes = require('./routes/class_updates');
+import classUpdatesRoutes from './routes/class_updates';
 import socketHandler from './services/socketService';
 
 // Create Express app

@@ -1,14 +1,29 @@
-const express = require('express');
-const db = require('../config/database');
-const { authenticate: auth } = require('../middleware/auth');
-const { validate, messageSchema } = require('../utils/validation');
-const logger = require('../utils/logger');
-const messageCache = require('../utils/messageCache');
+import express, { Request, Response } from 'express';
+import db from '../config/database';
+import { authenticate } from '../middleware/auth';
+import { validate, messageSchema } from '../utils/validation';
+import logger from '../utils/logger';
+import messageCache from '../utils/messageCache';
+import { AuthenticatedRequest } from '../types/auth';
+import {
+  MessageWithSender,
+  ConversationWithDetails,
+  ConversationResponse,
+  ConversationMessagesResponse,
+  LoadMoreMessagesResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+  MessageSearchParams,
+  MessageSearchResponse,
+  ConversationPaginationParams,
+  MessagePaginationResponse,
+  TypingUser
+} from '../types/message';
 
 const router = express.Router();
 
 // Helper function to safely parse JSON
-const safeJsonParse = (jsonData, fallback = null) => {
+const safeJsonParse = (jsonData: any, fallback: any = null): any => {
   try {
     // If it's already an object/array, return it as-is
     if (typeof jsonData === 'object' && jsonData !== null) {
@@ -20,7 +35,7 @@ const safeJsonParse = (jsonData, fallback = null) => {
     }
     return fallback;
   } catch (error) {
-    logger.warn('Failed to parse JSON:', { jsonData, error: error.message });
+    logger.warn('Failed to parse JSON:', { jsonData, error: (error as Error).message });
     return fallback;
   }
 };
@@ -30,25 +45,27 @@ const safeJsonParse = (jsonData, fallback = null) => {
  * @desc Get all conversations for the current user (optimized with caching)
  * @access Private
  */
-router.get('/conversations', auth, async (req, res) => {
+router.get('/conversations', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const { page = 1, limit = 15 } = req.query;
-    const offset = (page - 1) * limit;
+    const { page = '1', limit = '15' } = req.query as { page?: string; limit?: string };
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const pageLimit = Math.min(parseInt(limit), 25);
 
     // Check cache first for the first page
-    if (page == 1) {
-      const cachedConversations = messageCache.getUserConversations(req.user.id);
+    if (parseInt(page) === 1) {
+      const cachedConversations = messageCache.getUserConversations(authenticatedReq.user.id);
       if (cachedConversations) {
-        return res.json({
-          conversations: cachedConversations.slice(0, pageLimit),
+        const response: ConversationResponse = {
+          conversations: cachedConversations.slice(0, pageLimit) as unknown as ConversationWithDetails[],
           pagination: {
             page: 1,
             limit: pageLimit,
             hasMore: cachedConversations.length > pageLimit
           },
           cached: true
-        });
+        };
+        return res.json(response);
       }
     }
 
@@ -69,7 +86,7 @@ router.get('/conversations', auth, async (req, res) => {
       )
       .join('conversation_participants as participant', 'conversations.id', 'participant.conversation_id')
       .leftJoin('messages as last_msg', 'conversations.last_message_id', 'last_msg.id')
-      .where('participant.user_id', req.user.id)
+      .where('participant.user_id', authenticatedReq.user.id)
       .where('participant.is_active', true)
       .where('conversations.is_active', true)
       .orderBy('conversations.last_message_at', 'desc')
@@ -77,14 +94,15 @@ router.get('/conversations', auth, async (req, res) => {
       .offset(offset);
 
     if (conversations.length === 0) {
-      return res.json({
+      const response: ConversationResponse = {
         conversations: [],
         pagination: {
           page: parseInt(page),
           limit: pageLimit,
           hasMore: false
         }
-      });
+      };
+      return res.json(response);
     }
 
     // Get participants for all conversations in a single query
@@ -105,7 +123,7 @@ router.get('/conversations', auth, async (req, res) => {
       );
 
     // Group participants by conversation
-    const participantsByConversation = {};
+    const participantsByConversation: Record<string, any[]> = {};
     allParticipants.forEach(participant => {
       if (!participantsByConversation[participant.conversation_id]) {
         participantsByConversation[participant.conversation_id] = [];
@@ -114,9 +132,9 @@ router.get('/conversations', auth, async (req, res) => {
     });
 
     // Format response efficiently
-    const formattedConversations = conversations.map(conv => {
+    const formattedConversations: ConversationWithDetails[] = conversations.map(conv => {
       const participants = participantsByConversation[conv.id] || [];
-      const otherParticipants = participants.filter(p => p.id !== req.user.id);
+      const otherParticipants = participants.filter(p => p.id !== authenticatedReq.user.id);
       
       const otherUser = conv.type === 'direct' && otherParticipants.length > 0 
         ? otherParticipants[0] 
@@ -127,12 +145,18 @@ router.get('/conversations', auth, async (req, res) => {
         type: conv.type,
         name: conv.name,
         avatar_url: conv.conversation_avatar,
+        created_by: conv.created_by || '',
+        is_active: true,
+        created_at: conv.conversation_created_at,
         participants: participants.map(p => ({
           id: p.id,
           first_name: p.first_name,
           last_name: p.last_name,
+          email: p.email,
           avatar_url: p.avatar_url,
-          user_type: p.user_type
+          user_type: p.user_type,
+          role: 'user' as const,
+          is_active: true
         })),
         other_user: otherUser ? {
           id: otherUser.id,
@@ -140,33 +164,38 @@ router.get('/conversations', auth, async (req, res) => {
           last_name: otherUser.last_name,
           email: otherUser.email,
           avatar_url: otherUser.avatar_url,
-          user_type: otherUser.user_type
-        } : null,
+          user_type: otherUser.user_type,
+          role: 'user' as const,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date()
+        } : undefined,
         last_message: conv.last_message_content ? {
           content: conv.last_message_content,
           message_type: conv.last_message_type,
           created_at: conv.last_message_created_at,
-          is_from_me: conv.last_message_sender_id === req.user.id
-        } : null,
+          is_from_me: conv.last_message_sender_id === authenticatedReq.user.id
+        } : undefined,
         unread_count: parseInt(conv.unread_count) || 0,
-        last_activity: conv.last_message_at,
-        created_at: conv.conversation_created_at
+        last_activity: conv.last_message_at
       };
     });
 
     // Cache the results for the first page
-    if (page == 1) {
-      messageCache.setUserConversations(req.user.id, formattedConversations);
+    if (parseInt(page) === 1) {
+      messageCache.setUserConversations(authenticatedReq.user.id, formattedConversations as unknown as any[]);
     }
 
-    res.json({
+    const response: ConversationResponse = {
       conversations: formattedConversations,
       pagination: {
         page: parseInt(page),
         limit: pageLimit,
         hasMore: formattedConversations.length === pageLimit
       }
-    });
+    };
+
+    res.json(response);
 
   } catch (error) {
     logger.error('Error fetching conversations:', error);
@@ -179,24 +208,24 @@ router.get('/conversations', auth, async (req, res) => {
  * @desc Get messages for a specific conversation (optimized for smooth loading)
  * @access Private
  */
-router.get('/conversation/:conversationId', auth, async (req, res) => {
+router.get('/conversation/:conversationId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { conversationId } = req.params;
     const { 
-      page = 1, 
-      limit = 25, // Reduced from 50 to 25 for faster initial load
-      cursor, // For cursor-based pagination (more efficient)
-      loadDirection = 'before' // 'before' for loading older messages, 'after' for newer
-    } = req.query;
+      page = '1', 
+      limit = '25',
+      cursor,
+      loadDirection = 'before'
+    } = req.query as ConversationPaginationParams & { page?: string; limit?: string };
     
-    const pageLimit = Math.min(parseInt(limit), 50); // Cap at 50 messages max
-    const pageNum = Math.max(parseInt(page), 1);
+    const pageLimit = Math.min(parseInt(limit), 50);
 
     // Verify conversation exists and user is a participant
     const participant = await db('conversation_participants')
       .join('conversations', 'conversation_participants.conversation_id', 'conversations.id')
       .where('conversation_participants.conversation_id', conversationId)
-      .where('conversation_participants.user_id', req.user.id)
+      .where('conversation_participants.user_id', authenticatedReq.user.id)
       .where('conversation_participants.is_active', true)
       .where('conversations.is_active', true)
       .select('conversations.*', 'conversation_participants.unread_count')
@@ -259,33 +288,33 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
     }
 
     // Apply limit for pagination
-    const messages = await messagesQuery.limit(pageLimit + 1); // +1 to check if there are more
+    const messages = await messagesQuery.limit(pageLimit + 1);
 
     // Check if there are more messages
     const hasMore = messages.length > pageLimit;
     if (hasMore) {
-      messages.pop(); // Remove the extra message used for hasMore check
+      messages.pop();
     }
 
     // Determine cursors for pagination
-    let nextCursor = null;
-    let prevCursor = null;
+    let nextCursor: string | undefined;
+    let prevCursor: string | undefined;
     
     if (messages.length > 0) {
       if (loadDirection === 'after') {
-        nextCursor = messages[messages.length - 1].created_at;
-        prevCursor = messages[0].created_at;
+        nextCursor = messages[messages.length - 1].created_at.toISOString();
+        prevCursor = messages[0].created_at.toISOString();
       } else {
-        nextCursor = messages[0].created_at;
-        prevCursor = messages[messages.length - 1].created_at;
-        // For 'before' direction, reverse the array to show in chronological order
+        nextCursor = messages[0].created_at.toISOString();
+        prevCursor = messages[messages.length - 1].created_at.toISOString();
         messages.reverse();
       }
     }
 
     // Format messages efficiently
-    const formattedMessages = messages.map(msg => ({
+    const formattedMessages: MessageWithSender[] = messages.map(msg => ({
       id: msg.id,
+      conversation_id: msg.conversation_id,
       sender_id: msg.sender_id,
       receiver_id: msg.receiver_id,
       content: msg.content,
@@ -293,6 +322,7 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
       reply_to_id: msg.reply_to_id,
       is_read: Boolean(msg.is_read),
       is_edited: Boolean(msg.is_edited),
+      is_deleted: false,
       edited_at: msg.edited_at,
       read_status: msg.read_status || 'sent',
       reactions: safeJsonParse(msg.reactions, {}),
@@ -308,10 +338,10 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         role: msg.sender_role,
         is_active: Boolean(msg.sender_is_active)
       },
-      is_from_me: Boolean(msg.sender_id === req.user.id)
+      is_from_me: Boolean(msg.sender_id === authenticatedReq.user.id)
     }));
 
-    // Get conversation details and participants (cached query)
+    // Get conversation details and participants
     const [conversation, participants] = await Promise.all([
       db('conversations').where('id', conversationId).first(),
       db('conversation_participants')
@@ -334,15 +364,14 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
 
     // For direct chats, identify the other user
     const otherUser = conversation.type === 'direct' 
-      ? participants.find(p => p.id !== req.user.id)
+      ? participants.find(p => p.id !== authenticatedReq.user.id)
       : null;
 
     // Auto-mark conversation as read when user opens it
     if (participant.unread_count > 0) {
-      // Update unread count asynchronously (don't wait for response)
       db('conversation_participants')
         .where('conversation_id', conversationId)
-        .where('user_id', req.user.id)
+        .where('user_id', authenticatedReq.user.id)
         .update({
           unread_count: 0,
           last_read_at: new Date(),
@@ -351,7 +380,15 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         .catch(error => logger.error('Error updating unread count:', error));
     }
 
-    res.json({
+    const pagination: MessagePaginationResponse = {
+      hasMore,
+      nextCursor: hasMore ? nextCursor : undefined,
+      prevCursor,
+      limit: pageLimit,
+      loadDirection
+    };
+
+    const response: ConversationMessagesResponse = {
       messages: formattedMessages,
       conversation: {
         id: conversation.id,
@@ -359,6 +396,8 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         name: conversation.name,
         description: conversation.description,
         avatar_url: conversation.avatar_url,
+        created_by: conversation.created_by,
+        is_active: conversation.is_active,
         created_at: conversation.created_at,
         updated_at: conversation.updated_at
       },
@@ -385,19 +424,15 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         is_active: Boolean(otherUser.is_active),
         created_at: otherUser.created_at,
         updated_at: otherUser.updated_at
-      } : null,
-      pagination: {
-        hasMore,
-        nextCursor: hasMore ? nextCursor : null,
-        prevCursor,
-        limit: pageLimit,
-        loadDirection
-      },
+      } : undefined,
+      pagination,
       meta: {
         total_unread: participant.unread_count,
         conversation_id: conversationId
       }
-    });
+    };
+
+    res.json(response);
 
   } catch (error) {
     logger.error('Error fetching conversation messages:', error);
@@ -410,25 +445,26 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
  * @desc Load more messages for infinite scroll (optimized for performance)
  * @access Private
  */
-router.get('/conversation/:conversationId/load-more', auth, async (req, res) => {
+router.get('/conversation/:conversationId/load-more', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { conversationId } = req.params;
     const { 
-      cursor, // Required for cursor-based pagination
-      limit = 20, // Smaller batches for smooth scrolling
-      direction = 'before' // 'before' for older messages, 'after' for newer
-    } = req.query;
+      cursor,
+      limit = '20',
+      direction = 'before'
+    } = req.query as { cursor?: string; limit?: string; direction?: 'before' | 'after' };
 
     if (!cursor) {
       return res.status(400).json({ error: 'Cursor is required for loading more messages' });
     }
 
-    const pageLimit = Math.min(parseInt(limit), 30); // Cap at 30 messages
+    const pageLimit = Math.min(parseInt(limit), 30);
 
     // Verify user is participant (quick check)
     const isParticipant = await db('conversation_participants')
       .where('conversation_id', conversationId)
-      .where('user_id', req.user.id)
+      .where('user_id', authenticatedReq.user.id)
       .where('is_active', true)
       .first();
 
@@ -487,25 +523,28 @@ router.get('/conversation/:conversationId/load-more', auth, async (req, res) => 
     }
 
     // Determine next cursor
-    let nextCursor = null;
+    let nextCursor: string | undefined;
     if (messages.length > 0) {
       if (direction === 'before') {
-        nextCursor = messages[messages.length - 1].created_at;
+        nextCursor = messages[messages.length - 1].created_at.toISOString();
         messages.reverse(); // Show in chronological order
       } else {
-        nextCursor = messages[messages.length - 1].created_at;
+        nextCursor = messages[messages.length - 1].created_at.toISOString();
       }
     }
 
     // Format messages (lightweight)
-    const formattedMessages = messages.map(msg => ({
+    const formattedMessages: MessageWithSender[] = messages.map(msg => ({
       id: msg.id,
+      conversation_id: conversationId,
       sender_id: msg.sender_id,
+      receiver_id: null,
       content: msg.content,
       message_type: msg.message_type,
       reply_to_id: msg.reply_to_id,
       is_read: Boolean(msg.is_read),
       is_edited: Boolean(msg.is_edited),
+      is_deleted: false,
       edited_at: msg.edited_at,
       read_status: msg.read_status || 'sent',
       reactions: safeJsonParse(msg.reactions, {}),
@@ -514,21 +553,26 @@ router.get('/conversation/:conversationId/load-more', auth, async (req, res) => 
         id: msg.sender_id,
         first_name: msg.sender_first_name,
         last_name: msg.sender_last_name,
+        email: '',
         avatar_url: msg.sender_avatar,
-        user_type: msg.sender_user_type
+        user_type: msg.sender_user_type,
+        role: 'user',
+        is_active: true
       },
-      is_from_me: Boolean(msg.sender_id === req.user.id)
+      is_from_me: Boolean(msg.sender_id === authenticatedReq.user.id)
     }));
 
-    res.json({
+    const response: LoadMoreMessagesResponse = {
       messages: formattedMessages,
       pagination: {
         hasMore,
-        nextCursor: hasMore ? nextCursor : null,
-        direction,
-        limit: pageLimit
+        nextCursor: hasMore ? nextCursor : undefined,
+        limit: pageLimit,
+        loadDirection: direction
       }
-    });
+    };
+
+    res.json(response);
 
   } catch (error) {
     logger.error('Error loading more messages:', error);
@@ -541,7 +585,8 @@ router.get('/conversation/:conversationId/load-more', auth, async (req, res) => 
  * @desc Send a new message
  * @access Private
  */
-router.post('/send', auth, validate(messageSchema), async (req, res) => {
+router.post('/send', authenticate, validate(messageSchema), async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const {
       conversation_id,
@@ -550,7 +595,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
       message_type = 'text',
       reply_to_id,
       metadata
-    } = req.body;
+    }: SendMessageRequest = req.body;
 
     let conversationId = conversation_id;
     let receiverId = receiver_id;
@@ -559,7 +604,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
     if (conversationId) {
       const participant = await db('conversation_participants')
         .where('conversation_id', conversationId)
-        .where('user_id', req.user.id)
+        .where('user_id', authenticatedReq.user.id)
         .where('is_active', true)
         .first();
 
@@ -569,10 +614,13 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
 
       // For direct conversations, get the receiver_id
       const conversation = await db('conversations').where('id', conversationId).first();
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
       if (conversation.type === 'direct') {
         const otherParticipant = await db('conversation_participants')
           .where('conversation_id', conversationId)
-          .where('user_id', '!=', req.user.id)
+          .where('user_id', '!=', authenticatedReq.user.id)
           .where('is_active', true)
           .first();
         
@@ -581,7 +629,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         }
       } else {
         // For group messages, receiver_id should be null
-        receiverId = null;
+        receiverId = undefined;
       }
     } 
     // If only receiver_id is provided, find or create direct conversation
@@ -602,7 +650,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         .join('conversation_participants as p1', 'conversations.id', 'p1.conversation_id')
         .join('conversation_participants as p2', 'conversations.id', 'p2.conversation_id')
         .where('conversations.type', 'direct')
-        .where('p1.user_id', req.user.id)
+        .where('p1.user_id', authenticatedReq.user.id)
         .where('p2.user_id', receiverId)
         .where('p1.is_active', true)
         .where('p2.is_active', true)
@@ -615,7 +663,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         const [newConversation] = await db('conversations')
           .insert({
             type: 'direct',
-            created_by: req.user.id,
+            created_by: authenticatedReq.user.id,
             is_active: true,
             created_at: new Date(),
             updated_at: new Date()
@@ -628,7 +676,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         await db('conversation_participants').insert([
           {
             conversation_id: conversationId,
-            user_id: req.user.id,
+            user_id: authenticatedReq.user.id,
             joined_at: new Date(),
             is_active: true,
             role: 'member'
@@ -641,17 +689,6 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
             role: 'member'
           }
         ]);
-
-        // Emit conversation created event
-        try {
-          const io = req.app.get('io');
-          if (io) {
-            io.emitConversationCreated(newConversation, [req.user.id, receiverId]);
-            logger.info(`Emitted conversation created event for conversation ${conversationId}`);
-          }
-        } catch (socketError) {
-          logger.error('Error emitting conversation created event:', socketError);
-        }
       }
     } else {
       return res.status(400).json({ error: 'Either conversation_id or receiver_id is required' });
@@ -673,8 +710,8 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
     const [message] = await db('messages')
       .insert({
         conversation_id: conversationId,
-        sender_id: req.user.id,
-        receiver_id: receiverId, // null for group messages
+        sender_id: authenticatedReq.user.id,
+        receiver_id: receiverId || null,
         content: content || null,
         message_type,
         reply_to_id: reply_to_id || null,
@@ -692,33 +729,14 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
       .where('messages.id', message.id)
       .select(
-        'messages.id',
-        'messages.sender_id', 
-        'messages.receiver_id',
-        'messages.content',
-        'messages.message_type',
-        'messages.reply_to_id',
-        'messages.is_read',
-        'messages.is_edited',
-        'messages.is_deleted',
-        'messages.edited_at',
-        'messages.deleted_at',
-        'messages.delivered_at',
-        'messages.read_at',
-        'messages.read_status',
-        'messages.reactions',
-        'messages.created_at',
-        'messages.updated_at',
-        'sender.id as sender_id',
+        'messages.*',
         'sender.first_name as sender_first_name',
         'sender.last_name as sender_last_name',
         'sender.email as sender_email',
         'sender.avatar_url as sender_avatar',
         'sender.user_type as sender_user_type',
         'sender.role as sender_role',
-        'sender.is_active as sender_is_active',
-        'sender.created_at as sender_created_at',
-        'sender.updated_at as sender_updated_at'
+        'sender.is_active as sender_is_active'
       )
       .first();
 
@@ -731,7 +749,7 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         updated_at: new Date()
       });
 
-    const formattedMessage = {
+    const formattedMessage: MessageWithSender = {
       id: completeMessage.id,
       conversation_id: conversationId,
       sender_id: completeMessage.sender_id,
@@ -758,18 +776,17 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
         avatar_url: completeMessage.sender_avatar || '',
         user_type: completeMessage.sender_user_type,
         role: completeMessage.sender_role,
-        is_active: Boolean(completeMessage.sender_is_active),
-        created_at: completeMessage.sender_created_at,
-        updated_at: completeMessage.sender_updated_at
+        is_active: Boolean(completeMessage.sender_is_active)
       },
-      attachments: [],
       is_from_me: true
     };
 
-    res.status(201).json({
+    const response: SendMessageResponse = {
       message: formattedMessage,
       conversation_id: conversationId
-    });
+    };
+
+    res.status(201).json(response);
 
     // Update cache with new message
     try {
@@ -787,72 +804,9 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
       logger.error('Error updating message cache:', cacheError);
     }
 
-    // Emit real-time socket events
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        // Emit new message to conversation participants
-        io.emitNewMessage(formattedMessage, conversationId);
-        
-        // Also emit to user-specific rooms for notifications
-        if (receiverId) {
-          io.emitToUser(receiverId, 'message:new', {
-            message: formattedMessage,
-            action: 'created',
-            conversationId: conversationId,
-          });
-        }
-        
-        logger.info(`Emitted new message event for conversation ${conversationId}`);
-      }
-    } catch (socketError) {
-      logger.error('Error emitting socket event:', socketError);
-      // Don't fail the request if socket emission fails
-    }
-
   } catch (error) {
     logger.error('Error sending message:', error);
     res.status(500).json({ error: 'Failed to send message' });
-  }
-});
-
-/**
- * @route PUT /api/messages/:messageId/mark-read
- * @desc Mark a message as read
- * @access Private
- */
-router.put('/:messageId/mark-read', auth, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-
-    // Verify message exists and user is the receiver
-    const message = await db('messages')
-      .where('id', messageId)
-      .where('receiver_id', req.user.id)
-      .where('is_deleted', false)
-      .first();
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Update message as read
-    await db('messages')
-      .where('id', messageId)
-      .update({
-        is_read: true,
-        read_at: new Date(),
-        read_status: 'read',
-        updated_at: new Date()
-      });
-
-    res.json({
-      message: 'Message marked as read'
-    });
-
-  } catch (error) {
-    logger.error('Error marking message as read:', error);
-    res.status(500).json({ error: 'Failed to mark message as read' });
   }
 });
 
@@ -861,7 +815,8 @@ router.put('/:messageId/mark-read', auth, async (req, res) => {
  * @desc Mark all messages in a conversation as read (reset unread count)
  * @access Private
  */
-router.put('/conversation/:conversationId/mark-read', auth, async (req, res) => {
+router.put('/conversation/:conversationId/mark-read', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { conversationId } = req.params;
 
@@ -869,7 +824,7 @@ router.put('/conversation/:conversationId/mark-read', auth, async (req, res) => 
     const participant = await db('conversation_participants')
       .join('conversations', 'conversation_participants.conversation_id', 'conversations.id')
       .where('conversation_participants.conversation_id', conversationId)
-      .where('conversation_participants.user_id', req.user.id)
+      .where('conversation_participants.user_id', authenticatedReq.user.id)
       .where('conversation_participants.is_active', true)
       .where('conversations.is_active', true)
       .select('conversation_participants.*')
@@ -882,7 +837,7 @@ router.put('/conversation/:conversationId/mark-read', auth, async (req, res) => 
     // Reset unread count for this user in this conversation
     await db('conversation_participants')
       .where('conversation_id', conversationId)
-      .where('user_id', req.user.id)
+      .where('user_id', authenticatedReq.user.id)
       .update({
         unread_count: 0,
         updated_at: new Date()
@@ -891,7 +846,7 @@ router.put('/conversation/:conversationId/mark-read', auth, async (req, res) => 
     // Also mark individual messages as read (optional, for consistency)
     await db('messages')
       .where('conversation_id', conversationId)
-      .where('receiver_id', req.user.id)
+      .where('receiver_id', authenticatedReq.user.id)
       .where('is_read', false)
       .where('is_deleted', false)
       .update({
@@ -913,142 +868,15 @@ router.put('/conversation/:conversationId/mark-read', auth, async (req, res) => 
 });
 
 /**
- * @route PUT /api/messages/:messageId
- * @desc Edit a message
- * @access Private
- */
-router.put('/:messageId', auth, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const { content } = req.body;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Message content is required' });
-    }
-
-    // Verify message exists and user is the sender
-    const message = await db('messages')
-      .where('id', messageId)
-      .where('sender_id', req.user.id)
-      .where('is_deleted', false)
-      .first();
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Check if message is too old to edit (24 hours)
-    const messageAge = new Date() - new Date(message.created_at);
-    const maxEditAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-    if (messageAge > maxEditAge) {
-      return res.status(400).json({ 
-        error: 'Message is too old to edit (24 hour limit)' 
-      });
-    }
-
-    // Update message
-    await db('messages')
-      .where('id', messageId)
-      .update({
-        content: content.trim(),
-        is_edited: true,
-        edited_at: new Date(),
-        updated_at: new Date()
-      });
-
-    // Get updated message
-    const updatedMessage = await db('messages')
-      .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
-      .where('messages.id', messageId)
-      .select(
-        'messages.*',
-        'sender.first_name as sender_first_name',
-        'sender.last_name as sender_last_name',
-        'sender.avatar_url as sender_avatar'
-      )
-      .first();
-
-    const formattedMessage = {
-      id: updatedMessage.id,
-      senderId: updatedMessage.sender_id,
-      receiverId: updatedMessage.receiver_id,
-      content: updatedMessage.content,
-      messageType: updatedMessage.message_type,
-      replyToId: updatedMessage.reply_to_id,
-      isRead: updatedMessage.is_read,
-      isEdited: updatedMessage.is_edited,
-      editedAt: updatedMessage.edited_at,
-      createdAt: updatedMessage.created_at,
-      updatedAt: updatedMessage.updated_at,
-      sender: {
-        id: updatedMessage.sender_id,
-        first_name: updatedMessage.sender_first_name,
-        last_name: updatedMessage.sender_last_name,
-        avatar_url: updatedMessage.sender_avatar
-      },
-      attachments: [],
-      isFromMe: updatedMessage.sender_id === req.user.id
-    };
-
-    res.json({
-      message: formattedMessage
-    });
-
-  } catch (error) {
-    logger.error('Error editing message:', error);
-    res.status(500).json({ error: 'Failed to edit message' });
-  }
-});
-
-/**
- * @route DELETE /api/messages/:messageId
- * @desc Delete a message (soft delete)
- * @access Private
- */
-router.delete('/:messageId', auth, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-
-    // Verify message exists and user is the sender
-    const message = await db('messages')
-      .where('id', messageId)
-      .where('sender_id', req.user.id)
-      .where('is_deleted', false)
-      .first();
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Soft delete message
-    await db('messages')
-      .where('id', messageId)
-      .update({
-        is_deleted: true,
-        deleted_at: new Date(),
-        updated_at: new Date()
-      });
-
-    res.json({
-      message: 'Message deleted successfully'
-    });
-
-  } catch (error) {
-    logger.error('Error deleting message:', error);
-    res.status(500).json({ error: 'Failed to delete message' });
-  }
-});
-
-/**
  * @route GET /api/messages/search
  * @desc Search messages
  * @access Private
  */
-router.get('/search', auth, async (req, res) => {
+router.get('/search', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const { q, user_id, message_type, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { q, user_id, message_type, page = '1', limit = '20' } = req.query as MessageSearchParams & { page?: string; limit?: string };
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ 
@@ -1060,8 +888,8 @@ router.get('/search', auth, async (req, res) => {
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
       .leftJoin('users as receiver', 'messages.receiver_id', 'receiver.id')
       .where(function() {
-        this.where('messages.sender_id', req.user.id)
-            .orWhere('messages.receiver_id', req.user.id);
+        this.where('messages.sender_id', authenticatedReq.user.id)
+            .orWhere('messages.receiver_id', authenticatedReq.user.id);
       })
       .where('messages.is_deleted', false)
       .where('messages.content', 'ilike', `%${q.trim()}%`);
@@ -1070,9 +898,9 @@ router.get('/search', auth, async (req, res) => {
       query = query.where(function() {
         this.where({
           'messages.sender_id': user_id,
-          'messages.receiver_id': req.user.id
+          'messages.receiver_id': authenticatedReq.user.id
         }).orWhere({
-          'messages.sender_id': req.user.id,
+          'messages.sender_id': authenticatedReq.user.id,
           'messages.receiver_id': user_id
         });
       });
@@ -1093,36 +921,39 @@ router.get('/search', auth, async (req, res) => {
         'receiver.avatar_url as receiver_avatar'
       )
       .orderBy('messages.created_at', 'desc')
-      .limit(limit)
+      .limit(parseInt(limit))
       .offset(offset);
 
-    const formattedMessages = messages.map(msg => ({
+    const formattedMessages: MessageWithSender[] = messages.map(msg => ({
       id: msg.id,
-      senderId: msg.sender_id,
-      receiverId: msg.receiver_id,
+      conversation_id: msg.conversation_id,
+      sender_id: msg.sender_id,
+      receiver_id: msg.receiver_id,
       content: msg.content,
-      messageType: msg.message_type,
-      replyToId: msg.reply_to_id,
-      isRead: msg.is_read,
-      isEdited: msg.is_edited,
-      editedAt: msg.edited_at,
-      createdAt: msg.created_at,
+      message_type: msg.message_type,
+      reply_to_id: msg.reply_to_id,
+      is_read: msg.is_read,
+      is_edited: msg.is_edited,
+      is_deleted: false,
+      edited_at: msg.edited_at,
+      read_status: msg.read_status || 'sent',
+      reactions: safeJsonParse(msg.reactions, {}),
+      created_at: msg.created_at,
+      updated_at: msg.updated_at,
       sender: {
         id: msg.sender_id,
         first_name: msg.sender_first_name,
         last_name: msg.sender_last_name,
-        avatar_url: msg.sender_avatar
+        email: '',
+        avatar_url: msg.sender_avatar,
+        user_type: 'student',
+        role: 'user',
+        is_active: true
       },
-      receiver: {
-        id: msg.receiver_id,
-        first_name: msg.receiver_first_name,
-        last_name: msg.receiver_last_name,
-        avatar_url: msg.receiver_avatar
-      },
-      isFromMe: msg.sender_id === req.user.id
+      is_from_me: msg.sender_id === authenticatedReq.user.id
     }));
 
-    res.json({
+    const response: MessageSearchResponse = {
       messages: formattedMessages,
       pagination: {
         page: parseInt(page),
@@ -1130,7 +961,9 @@ router.get('/search', auth, async (req, res) => {
         hasMore: messages.length === parseInt(limit)
       },
       query: q.trim()
-    });
+    };
+
+    res.json(response);
 
   } catch (error) {
     logger.error('Error searching messages:', error);
@@ -1138,252 +971,4 @@ router.get('/search', auth, async (req, res) => {
   }
 });
 
-/**
- * @route POST /api/messages/:messageId/reactions
- * @desc Add or toggle a reaction to a message
- * @access Private
- */
-router.post('/:messageId/reactions', auth, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const { emoji } = req.body;
-
-    if (!emoji || typeof emoji !== 'string') {
-      return res.status(400).json({ error: 'Emoji is required' });
-    }
-
-    // Get the existing message
-    const existingMessage = await db('messages')
-      .where('id', messageId)
-      .where('is_deleted', false)
-      .where(function() {
-        this.where('sender_id', req.user.id)
-            .orWhere('receiver_id', req.user.id);
-      })
-      .first();
-
-    if (!existingMessage) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Parse existing reactions with structure: { "emoji": { "count": 0, "users": [] } }
-    const reactions = safeJsonParse(existingMessage.reactions, {});
-    
-    // Initialize emoji reaction if it doesn't exist
-    if (!reactions[emoji]) {
-      reactions[emoji] = { count: 0, users: [] };
-    }
-
-    // Check if user has already reacted with this emoji
-    const userIndex = reactions[emoji].users.indexOf(req.user.id);
-    
-    if (userIndex > -1) {
-      // User has already reacted, remove the reaction
-      reactions[emoji].users.splice(userIndex, 1);
-      reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
-      
-      // Remove emoji entirely if no reactions left
-      if (reactions[emoji].count === 0) {
-        delete reactions[emoji];
-      }
-    } else {
-      // User hasn't reacted, add the reaction
-      reactions[emoji].users.push(req.user.id);
-      reactions[emoji].count += 1;
-    }
-
-    // Update the message with new reactions
-    await db('messages')
-      .where('id', messageId)
-      .update({
-        reactions: JSON.stringify(reactions),
-        updated_at: new Date()
-      });
-
-    res.json({
-      message: userIndex > -1 ? 'Reaction removed successfully' : 'Reaction added successfully',
-      reactions
-    });
-
-  } catch (error) {
-    logger.error('Error toggling message reaction:', error);
-    res.status(500).json({ error: 'Failed to toggle reaction' });
-  }
-});
-
-/**
- * @route PUT /api/messages/:messageId/delivered
- * @desc Mark a message as delivered
- * @access Private
- */
-router.put('/:messageId/delivered', auth, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-
-    // Verify message exists and user is the receiver
-    const message = await db('messages')
-      .where('id', messageId)
-      .where('receiver_id', req.user.id)
-      .where('is_deleted', false)
-      .first();
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Update message as delivered if not already
-    if (!message.delivered_at) {
-      await db('messages')
-        .where('id', messageId)
-        .update({
-          delivered_at: new Date(),
-          read_status: 'delivered',
-          updated_at: new Date()
-        });
-    }
-
-    res.json({
-      message: 'Message marked as delivered'
-    });
-
-  } catch (error) {
-    logger.error('Error marking message as delivered:', error);
-    res.status(500).json({ error: 'Failed to mark message as delivered' });
-  }
-});
-
-/**
- * @route POST /api/messages/conversation/:conversationId/typing
- * @desc Send typing indicator for a conversation
- * @access Private
- */
-router.post('/conversation/:conversationId/typing', auth, async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const { isTyping = true } = req.body;
-
-    // Verify user is participant (quick check)
-    const isParticipant = await db('conversation_participants')
-      .where('conversation_id', conversationId)
-      .where('user_id', req.user.id)
-      .where('is_active', true)
-      .first();
-
-    if (!isParticipant) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    // Get user details for typing indicator
-    const user = await db('users')
-      .where('id', req.user.id)
-      .select('id', 'first_name', 'last_name', 'avatar_url')
-      .first();
-
-    // Emit typing indicator via socket
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        const typingData = {
-          conversationId,
-          user: {
-            id: user.id,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            avatar_url: user.avatar_url
-          },
-          isTyping,
-          timestamp: new Date().toISOString()
-        };
-
-        // Emit to conversation participants except the sender
-        io.emitToConversation(conversationId, 'typing:indicator', typingData, req.user.id);
-        
-        // Store in database for persistence (optional)
-        if (isTyping) {
-          await db('typing_indicators')
-            .insert({
-              conversation_id: conversationId,
-              user_id: req.user.id,
-              is_typing: true,
-              created_at: new Date(),
-              updated_at: new Date()
-            })
-            .onConflict(['conversation_id', 'user_id'])
-            .merge(['is_typing', 'updated_at']);
-        } else {
-          await db('typing_indicators')
-            .where('conversation_id', conversationId)
-            .where('user_id', req.user.id)
-            .update({
-              is_typing: false,
-              updated_at: new Date()
-            });
-        }
-      }
-    } catch (socketError) {
-      logger.error('Error emitting typing indicator:', socketError);
-    }
-
-    res.json({
-      message: 'Typing indicator sent',
-      isTyping
-    });
-
-  } catch (error) {
-    logger.error('Error sending typing indicator:', error);
-    res.status(500).json({ error: 'Failed to send typing indicator' });
-  }
-});
-
-/**
- * @route GET /api/messages/conversation/:conversationId/typing
- * @desc Get current typing indicators for a conversation
- * @access Private
- */
-router.get('/conversation/:conversationId/typing', auth, async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-
-    // Verify user is participant
-    const isParticipant = await db('conversation_participants')
-      .where('conversation_id', conversationId)
-      .where('user_id', req.user.id)
-      .where('is_active', true)
-      .first();
-
-    if (!isParticipant) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    // Get current typing indicators (exclude current user)
-    const typingUsers = await db('typing_indicators')
-      .join('users', 'typing_indicators.user_id', 'users.id')
-      .where('typing_indicators.conversation_id', conversationId)
-      .where('typing_indicators.is_typing', true)
-      .where('typing_indicators.user_id', '!=', req.user.id)
-      .where('typing_indicators.updated_at', '>', new Date(Date.now() - 5000)) // Only recent (5 seconds)
-      .select(
-        'users.id',
-        'users.first_name',
-        'users.last_name',
-        'users.avatar_url',
-        'typing_indicators.updated_at'
-      );
-
-    res.json({
-      typingUsers: typingUsers.map(user => ({
-        id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        avatar_url: user.avatar_url,
-        lastTyping: user.updated_at
-      }))
-    });
-
-  } catch (error) {
-    logger.error('Error fetching typing indicators:', error);
-    res.status(500).json({ error: 'Failed to fetch typing indicators' });
-  }
-});
-
-module.exports = router; 
+export default router; 
