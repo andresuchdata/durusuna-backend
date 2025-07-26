@@ -1,7 +1,41 @@
-const Joi = require('joi');
+import Joi from 'joi';
+import { Request, Response, NextFunction } from 'express';
+
+// Interface for validation error details
+interface ValidationErrorDetail {
+  field: string;
+  message: string;
+}
+
+// Interface for validation response
+interface ValidationErrorResponse {
+  error: string;
+  message: string;
+  details: ValidationErrorDetail[];
+}
+
+// Attachment interface for validation
+interface AttachmentData {
+  id: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  key: string;
+  fileType: 'image' | 'video' | 'audio' | 'document' | 'other';
+  isImage: boolean;
+  isVideo: boolean;
+  isAudio: boolean;
+  isDocument: boolean;
+  sizeFormatted: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  metadata?: Record<string, any>;
+}
 
 // User registration validation
-const registerSchema = Joi.object({
+export const registerSchema = Joi.object({
   email: Joi.string().email().required().messages({
     'string.email': 'Please provide a valid email address',
     'any.required': 'Email is required'
@@ -21,8 +55,8 @@ const registerSchema = Joi.object({
     'string.max': 'Last name cannot exceed 50 characters',
     'any.required': 'Last name is required'
   }),
-  user_type: Joi.string().valid('parent', 'student', 'teacher').required().messages({
-    'any.only': 'User type must be either parent, student, or teacher',
+  user_type: Joi.string().valid('parent', 'student', 'teacher', 'admin').required().messages({
+    'any.only': 'User type must be either parent, student, teacher, or admin',
     'any.required': 'User type is required'
   }),
   school_id: Joi.string().uuid().required().messages({
@@ -40,7 +74,7 @@ const registerSchema = Joi.object({
 });
 
 // User login validation
-const loginSchema = Joi.object({
+export const loginSchema = Joi.object({
   email: Joi.string().email().required().messages({
     'string.email': 'Please provide a valid email address',
     'any.required': 'Email is required'
@@ -51,7 +85,7 @@ const loginSchema = Joi.object({
 });
 
 // Password reset request validation
-const passwordResetRequestSchema = Joi.object({
+export const passwordResetRequestSchema = Joi.object({
   email: Joi.string().email().required().messages({
     'string.email': 'Please provide a valid email address',
     'any.required': 'Email is required'
@@ -59,7 +93,7 @@ const passwordResetRequestSchema = Joi.object({
 });
 
 // Password reset validation
-const passwordResetSchema = Joi.object({
+export const passwordResetSchema = Joi.object({
   token: Joi.string().required().messages({
     'any.required': 'Reset token is required'
   }),
@@ -71,7 +105,7 @@ const passwordResetSchema = Joi.object({
 });
 
 // Profile update validation
-const profileUpdateSchema = Joi.object({
+export const profileUpdateSchema = Joi.object({
   first_name: Joi.string().min(2).max(50).optional(),
   last_name: Joi.string().min(2).max(50).optional(),
   phone: Joi.string().pattern(/^\+?[\d\s\-\(\)]+$/).optional().allow(''),
@@ -81,7 +115,7 @@ const profileUpdateSchema = Joi.object({
 });
 
 // Message validation
-const messageSchema = Joi.object({
+export const messageSchema = Joi.object({
   conversation_id: Joi.string().uuid().optional().messages({
     'string.guid': 'Conversation ID must be a valid UUID'
   }),
@@ -101,7 +135,7 @@ const messageSchema = Joi.object({
 });
 
 // Attachment validation schema
-const attachmentSchema = Joi.object({
+export const attachmentSchema = Joi.object({
   id: Joi.string().uuid().required(),
   fileName: Joi.string().required(),
   originalName: Joi.string().required(),
@@ -121,7 +155,7 @@ const attachmentSchema = Joi.object({
 });
 
 // Class update validation
-const classUpdateSchema = Joi.object({
+export const classUpdateSchema = Joi.object({
   class_id: Joi.string().uuid().required().messages({
     'string.guid': 'Class ID must be a valid UUID',
     'any.required': 'Class ID is required'
@@ -138,7 +172,7 @@ const classUpdateSchema = Joi.object({
 });
 
 // Comment validation
-const commentSchema = Joi.object({
+export const commentSchema = Joi.object({
   content: Joi.string().max(2000).required().messages({
     'string.max': 'Comment cannot exceed 2000 characters',
     'any.required': 'Comment content is required'
@@ -148,25 +182,50 @@ const commentSchema = Joi.object({
   })
 });
 
+// School validation
+export const schoolSchema = Joi.object({
+  name: Joi.string().min(2).max(100).required().messages({
+    'string.min': 'School name must be at least 2 characters long',
+    'string.max': 'School name cannot exceed 100 characters',
+    'any.required': 'School name is required'
+  }),
+  address: Joi.string().min(5).max(255).required().messages({
+    'string.min': 'Address must be at least 5 characters long',
+    'string.max': 'Address cannot exceed 255 characters',
+    'any.required': 'Address is required'
+  }),
+  phone: Joi.string().pattern(/^\+?[\d\s\-\(\)]+$/).optional().messages({
+    'string.pattern.base': 'Please provide a valid phone number'
+  }),
+  email: Joi.string().email().optional().messages({
+    'string.email': 'Please provide a valid email address'
+  }),
+  website: Joi.string().uri().optional().messages({
+    'string.uri': 'Please provide a valid website URL'
+  })
+});
+
 // Validation middleware factory
-const validate = (schema) => {
-  return (req, res, next) => {
+export const validate = (schema: Joi.ObjectSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const { error, value } = schema.validate(req.body, {
       abortEarly: false,
       stripUnknown: true
     });
 
     if (error) {
-      const details = error.details.map(detail => ({
+      const details: ValidationErrorDetail[] = error.details.map(detail => ({
         field: detail.path.join('.'),
         message: detail.message
       }));
 
-      return res.status(400).json({
+      const errorResponse: ValidationErrorResponse = {
         error: 'Validation Error',
         message: 'Invalid input data',
         details
-      });
+      };
+
+      return res.status(400).json(errorResponse);
     }
 
     req.body = value;
@@ -174,15 +233,23 @@ const validate = (schema) => {
   };
 };
 
-module.exports = {
-  registerSchema,
-  loginSchema,
-  passwordResetRequestSchema,
-  passwordResetSchema,
-  profileUpdateSchema,
-  messageSchema,
-  attachmentSchema,
-  classUpdateSchema,
-  commentSchema,
-  validate
+// Type guards for runtime validation
+export const isValidUserType = (type: string): type is 'student' | 'teacher' | 'parent' | 'admin' => {
+  return ['student', 'teacher', 'parent', 'admin'].includes(type);
+};
+
+export const isValidRole = (role: string): role is 'user' | 'admin' => {
+  return ['user', 'admin'].includes(role);
+};
+
+export const isValidMessageType = (type: string): type is 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji' => {
+  return ['text', 'image', 'video', 'audio', 'file', 'emoji'].includes(type);
+};
+
+export const isValidUpdateType = (type: string): type is 'announcement' | 'homework' | 'reminder' | 'event' => {
+  return ['announcement', 'homework', 'reminder', 'event'].includes(type);
+};
+
+export const isValidFileType = (type: string): type is 'image' | 'video' | 'audio' | 'document' | 'other' => {
+  return ['image', 'video', 'audio', 'document', 'other'].includes(type);
 }; 

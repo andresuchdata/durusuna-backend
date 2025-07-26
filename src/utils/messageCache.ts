@@ -3,20 +3,106 @@
  * This improves performance for frequently accessed conversations
  */
 
+interface CachedConversationData {
+  data: ConversationData;
+  timestamp: number;
+}
+
+interface CachedMessages {
+  messages: MessageData[];
+  timestamp: number;
+}
+
+interface CachedUserConversations {
+  conversations: ConversationData[];
+  timestamp: number;
+}
+
+interface ConversationData {
+  id: string;
+  name?: string;
+  is_group: boolean;
+  created_by: string;
+  created_at: Date;
+  updated_at?: Date;
+  participants?: ParticipantData[];
+  last_message?: MessageData;
+  unread_count?: number;
+}
+
+interface MessageData {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content?: string;
+  message_type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
+  reply_to_id?: string;
+  attachments?: AttachmentData[];
+  metadata?: Record<string, any>;
+  sent_at: Date;
+  edited_at?: Date;
+  deleted_at?: Date;
+  sender?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url?: string;
+  };
+}
+
+interface ParticipantData {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  joined_at: Date;
+  left_at?: Date;
+  role: 'member' | 'admin';
+  user?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url?: string;
+  };
+}
+
+interface AttachmentData {
+  id: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  key: string;
+  fileType: 'image' | 'video' | 'audio' | 'document' | 'other';
+  isImage: boolean;
+  isVideo: boolean;
+  isAudio: boolean;
+  isDocument: boolean;
+  sizeFormatted: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  metadata?: Record<string, any>;
+}
+
+interface CacheStats {
+  conversations: number;
+  recentMessages: number;
+  userConversations: number;
+  memoryUsageApprox: number;
+}
+
 class MessageCache {
-  constructor() {
-    this.conversations = new Map(); // conversationId -> conversation data
-    this.recentMessages = new Map(); // conversationId -> array of recent messages
-    this.userConversations = new Map(); // userId -> array of conversation IDs
-    this.maxConversations = 100; // Max conversations to cache
-    this.maxMessagesPerConversation = 50; // Max messages per conversation
-    this.ttl = 5 * 60 * 1000; // 5 minutes TTL
-  }
+  private conversations: Map<string, CachedConversationData> = new Map();
+  private recentMessages: Map<string, CachedMessages> = new Map();
+  private userConversations: Map<string, CachedUserConversations> = new Map();
+  private readonly maxConversations: number = 100;
+  private readonly maxMessagesPerConversation: number = 50;
+  private readonly ttl: number = 5 * 60 * 1000; // 5 minutes TTL
 
   /**
    * Get cached conversation data
    */
-  getConversation(conversationId) {
+  getConversation(conversationId: string): ConversationData | null {
     const cached = this.conversations.get(conversationId);
     if (!cached) return null;
     
@@ -32,11 +118,13 @@ class MessageCache {
   /**
    * Cache conversation data
    */
-  setConversation(conversationId, conversationData) {
+  setConversation(conversationId: string, conversationData: ConversationData): void {
     // Remove oldest if at capacity
     if (this.conversations.size >= this.maxConversations) {
       const oldestKey = this.conversations.keys().next().value;
-      this.conversations.delete(oldestKey);
+      if (oldestKey) {
+        this.conversations.delete(oldestKey);
+      }
     }
     
     this.conversations.set(conversationId, {
@@ -48,7 +136,7 @@ class MessageCache {
   /**
    * Get cached recent messages for a conversation
    */
-  getRecentMessages(conversationId) {
+  getRecentMessages(conversationId: string): MessageData[] | null {
     const cached = this.recentMessages.get(conversationId);
     if (!cached) return null;
     
@@ -64,7 +152,7 @@ class MessageCache {
   /**
    * Cache recent messages for a conversation
    */
-  setRecentMessages(conversationId, messages) {
+  setRecentMessages(conversationId: string, messages: MessageData[]): void {
     // Limit messages to prevent memory bloat
     const limitedMessages = messages.slice(0, this.maxMessagesPerConversation);
     
@@ -77,7 +165,7 @@ class MessageCache {
   /**
    * Add a new message to cached conversation
    */
-  addMessage(conversationId, message) {
+  addMessage(conversationId: string, message: MessageData): void {
     const cached = this.recentMessages.get(conversationId);
     if (!cached) return;
     
@@ -96,7 +184,7 @@ class MessageCache {
   /**
    * Get cached conversation list for a user
    */
-  getUserConversations(userId) {
+  getUserConversations(userId: string): ConversationData[] | null {
     const cached = this.userConversations.get(userId);
     if (!cached) return null;
     
@@ -112,7 +200,7 @@ class MessageCache {
   /**
    * Cache conversation list for a user
    */
-  setUserConversations(userId, conversations) {
+  setUserConversations(userId: string, conversations: ConversationData[]): void {
     this.userConversations.set(userId, {
       conversations,
       timestamp: Date.now()
@@ -122,7 +210,7 @@ class MessageCache {
   /**
    * Invalidate cache for a conversation
    */
-  invalidateConversation(conversationId) {
+  invalidateConversation(conversationId: string): void {
     this.conversations.delete(conversationId);
     this.recentMessages.delete(conversationId);
     
@@ -137,14 +225,14 @@ class MessageCache {
   /**
    * Invalidate cache for a user
    */
-  invalidateUser(userId) {
+  invalidateUser(userId: string): void {
     this.userConversations.delete(userId);
   }
 
   /**
    * Clear all cache
    */
-  clear() {
+  clear(): void {
     this.conversations.clear();
     this.recentMessages.clear();
     this.userConversations.clear();
@@ -153,7 +241,7 @@ class MessageCache {
   /**
    * Get cache statistics
    */
-  getStats() {
+  getStats(): CacheStats {
     return {
       conversations: this.conversations.size,
       recentMessages: this.recentMessages.size,
@@ -166,4 +254,5 @@ class MessageCache {
 // Create a singleton instance
 const messageCache = new MessageCache();
 
-module.exports = messageCache; 
+export default messageCache;
+export { MessageCache, type ConversationData, type MessageData, type ParticipantData, type AttachmentData, type CacheStats }; 

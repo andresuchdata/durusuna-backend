@@ -1,17 +1,44 @@
-const jwt = require('jsonwebtoken');
-const logger = require('./logger');
+import jwt from 'jsonwebtoken';
+import logger from './logger';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-fallback-secret-key';
 const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-fallback-refresh-secret';
 const JWT_REFRESH_EXPIRE = process.env.JWT_REFRESH_EXPIRE || '30d';
 
+export interface JWTUser {
+  id: string;
+  email: string;
+  user_type: 'student' | 'teacher' | 'parent' | 'admin';
+  role: 'user' | 'admin';
+  school_id: string;
+}
+
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: string;
+}
+
+export interface JWTPayload extends JWTUser {
+  iat?: number;
+  exp?: number;
+  iss?: string;
+  aud?: string;
+}
+
+export interface RefreshTokenPayload {
+  id: string;
+  iat?: number;
+  exp?: number;
+  iss?: string;
+  aud?: string;
+}
+
 /**
  * Generate access token
- * @param {Object} payload - User payload
- * @returns {String} JWT token
  */
-const generateAccessToken = (payload) => {
+export const generateAccessToken = (payload: JWTUser): string => {
   try {
     return jwt.sign(payload, JWT_SECRET, {
       expiresIn: JWT_EXPIRE,
@@ -26,10 +53,8 @@ const generateAccessToken = (payload) => {
 
 /**
  * Generate refresh token
- * @param {Object} payload - User payload
- * @returns {String} JWT refresh token
  */
-const generateRefreshToken = (payload) => {
+export const generateRefreshToken = (payload: { id: string }): string => {
   try {
     return jwt.sign(payload, JWT_REFRESH_SECRET, {
       expiresIn: JWT_REFRESH_EXPIRE,
@@ -44,19 +69,17 @@ const generateRefreshToken = (payload) => {
 
 /**
  * Verify access token
- * @param {String} token - JWT token
- * @returns {Object} Decoded payload
  */
-const verifyAccessToken = (token) => {
+export const verifyAccessToken = (token: string): JWTPayload => {
   try {
     return jwt.verify(token, JWT_SECRET, {
       issuer: 'durusuna-api',
       audience: 'durusuna-client'
-    });
+    }) as JWTPayload;
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
+    if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Access token expired');
-    } else if (error.name === 'JsonWebTokenError') {
+    } else if (error instanceof jwt.JsonWebTokenError) {
       throw new Error('Invalid access token');
     } else {
       logger.error('Error verifying access token:', error);
@@ -67,19 +90,17 @@ const verifyAccessToken = (token) => {
 
 /**
  * Verify refresh token
- * @param {String} token - JWT refresh token
- * @returns {Object} Decoded payload
  */
-const verifyRefreshToken = (token) => {
+export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   try {
     return jwt.verify(token, JWT_REFRESH_SECRET, {
       issuer: 'durusuna-api',
       audience: 'durusuna-client'
-    });
+    }) as RefreshTokenPayload;
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
+    if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Refresh token expired');
-    } else if (error.name === 'JsonWebTokenError') {
+    } else if (error instanceof jwt.JsonWebTokenError) {
       throw new Error('Invalid refresh token');
     } else {
       logger.error('Error verifying refresh token:', error);
@@ -90,11 +111,9 @@ const verifyRefreshToken = (token) => {
 
 /**
  * Generate token pair
- * @param {Object} user - User object
- * @returns {Object} Access and refresh tokens
  */
-const generateTokenPair = (user) => {
-  const payload = {
+export const generateTokenPair = (user: JWTUser): TokenPair => {
+  const payload: JWTUser = {
     id: user.id,
     email: user.email,
     user_type: user.user_type,
@@ -111,10 +130,8 @@ const generateTokenPair = (user) => {
 
 /**
  * Extract token from Authorization header
- * @param {String} authHeader - Authorization header value
- * @returns {String|null} Token
  */
-const extractToken = (authHeader) => {
+export const extractToken = (authHeader?: string): string | null => {
   if (!authHeader) return null;
   
   const parts = authHeader.split(' ');
@@ -123,13 +140,4 @@ const extractToken = (authHeader) => {
   }
   
   return parts[1];
-};
-
-module.exports = {
-  generateAccessToken,
-  generateRefreshToken,
-  verifyAccessToken,
-  verifyRefreshToken,
-  generateTokenPair,
-  extractToken
 }; 

@@ -35,8 +35,8 @@ export interface AuthUser {
   email: string;
   first_name: string;
   last_name: string;
-  user_type: string;
-  role: string;
+  user_type: 'student' | 'teacher' | 'parent' | 'admin';
+  role: 'user' | 'admin';
   school_id: string;
   school_name?: string;
   phone?: string;
@@ -81,8 +81,8 @@ export interface ResetPasswordData {
 export interface JWTPayload {
   id: string;
   email: string;
-  user_type: string;
-  role: string;
+  user_type: 'student' | 'teacher' | 'parent' | 'admin';
+  role: 'user' | 'admin';
   school_id: string;
   iat: number;
   exp: number;
@@ -96,8 +96,8 @@ export interface AuthenticatedRequest extends Request {
   user: {
     id: string;
     email: string;
-    user_type: string;
-    role: string;
+    user_type: 'student' | 'teacher' | 'parent' | 'admin';
+    role: 'user' | 'admin';
     school_id: string;
   };
 } 

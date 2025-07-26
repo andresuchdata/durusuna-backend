@@ -1,18 +1,87 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const sharp = require('sharp');
-const mime = require('mime-types');
-const { v4: uuidv4 } = require('uuid');
-const logger = require('../utils/logger');
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import sharp from 'sharp';
+import mime from 'mime-types';
+import { v4 as uuidv4 } from 'uuid';
+import logger from '../utils/logger';
+
+interface FileUploadOptions {
+  processImage?: boolean;
+  imageOptions?: ImageProcessingOptions;
+  customMetadata?: Record<string, string>;
+}
+
+interface ImageProcessingOptions {
+  maxWidth?: number;
+  maxHeight?: number;
+  quality?: number;
+  format?: string;
+  createThumbnail?: boolean;
+  thumbnailSize?: number;
+}
+
+interface ProcessedImageInfo {
+  buffer: Buffer;
+  thumbnailBuffer: Buffer | null;
+  metadata: {
+    originalWidth: number;
+    originalHeight: number;
+    processedWidth: number;
+    processedHeight: number;
+    format: string;
+    hasAlpha?: boolean;
+  };
+}
+
+interface FileInfo {
+  key: string;
+  url: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  folder: string;
+  metadata: Record<string, any>;
+}
+
+interface EnhancedFileInfo extends FileInfo {
+  fileType: 'image' | 'video' | 'audio' | 'document' | 'other';
+  isImage: boolean;
+  isVideo: boolean;
+  isAudio: boolean;
+  isDocument: boolean;
+  sizeFormatted: string;
+}
+
+interface FileValidationOptions {
+  allowedTypes?: string[];
+  maxSize?: number;
+  maxImageSize?: number;
+  maxVideoSize?: number;
+}
+
+interface FileValidationResult {
+  isValid: boolean;
+  errors: string[];
+}
+
+interface UploadFile {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+}
 
 class StorageService {
+  private _s3Client: S3Client;
+  private bucketName: string;
+
   constructor() {
     this._s3Client = new S3Client({
       endpoint: process.env.S3_ENDPOINT,
       region: process.env.S3_REGION || 'us-east-1',
       credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY,
-        secretAccessKey: process.env.S3_SECRET_KEY,
+        accessKeyId: process.env.S3_ACCESS_KEY!,
+        secretAccessKey: process.env.S3_SECRET_KEY!,
       },
       forcePathStyle: true, // Required for MinIO
     });
@@ -20,31 +89,31 @@ class StorageService {
   }
 
   // Getter for S3 client (for direct access when needed)
-  get s3Client() {
+  get s3Client(): S3Client {
     return this._s3Client;
   }
 
-  set s3Client(client) {
+  set s3Client(client: S3Client) {
     this._s3Client = client;
   }
 
   /**
    * Upload a file to S3
-   * @param {Buffer} buffer - File buffer
-   * @param {string} originalName - Original filename
-   * @param {string} mimeType - MIME type
-   * @param {string} folder - Folder path (e.g., 'class-updates', 'messages', 'profiles')
-   * @param {Object} options - Additional options
-   * @returns {Promise<Object>} File info object
    */
-  async uploadFile(buffer, originalName, mimeType, folder = 'general', options = {}) {
+  async uploadFile(
+    buffer: Buffer, 
+    originalName: string, 
+    mimeType: string, 
+    folder: string = 'general', 
+    options: FileUploadOptions = {}
+  ): Promise<FileInfo> {
     try {
       const fileExtension = mime.extension(mimeType) || 'bin';
       const fileName = `${uuidv4()}.${fileExtension}`;
       const key = `${folder}/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${fileName}`;
 
       let processedBuffer = buffer;
-      let metadata = {
+      let metadata: Record<string, any> = {
         originalName,
         mimeType,
         size: buffer.length,
@@ -57,7 +126,7 @@ class StorageService {
           processedBuffer = imageInfo.buffer;
           metadata = { ...metadata, ...imageInfo.metadata };
         } catch (imageError) {
-          logger.warn('Image processing failed, uploading original:', imageError.message);
+          logger.warn('Image processing failed, uploading original:', (imageError as Error).message);
           // Continue with original buffer if image processing fails
         }
       }
@@ -94,17 +163,14 @@ class StorageService {
       };
     } catch (error) {
       logger.error('Error uploading file to S3:', error);
-      throw new Error(`Upload failed: ${error.message}`);
+      throw new Error(`Upload failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Process image (resize, optimize)
-   * @param {Buffer} buffer - Image buffer
-   * @param {Object} options - Processing options
-   * @returns {Promise<Object>} Processed image info
    */
-  async processImage(buffer, options = {}) {
+  async processImage(buffer: Buffer, options: ImageProcessingOptions = {}): Promise<ProcessedImageInfo> {
     try {
       const {
         maxWidth = 1920,
@@ -119,7 +185,8 @@ class StorageService {
       const originalMetadata = await sharpInstance.metadata();
 
       // Resize if needed
-      if (originalMetadata.width > maxWidth || originalMetadata.height > maxHeight) {
+      if ((originalMetadata.width && originalMetadata.width > maxWidth) || 
+          (originalMetadata.height && originalMetadata.height > maxHeight)) {
         sharpInstance = sharpInstance.resize(maxWidth, maxHeight, {
           fit: 'inside',
           withoutEnlargement: true,
@@ -132,7 +199,7 @@ class StorageService {
         .toBuffer();
 
       // Create thumbnail if requested
-      let thumbnailBuffer = null;
+      let thumbnailBuffer: Buffer | null = null;
       if (createThumbnail) {
         thumbnailBuffer = await sharp(buffer)
           .resize(thumbnailSize, thumbnailSize, {
@@ -147,28 +214,28 @@ class StorageService {
         buffer: processedBuffer,
         thumbnailBuffer,
         metadata: {
-          originalWidth: originalMetadata.width,
-          originalHeight: originalMetadata.height,
-          processedWidth: originalMetadata.width > maxWidth ? maxWidth : originalMetadata.width,
-          processedHeight: originalMetadata.height > maxHeight ? maxHeight : originalMetadata.height,
+          originalWidth: originalMetadata.width || 0,
+          originalHeight: originalMetadata.height || 0,
+          processedWidth: (originalMetadata.width && originalMetadata.width > maxWidth) ? maxWidth : (originalMetadata.width || 0),
+          processedHeight: (originalMetadata.height && originalMetadata.height > maxHeight) ? maxHeight : (originalMetadata.height || 0),
           format,
           hasAlpha: originalMetadata.hasAlpha,
         },
       };
     } catch (error) {
       logger.error('Error processing image:', error);
-      throw new Error(`Image processing failed: ${error.message}`);
+      throw new Error(`Image processing failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Upload multiple files
-   * @param {Array} files - Array of file objects with {buffer, originalName, mimeType}
-   * @param {string} folder - Folder path
-   * @param {Object} options - Upload options
-   * @returns {Promise<Array>} Array of file info objects
    */
-  async uploadMultipleFiles(files, folder = 'general', options = {}) {
+  async uploadMultipleFiles(
+    files: UploadFile[], 
+    folder: string = 'general', 
+    options: FileUploadOptions = {}
+  ): Promise<FileInfo[]> {
     try {
       const uploadPromises = files.map(file => 
         this.uploadFile(file.buffer, file.originalName, file.mimeType, folder, options)
@@ -177,16 +244,14 @@ class StorageService {
       return await Promise.all(uploadPromises);
     } catch (error) {
       logger.error('Error uploading multiple files:', error);
-      throw new Error(`Batch upload failed: ${error.message}`);
+      throw new Error(`Batch upload failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Delete a file from S3
-   * @param {string} key - S3 object key
-   * @returns {Promise<boolean>} Success status
    */
-  async deleteFile(key) {
+  async deleteFile(key: string): Promise<boolean> {
     try {
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
@@ -197,18 +262,14 @@ class StorageService {
       return true;
     } catch (error) {
       logger.error('Error deleting file from S3:', error);
-      throw new Error(`Delete failed: ${error.message}`);
+      throw new Error(`Delete failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Generate a presigned URL for direct upload
-   * @param {string} key - S3 object key
-   * @param {string} contentType - MIME type
-   * @param {number} expiresIn - URL expiration in seconds (default: 1 hour)
-   * @returns {Promise<string>} Presigned URL
    */
-  async generatePresignedUploadUrl(key, contentType, expiresIn = 3600) {
+  async generatePresignedUploadUrl(key: string, contentType: string, expiresIn: number = 3600): Promise<string> {
     try {
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
@@ -219,17 +280,14 @@ class StorageService {
       return await getSignedUrl(this._s3Client, command, { expiresIn });
     } catch (error) {
       logger.error('Error generating presigned URL:', error);
-      throw new Error(`Presigned URL generation failed: ${error.message}`);
+      throw new Error(`Presigned URL generation failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Generate a presigned URL for file download
-   * @param {string} key - S3 object key
-   * @param {number} expiresIn - URL expiration in seconds (default: 1 hour)
-   * @returns {Promise<string>} Presigned URL
    */
-  async generatePresignedDownloadUrl(key, expiresIn = 3600) {
+  async generatePresignedDownloadUrl(key: string, expiresIn: number = 3600): Promise<string> {
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
@@ -239,16 +297,14 @@ class StorageService {
       return await getSignedUrl(this._s3Client, command, { expiresIn });
     } catch (error) {
       logger.error('Error generating presigned download URL:', error);
-      throw new Error(`Presigned download URL generation failed: ${error.message}`);
+      throw new Error(`Presigned download URL generation failed: ${(error as Error).message}`);
     }
   }
 
   /**
    * Get file metadata
-   * @param {Object} file - File info
-   * @returns {Object} Enhanced metadata
    */
-  getFileMetadata(file) {
+  getFileMetadata(file: FileInfo): EnhancedFileInfo {
     const isImage = file.mimeType.startsWith('image/');
     const isVideo = file.mimeType.startsWith('video/');
     const isAudio = file.mimeType.startsWith('audio/');
@@ -260,7 +316,7 @@ class StorageService {
     ].includes(file.mimeType);
 
     // Ensure size is a valid number
-    const fileSize = typeof file.size === 'number' ? file.size : parseInt(file.size) || 0;
+    const fileSize = typeof file.size === 'number' ? file.size : parseInt(String(file.size)) || 0;
 
     return {
       ...file,
@@ -276,10 +332,8 @@ class StorageService {
 
   /**
    * Format file size in human readable format
-   * @param {number} bytes - File size in bytes
-   * @returns {string} Formatted size
    */
-  formatFileSize(bytes) {
+  formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -289,12 +343,8 @@ class StorageService {
 
   /**
    * Validate file type and size
-   * @param {string} mimeType - MIME type
-   * @param {number} size - File size in bytes
-   * @param {Object} options - Validation options
-   * @returns {Object} Validation result
    */
-  validateFile(mimeType, size, options = {}) {
+  validateFile(mimeType: string, size: number, options: FileValidationOptions = {}): FileValidationResult {
     const {
       allowedTypes = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -310,7 +360,7 @@ class StorageService {
       maxVideoSize = 100 * 1024 * 1024, // 100MB for videos (matches multer limit)
     } = options;
 
-    const errors = [];
+    const errors: string[] = [];
 
     // Check file type
     if (!allowedTypes.includes(mimeType)) {
@@ -339,4 +389,14 @@ class StorageService {
 // Create singleton instance
 const storageService = new StorageService();
 
-module.exports = storageService; 
+export default storageService;
+export { 
+  StorageService, 
+  type FileInfo, 
+  type EnhancedFileInfo, 
+  type FileUploadOptions, 
+  type ImageProcessingOptions,
+  type FileValidationOptions,
+  type FileValidationResult,
+  type UploadFile
+}; 

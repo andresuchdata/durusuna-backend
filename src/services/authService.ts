@@ -28,8 +28,7 @@ import {
   type ResetPasswordInput
 } from '../schemas/authSchemas';
 
-// Import JWT utilities (assuming they exist)
-const { generateTokenPair, verifyRefreshToken } = require('../utils/jwt');
+import { generateTokenPair, verifyRefreshToken, JWTUser } from '../utils/jwt';
 
 export class AuthService {
   constructor(private authRepository: AuthRepository) {}
