@@ -119,7 +119,7 @@ export class AuthRepository {
     await this.db('users')
       .where('id', userId)
       .update({
-        last_active_at: new Date(),
+        last_login_at: new Date(),
         updated_at: new Date()
       });
   }

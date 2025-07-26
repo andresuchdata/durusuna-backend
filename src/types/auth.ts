@@ -47,6 +47,7 @@ export interface AuthUser {
   is_active: boolean;
   is_verified: boolean;
   last_active_at?: Date;
+  last_login_at?: Date;
   created_at: Date;
   updated_at?: Date;
 }
