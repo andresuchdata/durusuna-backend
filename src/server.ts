@@ -20,7 +20,7 @@ import schoolRoutes from './routes/schools';
 import classRoutes from './routes/classes';
 import lessonRoutes from './routes/lessons';
 import messageRoutes from './routes/messages';
-const uploadRoutes = require('./routes/uploads');
+import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
 import socketHandler from './services/socketService';
 
