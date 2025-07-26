@@ -246,6 +246,21 @@ export class NotificationRepository {
    * Helper method to parse notification data
    */
   private parseNotification(row: any): Notification {
+    // Handle action_data - it might already be parsed as an object or still be a string
+    let actionData = {};
+    if (row.action_data) {
+      if (typeof row.action_data === 'string') {
+        try {
+          actionData = JSON.parse(row.action_data);
+        } catch (error) {
+          console.warn('Failed to parse action_data as JSON:', row.action_data, error);
+          actionData = {};
+        }
+      } else if (typeof row.action_data === 'object') {
+        actionData = row.action_data;
+      }
+    }
+
     return {
       id: row.id,
       title: row.title,
@@ -256,7 +271,7 @@ export class NotificationRepository {
       user_id: row.user_id,
       sender_id: row.sender_id,
       action_url: row.action_url,
-      action_data: row.action_data ? JSON.parse(row.action_data) : {},
+      action_data: actionData,
       image_url: row.image_url,
       read_at: row.read_at ? new Date(row.read_at) : undefined,
       created_at: new Date(row.created_at),

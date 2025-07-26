@@ -1,4 +1,4 @@
-export type NotificationType = 'message' | 'class_update' | 'assignment' | 'announcement' | 'event' | 'system';
+export type NotificationType = 'message' | 'assignment' | 'announcement' | 'event' | 'system';
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 

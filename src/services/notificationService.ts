@@ -29,7 +29,7 @@ export class NotificationService {
       }
 
       // Validate notification type
-      const validTypes = ['message', 'class_update', 'assignment', 'announcement', 'event', 'system'];
+      const validTypes = ['message', 'assignment', 'announcement', 'event', 'system'];
       if (!validTypes.includes(data.notification_type)) {
         throw new Error('Invalid notification type');
       }
