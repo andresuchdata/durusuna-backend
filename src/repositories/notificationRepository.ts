@@ -61,7 +61,9 @@ export class NotificationRepository {
         'sender.first_name as sender_first_name',
         'sender.last_name as sender_last_name',
         'sender.avatar_url as sender_avatar_url',
-        'sender.email as sender_email'
+        'sender.email as sender_email',
+        'sender.user_type as sender_user_type',
+        'sender.role as sender_role'
       )
       .leftJoin('users as sender', 'notifications.sender_id', 'sender.id')
       .where('notifications.user_id', userId);
@@ -96,7 +98,9 @@ export class NotificationRepository {
         first_name: row.sender_first_name,
         last_name: row.sender_last_name,
         avatar_url: row.sender_avatar_url,
-        email: row.sender_email
+        email: row.sender_email,
+        user_type: row.sender_user_type,
+        role: row.sender_role
       } : undefined
     }));
 
