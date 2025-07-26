@@ -113,6 +113,9 @@ services:
       # CORS
       CORS_ORIGIN: "*"
       
+      # Bun/TypeScript Configuration
+      BUN_ENV: development
+      
       # Email Configuration (for development)
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
@@ -139,6 +142,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
   # MailHog for email testing
   mailhog:

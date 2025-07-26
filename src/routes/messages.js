@@ -3,6 +3,7 @@ const db = require('../config/database');
 const { authenticate: auth } = require('../middleware/auth');
 const { validate, messageSchema } = require('../utils/validation');
 const logger = require('../utils/logger');
+const messageCache = require('../utils/messageCache');
 
 const router = express.Router();
 
@@ -26,26 +27,40 @@ const safeJsonParse = (jsonData, fallback = null) => {
 
 /**
  * @route GET /api/messages/conversations
- * @desc Get all conversations for the current user
+ * @desc Get all conversations for the current user (optimized with caching)
  * @access Private
  */
 router.get('/conversations', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 15 } = req.query;
     const offset = (page - 1) * limit;
+    const pageLimit = Math.min(parseInt(limit), 25);
 
-    // Get conversations where the user is a participant
+    // Check cache first for the first page
+    if (page == 1) {
+      const cachedConversations = messageCache.getUserConversations(req.user.id);
+      if (cachedConversations) {
+        return res.json({
+          conversations: cachedConversations.slice(0, pageLimit),
+          pagination: {
+            page: 1,
+            limit: pageLimit,
+            hasMore: cachedConversations.length > pageLimit
+          },
+          cached: true
+        });
+      }
+    }
+
+    // Get conversations with optimized query
     const conversations = await db('conversations')
       .select(
         'conversations.id',
         'conversations.type',
         'conversations.name',
-        'conversations.description',
         'conversations.avatar_url as conversation_avatar',
         'conversations.last_message_at',
         'conversations.created_at as conversation_created_at',
-        'conversations.updated_at as conversation_updated_at',
-        'last_msg.id as last_message_id',
         'last_msg.content as last_message_content',
         'last_msg.message_type as last_message_type',
         'last_msg.sender_id as last_message_sender_id',
@@ -58,7 +73,7 @@ router.get('/conversations', auth, async (req, res) => {
       .where('participant.is_active', true)
       .where('conversations.is_active', true)
       .orderBy('conversations.last_message_at', 'desc')
-      .limit(limit)
+      .limit(pageLimit)
       .offset(offset);
 
     if (conversations.length === 0) {
@@ -66,13 +81,13 @@ router.get('/conversations', auth, async (req, res) => {
         conversations: [],
         pagination: {
           page: parseInt(page),
-          limit: parseInt(limit),
+          limit: pageLimit,
           hasMore: false
         }
       });
     }
 
-    // For each conversation, get the other participant(s)
+    // Get participants for all conversations in a single query
     const conversationIds = conversations.map(c => c.id);
     const allParticipants = await db('conversation_participants')
       .join('users', 'conversation_participants.user_id', 'users.id')
@@ -86,11 +101,7 @@ router.get('/conversations', auth, async (req, res) => {
         'users.last_name',
         'users.email',
         'users.avatar_url',
-        'users.user_type',
-        'users.role',
-        'users.is_active',
-        'users.created_at',
-        'users.updated_at'
+        'users.user_type'
       );
 
     // Group participants by conversation
@@ -102,34 +113,26 @@ router.get('/conversations', auth, async (req, res) => {
       participantsByConversation[participant.conversation_id].push(participant);
     });
 
-    // Format response
+    // Format response efficiently
     const formattedConversations = conversations.map(conv => {
       const participants = participantsByConversation[conv.id] || [];
       const otherParticipants = participants.filter(p => p.id !== req.user.id);
       
-      // For direct chats, use the other participant as otherUser
-      // For group chats, use the first other participant or null
       const otherUser = conv.type === 'direct' && otherParticipants.length > 0 
         ? otherParticipants[0] 
         : null;
 
       return {
-        id: conv.id, // Use actual conversation ID
+        id: conv.id,
         type: conv.type,
-        name: conv.name, // For group chats
-        description: conv.description,
+        name: conv.name,
         avatar_url: conv.conversation_avatar,
         participants: participants.map(p => ({
           id: p.id,
           first_name: p.first_name,
           last_name: p.last_name,
-          email: p.email,
           avatar_url: p.avatar_url,
-          user_type: p.user_type,
-          role: p.role,
-          is_active: Boolean(p.is_active),
-          created_at: p.created_at,
-          updated_at: p.updated_at
+          user_type: p.user_type
         })),
         other_user: otherUser ? {
           id: otherUser.id,
@@ -137,14 +140,9 @@ router.get('/conversations', auth, async (req, res) => {
           last_name: otherUser.last_name,
           email: otherUser.email,
           avatar_url: otherUser.avatar_url,
-          user_type: otherUser.user_type,
-          role: otherUser.role,
-          is_active: Boolean(otherUser.is_active),
-          created_at: otherUser.created_at,
-          updated_at: otherUser.updated_at
+          user_type: otherUser.user_type
         } : null,
         last_message: conv.last_message_content ? {
-          id: conv.last_message_id,
           content: conv.last_message_content,
           message_type: conv.last_message_type,
           created_at: conv.last_message_created_at,
@@ -152,21 +150,21 @@ router.get('/conversations', auth, async (req, res) => {
         } : null,
         unread_count: parseInt(conv.unread_count) || 0,
         last_activity: conv.last_message_at,
-        created_at: conv.conversation_created_at,
-        updated_at: conv.conversation_updated_at,
-        // For direct chats, check if the other user is online
-        is_online: conv.type === 'direct' && otherUser 
-          ? (req.app.get('io') ? req.app.get('io').isUserOnline(otherUser.id) : false)
-          : false
+        created_at: conv.conversation_created_at
       };
     });
+
+    // Cache the results for the first page
+    if (page == 1) {
+      messageCache.setUserConversations(req.user.id, formattedConversations);
+    }
 
     res.json({
       conversations: formattedConversations,
       pagination: {
         page: parseInt(page),
-        limit: parseInt(limit),
-        hasMore: formattedConversations.length === parseInt(limit)
+        limit: pageLimit,
+        hasMore: formattedConversations.length === pageLimit
       }
     });
 
@@ -178,14 +176,21 @@ router.get('/conversations', auth, async (req, res) => {
 
 /**
  * @route GET /api/messages/conversation/:conversationId
- * @desc Get messages for a specific conversation
+ * @desc Get messages for a specific conversation (optimized for smooth loading)
  * @access Private
  */
 router.get('/conversation/:conversationId', auth, async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
+    const { 
+      page = 1, 
+      limit = 25, // Reduced from 50 to 25 for faster initial load
+      cursor, // For cursor-based pagination (more efficient)
+      loadDirection = 'before' // 'before' for loading older messages, 'after' for newer
+    } = req.query;
+    
+    const pageLimit = Math.min(parseInt(limit), 50); // Cap at 50 messages max
+    const pageNum = Math.max(parseInt(page), 1);
 
     // Verify conversation exists and user is a participant
     const participant = await db('conversation_participants')
@@ -194,15 +199,15 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
       .where('conversation_participants.user_id', req.user.id)
       .where('conversation_participants.is_active', true)
       .where('conversations.is_active', true)
-      .select('conversations.*')
+      .select('conversations.*', 'conversation_participants.unread_count')
       .first();
 
     if (!participant) {
       return res.status(404).json({ error: 'Conversation not found or access denied' });
     }
 
-    // Get messages in this conversation
-    const messages = await db('messages')
+    // Build optimized query for messages
+    let messagesQuery = db('messages')
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
       .where('messages.conversation_id', conversationId)
       .where('messages.is_deleted', false)
@@ -216,31 +221,69 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         'messages.reply_to_id',
         'messages.is_read',
         'messages.is_edited',
-        'messages.is_deleted',
         'messages.edited_at',
-        'messages.deleted_at',
-        'messages.delivered_at',
-        'messages.read_at',
         'messages.read_status',
         'messages.reactions',
         'messages.created_at',
         'messages.updated_at',
-        'sender.id as sender_id',
         'sender.first_name as sender_first_name',
         'sender.last_name as sender_last_name',
         'sender.email as sender_email',
         'sender.avatar_url as sender_avatar',
         'sender.user_type as sender_user_type',
         'sender.role as sender_role',
-        'sender.is_active as sender_is_active',
-        'sender.created_at as sender_created_at',
-        'sender.updated_at as sender_updated_at'
-      )
-      .orderBy('messages.created_at', 'desc')
-      .limit(limit)
-      .offset(offset);
+        'sender.is_active as sender_is_active'
+      );
 
-    // Format messages
+    // Use cursor-based pagination for better performance on large conversations
+    if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (loadDirection === 'before') {
+        messagesQuery = messagesQuery.where('messages.created_at', '<', cursorDate);
+      } else {
+        messagesQuery = messagesQuery.where('messages.created_at', '>', cursorDate);
+      }
+    }
+
+    // Always order by created_at with ID as tiebreaker for consistency
+    if (loadDirection === 'after') {
+      messagesQuery = messagesQuery.orderBy([
+        { column: 'messages.created_at', order: 'asc' },
+        { column: 'messages.id', order: 'asc' }
+      ]);
+    } else {
+      messagesQuery = messagesQuery.orderBy([
+        { column: 'messages.created_at', order: 'desc' },
+        { column: 'messages.id', order: 'desc' }
+      ]);
+    }
+
+    // Apply limit for pagination
+    const messages = await messagesQuery.limit(pageLimit + 1); // +1 to check if there are more
+
+    // Check if there are more messages
+    const hasMore = messages.length > pageLimit;
+    if (hasMore) {
+      messages.pop(); // Remove the extra message used for hasMore check
+    }
+
+    // Determine cursors for pagination
+    let nextCursor = null;
+    let prevCursor = null;
+    
+    if (messages.length > 0) {
+      if (loadDirection === 'after') {
+        nextCursor = messages[messages.length - 1].created_at;
+        prevCursor = messages[0].created_at;
+      } else {
+        nextCursor = messages[0].created_at;
+        prevCursor = messages[messages.length - 1].created_at;
+        // For 'before' direction, reverse the array to show in chronological order
+        messages.reverse();
+      }
+    }
+
+    // Format messages efficiently
     const formattedMessages = messages.map(msg => ({
       id: msg.id,
       sender_id: msg.sender_id,
@@ -250,11 +293,7 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
       reply_to_id: msg.reply_to_id,
       is_read: Boolean(msg.is_read),
       is_edited: Boolean(msg.is_edited),
-      is_deleted: Boolean(msg.is_deleted),
       edited_at: msg.edited_at,
-      deleted_at: msg.deleted_at,
-      delivered_at: msg.delivered_at,
-      read_at: msg.read_at,
       read_status: msg.read_status || 'sent',
       reactions: safeJsonParse(msg.reactions, {}),
       created_at: msg.created_at,
@@ -267,43 +306,53 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         avatar_url: msg.sender_avatar,
         user_type: msg.sender_user_type,
         role: msg.sender_role,
-        is_active: Boolean(msg.sender_is_active),
-        created_at: msg.sender_created_at,
-        updated_at: msg.sender_updated_at
+        is_active: Boolean(msg.sender_is_active)
       },
-      attachments: [], // TODO: Implement attachments loading separately
       is_from_me: Boolean(msg.sender_id === req.user.id)
     }));
 
-    // Get conversation details and participants
-    const conversation = await db('conversations')
-      .where('id', conversationId)
-      .first();
-
-    const participants = await db('conversation_participants')
-      .join('users', 'conversation_participants.user_id', 'users.id')
-      .where('conversation_participants.conversation_id', conversationId)
-      .where('conversation_participants.is_active', true)
-      .select(
-        'users.id',
-        'users.first_name',
-        'users.last_name',
-        'users.email',
-        'users.avatar_url',
-        'users.user_type',
-        'users.role',
-        'users.is_active',
-        'users.created_at',
-        'users.updated_at'
-      );
+    // Get conversation details and participants (cached query)
+    const [conversation, participants] = await Promise.all([
+      db('conversations').where('id', conversationId).first(),
+      db('conversation_participants')
+        .join('users', 'conversation_participants.user_id', 'users.id')
+        .where('conversation_participants.conversation_id', conversationId)
+        .where('conversation_participants.is_active', true)
+        .select(
+          'users.id',
+          'users.first_name',
+          'users.last_name',
+          'users.email',
+          'users.avatar_url',
+          'users.user_type',
+          'users.role',
+          'users.is_active',
+          'users.created_at',
+          'users.updated_at'
+        )
+    ]);
 
     // For direct chats, identify the other user
     const otherUser = conversation.type === 'direct' 
       ? participants.find(p => p.id !== req.user.id)
       : null;
 
+    // Auto-mark conversation as read when user opens it
+    if (participant.unread_count > 0) {
+      // Update unread count asynchronously (don't wait for response)
+      db('conversation_participants')
+        .where('conversation_id', conversationId)
+        .where('user_id', req.user.id)
+        .update({
+          unread_count: 0,
+          last_read_at: new Date(),
+          updated_at: new Date()
+        })
+        .catch(error => logger.error('Error updating unread count:', error));
+    }
+
     res.json({
-      messages: formattedMessages.reverse(), // Return in chronological order
+      messages: formattedMessages,
       conversation: {
         id: conversation.id,
         type: conversation.type,
@@ -338,15 +387,152 @@ router.get('/conversation/:conversationId', auth, async (req, res) => {
         updated_at: otherUser.updated_at
       } : null,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        hasMore: messages.length === parseInt(limit)
+        hasMore,
+        nextCursor: hasMore ? nextCursor : null,
+        prevCursor,
+        limit: pageLimit,
+        loadDirection
+      },
+      meta: {
+        total_unread: participant.unread_count,
+        conversation_id: conversationId
       }
     });
 
   } catch (error) {
     logger.error('Error fetching conversation messages:', error);
     res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+/**
+ * @route GET /api/messages/conversation/:conversationId/load-more
+ * @desc Load more messages for infinite scroll (optimized for performance)
+ * @access Private
+ */
+router.get('/conversation/:conversationId/load-more', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { 
+      cursor, // Required for cursor-based pagination
+      limit = 20, // Smaller batches for smooth scrolling
+      direction = 'before' // 'before' for older messages, 'after' for newer
+    } = req.query;
+
+    if (!cursor) {
+      return res.status(400).json({ error: 'Cursor is required for loading more messages' });
+    }
+
+    const pageLimit = Math.min(parseInt(limit), 30); // Cap at 30 messages
+
+    // Verify user is participant (quick check)
+    const isParticipant = await db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .where('user_id', req.user.id)
+      .where('is_active', true)
+      .first();
+
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Build optimized query for loading more messages
+    const cursorDate = new Date(cursor);
+    let messagesQuery = db('messages')
+      .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
+      .where('messages.conversation_id', conversationId)
+      .where('messages.is_deleted', false)
+      .select(
+        'messages.id',
+        'messages.sender_id',
+        'messages.content',
+        'messages.message_type',
+        'messages.reply_to_id',
+        'messages.is_read',
+        'messages.is_edited',
+        'messages.edited_at',
+        'messages.read_status',
+        'messages.reactions',
+        'messages.created_at',
+        'sender.first_name as sender_first_name',
+        'sender.last_name as sender_last_name',
+        'sender.avatar_url as sender_avatar',
+        'sender.user_type as sender_user_type'
+      );
+
+    // Apply cursor filtering
+    if (direction === 'before') {
+      messagesQuery = messagesQuery
+        .where('messages.created_at', '<', cursorDate)
+        .orderBy([
+          { column: 'messages.created_at', order: 'desc' },
+          { column: 'messages.id', order: 'desc' }
+        ]);
+    } else {
+      messagesQuery = messagesQuery
+        .where('messages.created_at', '>', cursorDate)
+        .orderBy([
+          { column: 'messages.created_at', order: 'asc' },
+          { column: 'messages.id', order: 'asc' }
+        ]);
+    }
+
+    // Get messages with +1 to check if there are more
+    const messages = await messagesQuery.limit(pageLimit + 1);
+
+    // Check if there are more messages
+    const hasMore = messages.length > pageLimit;
+    if (hasMore) {
+      messages.pop();
+    }
+
+    // Determine next cursor
+    let nextCursor = null;
+    if (messages.length > 0) {
+      if (direction === 'before') {
+        nextCursor = messages[messages.length - 1].created_at;
+        messages.reverse(); // Show in chronological order
+      } else {
+        nextCursor = messages[messages.length - 1].created_at;
+      }
+    }
+
+    // Format messages (lightweight)
+    const formattedMessages = messages.map(msg => ({
+      id: msg.id,
+      sender_id: msg.sender_id,
+      content: msg.content,
+      message_type: msg.message_type,
+      reply_to_id: msg.reply_to_id,
+      is_read: Boolean(msg.is_read),
+      is_edited: Boolean(msg.is_edited),
+      edited_at: msg.edited_at,
+      read_status: msg.read_status || 'sent',
+      reactions: safeJsonParse(msg.reactions, {}),
+      created_at: msg.created_at,
+      sender: {
+        id: msg.sender_id,
+        first_name: msg.sender_first_name,
+        last_name: msg.sender_last_name,
+        avatar_url: msg.sender_avatar,
+        user_type: msg.sender_user_type
+      },
+      is_from_me: Boolean(msg.sender_id === req.user.id)
+    }));
+
+    res.json({
+      messages: formattedMessages,
+      pagination: {
+        hasMore,
+        nextCursor: hasMore ? nextCursor : null,
+        direction,
+        limit: pageLimit
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error loading more messages:', error);
+    res.status(500).json({ error: 'Failed to load more messages' });
   }
 });
 
@@ -584,6 +770,22 @@ router.post('/send', auth, validate(messageSchema), async (req, res) => {
       message: formattedMessage,
       conversation_id: conversationId
     });
+
+    // Update cache with new message
+    try {
+      messageCache.addMessage(conversationId, formattedMessage);
+      // Invalidate conversation lists for participants since last message changed
+      const participants = await db('conversation_participants')
+        .where('conversation_id', conversationId)
+        .where('is_active', true)
+        .select('user_id');
+      
+      participants.forEach(p => {
+        messageCache.invalidateUser(p.user_id);
+      });
+    } catch (cacheError) {
+      logger.error('Error updating message cache:', cacheError);
+    }
 
     // Emit real-time socket events
     try {
@@ -1047,6 +1249,140 @@ router.put('/:messageId/delivered', auth, async (req, res) => {
   } catch (error) {
     logger.error('Error marking message as delivered:', error);
     res.status(500).json({ error: 'Failed to mark message as delivered' });
+  }
+});
+
+/**
+ * @route POST /api/messages/conversation/:conversationId/typing
+ * @desc Send typing indicator for a conversation
+ * @access Private
+ */
+router.post('/conversation/:conversationId/typing', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { isTyping = true } = req.body;
+
+    // Verify user is participant (quick check)
+    const isParticipant = await db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .where('user_id', req.user.id)
+      .where('is_active', true)
+      .first();
+
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get user details for typing indicator
+    const user = await db('users')
+      .where('id', req.user.id)
+      .select('id', 'first_name', 'last_name', 'avatar_url')
+      .first();
+
+    // Emit typing indicator via socket
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const typingData = {
+          conversationId,
+          user: {
+            id: user.id,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            avatar_url: user.avatar_url
+          },
+          isTyping,
+          timestamp: new Date().toISOString()
+        };
+
+        // Emit to conversation participants except the sender
+        io.emitToConversation(conversationId, 'typing:indicator', typingData, req.user.id);
+        
+        // Store in database for persistence (optional)
+        if (isTyping) {
+          await db('typing_indicators')
+            .insert({
+              conversation_id: conversationId,
+              user_id: req.user.id,
+              is_typing: true,
+              created_at: new Date(),
+              updated_at: new Date()
+            })
+            .onConflict(['conversation_id', 'user_id'])
+            .merge(['is_typing', 'updated_at']);
+        } else {
+          await db('typing_indicators')
+            .where('conversation_id', conversationId)
+            .where('user_id', req.user.id)
+            .update({
+              is_typing: false,
+              updated_at: new Date()
+            });
+        }
+      }
+    } catch (socketError) {
+      logger.error('Error emitting typing indicator:', socketError);
+    }
+
+    res.json({
+      message: 'Typing indicator sent',
+      isTyping
+    });
+
+  } catch (error) {
+    logger.error('Error sending typing indicator:', error);
+    res.status(500).json({ error: 'Failed to send typing indicator' });
+  }
+});
+
+/**
+ * @route GET /api/messages/conversation/:conversationId/typing
+ * @desc Get current typing indicators for a conversation
+ * @access Private
+ */
+router.get('/conversation/:conversationId/typing', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+
+    // Verify user is participant
+    const isParticipant = await db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .where('user_id', req.user.id)
+      .where('is_active', true)
+      .first();
+
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get current typing indicators (exclude current user)
+    const typingUsers = await db('typing_indicators')
+      .join('users', 'typing_indicators.user_id', 'users.id')
+      .where('typing_indicators.conversation_id', conversationId)
+      .where('typing_indicators.is_typing', true)
+      .where('typing_indicators.user_id', '!=', req.user.id)
+      .where('typing_indicators.updated_at', '>', new Date(Date.now() - 5000)) // Only recent (5 seconds)
+      .select(
+        'users.id',
+        'users.first_name',
+        'users.last_name',
+        'users.avatar_url',
+        'typing_indicators.updated_at'
+      );
+
+    res.json({
+      typingUsers: typingUsers.map(user => ({
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        avatar_url: user.avatar_url,
+        lastTyping: user.updated_at
+      }))
+    });
+
+  } catch (error) {
+    logger.error('Error fetching typing indicators:', error);
+    res.status(500).json({ error: 'Failed to fetch typing indicators' });
   }
 });
 
