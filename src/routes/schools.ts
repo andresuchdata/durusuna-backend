@@ -1,40 +1,25 @@
 import express, { Request, Response } from 'express';
-import { body, validationResult, ValidationError } from 'express-validator';
-import db from '../config/database';
-import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
-import { AuthenticatedRequest } from '../types/auth';
+import { ZodError } from 'zod';
+import { SchoolService } from '../services/schoolService';
+import { SchoolRepository } from '../repositories/schoolRepository';
+import { authenticate, authorize } from '../shared/middleware/auth';
+import logger from '../shared/utils/logger';
+import db from '../shared/database/connection';
 
 const router = express.Router();
 
-interface School {
-  id: string;
-  name: string;
-  address: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  settings?: Record<string, any>;
-  is_active: boolean;
-  created_at: Date;
-  updated_at?: Date;
-}
+// Initialize service layer
+const schoolRepository = new SchoolRepository(db);
+const schoolService = new SchoolService(schoolRepository);
 
-interface CreateSchoolRequest {
-  name: string;
-  address: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-}
-
-// Get all schools
-router.get('/', async (req: Request, res: Response) => {
+/**
+ * @route GET /api/schools
+ * @desc Get all schools (admin only)
+ * @access Private
+ */
+router.get('/', authenticate, authorize(['admin']), async (req: any, res: Response) => {
   try {
-    const schools = await db('schools')
-      .select('id', 'name', 'address', 'phone', 'email', 'created_at')
-      .orderBy('name', 'asc');
-
+    const schools = await schoolService.getAllSchools();
     res.json(schools);
   } catch (error) {
     logger.error('Error fetching schools:', error);
@@ -42,109 +27,84 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Get school by ID
-router.get('/:id', async (req: Request, res: Response) => {
+/**
+ * @route GET /api/schools/:id
+ * @desc Get school by ID
+ * @access Private
+ */
+router.get('/:id', authenticate, async (req: any, res: Response) => {
   try {
-    const { id } = req.params;
-
-    const school = await db('schools')
-      .select('id', 'name', 'address', 'phone', 'email', 'created_at')
-      .where('id', id)
-      .first();
-
-    if (!school) {
-      return res.status(404).json({ error: 'School not found' });
-    }
-
+    const school = await schoolService.getSchoolById(req.params.id, req.user);
     res.json(school);
   } catch (error) {
+    if (error instanceof Error && error.message === 'School not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
     logger.error('Error fetching school:', error);
     res.status(500).json({ error: 'Failed to fetch school' });
   }
 });
 
-// Create new school (admin only)
-router.post('/', [
-  authenticate,
-  body('name').notEmpty().withMessage('School name is required').trim(),
-  body('address').notEmpty().withMessage('Address is required').trim(),
-  body('phone').optional().trim(),
-  body('email').optional().isEmail().normalizeEmail(),
-  body('website').optional().isURL().withMessage('Invalid website URL')
-], async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * @route POST /api/schools
+ * @desc Create new school
+ * @access Private (admin only)
+ */
+router.post('/', authenticate, authorize(['admin']), async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
-    }
-
-    const { name, address, phone, email, website }: CreateSchoolRequest = req.body;
-
-    const [school] = await db('schools')
-      .insert({
-        name,
-        address,
-        phone,
-        email,
-        website,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      })
-      .returning(['id', 'name', 'address', 'phone', 'email', 'website', 'created_at']);
-
-    res.status(201).json(school);
+    const school = await schoolService.createSchool(req.body);
+    res.status(201).json({
+      message: 'School created successfully',
+      school
+    });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        errors: error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+    }
+    
     logger.error('Error creating school:', error);
     res.status(500).json({ error: 'Failed to create school' });
   }
 });
 
-// Update school (admin only)
-router.put('/:id', [
-  authenticate,
-  body('name').optional().notEmpty().withMessage('School name cannot be empty').trim(),
-  body('address').optional().notEmpty().withMessage('Address cannot be empty').trim(),
-  body('phone').optional().trim(),
-  body('email').optional().isEmail().normalizeEmail(),
-  body('website').optional().isURL().withMessage('Invalid website URL')
-], async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * @route PUT /api/schools/:id
+ * @desc Update school
+ * @access Private (admin only)
+ */
+router.put('/:id', authenticate, authorize(['admin']), async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
-    }
-
-    const { id } = req.params;
-    const updates: Partial<CreateSchoolRequest> = req.body;
-    
-    // Add updated_at timestamp
-    const updateData = {
-      ...updates,
-      updated_at: new Date()
-    };
-
-    const [school] = await db('schools')
-      .where('id', id)
-      .update(updateData)
-      .returning(['id', 'name', 'address', 'phone', 'email', 'website', 'updated_at']);
-
-    if (!school) {
-      return res.status(404).json({ error: 'School not found' });
-    }
-
-    res.json(school);
+    const school = await schoolService.updateSchool(req.params.id, req.body);
+    res.json({
+      message: 'School updated successfully',
+      school
+    });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        errors: error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+    }
+    
+    if (error instanceof Error && error.message === 'School not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
     logger.error('Error updating school:', error);
     res.status(500).json({ error: 'Failed to update school' });
   }

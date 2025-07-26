@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { AuthRepository } from '../data/authRepository';
+import { AuthRepository } from '../repositories/authRepository';
 import { 
   RegisterUserData, 
   LoginCredentials, 

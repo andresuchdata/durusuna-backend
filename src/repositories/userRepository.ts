@@ -1,5 +1,5 @@
 import { Knex } from 'knex';
-import { User, School, UpdateUserProfileData } from '@/types/user';
+import { User, School, UpdateUserProfileData } from '../types/user';
 
 export class UserRepository {
   constructor(private db: Knex) {}

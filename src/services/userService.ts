@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs';
-import { UserRepository } from '@/data/userRepository';
+import { UserRepository } from '../repositories/userRepository';
 import { 
   User, 
   UserWithSchool, 
   UpdateUserProfileData, 
   ChangePasswordData, 
   AuthenticatedUser 
-} from '@/types/user';
+} from '../types/user';
 import { 
   updateProfileSchema, 
   changePasswordSchema, 
@@ -14,7 +14,7 @@ import {
   type UpdateProfileInput,
   type ChangePasswordInput,
   type SearchUsersInput
-} from '@/schemas/userSchemas';
+} from '../schemas/userSchemas';
 
 export class UserService {
   constructor(private userRepository: UserRepository) {}

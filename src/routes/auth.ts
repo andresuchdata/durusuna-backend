@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { AuthService } from '../services/authService';
-import { AuthRepository } from '../data/authRepository';
-import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
-import db from '../config/database';
+import { AuthRepository } from '../repositories/authRepository';
+import { authenticate } from '../shared/middleware/auth';
+import logger from '../shared/utils/logger';
+import db from '../shared/database/connection';
 import { AuthenticatedRequest } from '../types/auth';
 
 const router = express.Router();
@@ -14,7 +14,7 @@ const authRepository = new AuthRepository(db);
 const authService = new AuthService(authRepository);
 
 // Rate limiting middleware (import from existing middleware)
-const { rateLimitSensitive } = require('../middleware/auth');
+const { rateLimitSensitive } = require('../shared/middleware/auth');
 
 /**
  * @route POST /api/auth/register

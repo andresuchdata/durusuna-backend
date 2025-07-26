@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { UserService } from '../services/userService';
-import { UserRepository } from '../data/userRepository';
-import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
-import db from '../config/database';
+import { UserRepository } from '../repositories/userRepository';
+import { authenticate } from '../shared/middleware/auth';
+import logger from '../shared/utils/logger';
+import db from '../shared/database/connection';
 import { AuthenticatedUser } from '../types/user';
 
 const router = express.Router();
