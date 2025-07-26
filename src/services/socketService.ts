@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken');
-const logger = require('../utils/logger');
+import jwt from 'jsonwebtoken';
+import logger from '../utils/logger';
 
 // Store connected users and their socket IDs
 const connectedUsers = new Map(); // userId -> { socketId, isOnline, lastSeen }
@@ -401,4 +401,4 @@ const initializeSocket = (io) => {
   return io;
 };
 
-module.exports = initializeSocket; 
+export default initializeSocket; 

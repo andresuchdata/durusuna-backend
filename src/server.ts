@@ -12,9 +12,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Import mixed JS/TS files
-const db = require('./config/database');
-const logger = require('./utils/logger');
-const authRoutes = require('./routes/auth');
+import db from './config/database';
+import logger from './utils/logger';
+import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 const schoolRoutes = require('./routes/schools');
 const classRoutes = require('./routes/classes');
@@ -22,7 +22,7 @@ const lessonRoutes = require('./routes/lessons');
 const messageRoutes = require('./routes/messages');
 const uploadRoutes = require('./routes/uploads');
 const classUpdatesRoutes = require('./routes/class_updates');
-const socketHandler = require('./services/socketService');
+import socketHandler from './services/socketService';
 
 // Create Express app
 const app = express();
