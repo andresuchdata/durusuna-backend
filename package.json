@@ -11,6 +11,10 @@
     "test:coverage": "bun test --coverage",
     "test:ci": "bun test --ci --coverage",
     "test:debug": "bun --inspect-brk --test src/",
+    "test:service": "bun test tests/userService.test.ts",
+    "test:services": "bun test tests/*Service.test.ts",
+    "test:legacy": "bun test tests/*.test.js",
+    "test:new": "bun test tests/*.test.ts",
     "lint": "eslint src/",
     "db:migrate": "bun run knex migrate:latest",
     "db:seed": "bun run knex seed:run",
@@ -44,13 +48,18 @@
     "sharp": "^0.32.4",
     "socket.io": "^4.7.2",
     "uuid": "^9.0.0",
-    "winston": "^3.10.0"
+    "winston": "^3.10.0",
+    "zod": "^4.0.10"
   },
   "devDependencies": {
-    "@types/node": "^20.4.9",
+    "@types/bcryptjs": "^3.0.0",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.1.0",
     "eslint": "^8.46.0",
     "jest": "^29.6.2",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "typescript": "^5.8.3"
   },
   "engines": {
     "bun": ">=1.0.0"
