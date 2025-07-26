@@ -1,38 +1,11 @@
 import { ClassRepository } from '../repositories/classRepository';
 import { AuthenticatedUser } from '../types/user';
-
-export interface Class {
-  id: string;
-  name: string;
-  description?: string;
-  grade_level?: string;
-  section?: string;
-  academic_year: string;
-  school_id: string;
-  settings?: Record<string, any>;
-  is_active: boolean;
-  created_at: Date;
-  updated_at?: Date;
-}
-
-export interface CreateClassData {
-  name: string;
-  description?: string;
-  grade_level?: string;
-  section?: string;
-  academic_year: string;
-  school_id: string;
-  settings?: Record<string, any>;
-}
-
-export interface UpdateClassData {
-  name?: string;
-  description?: string;
-  grade_level?: string;
-  section?: string;
-  academic_year?: string;
-  settings?: Record<string, any>;
-}
+import {
+  Class,
+  CreateClassRequest as CreateClassData,
+  UpdateClassRequest as UpdateClassData,
+  ClassWithDetails
+} from '../types/class';
 
 export class ClassService {
   constructor(private classRepository: ClassRepository) {}

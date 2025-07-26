@@ -134,6 +134,91 @@ export const messageSchema = Joi.object({
   'object.missing': 'Either conversation_id or receiver_id is required'
 });
 
+// Conversation validation
+export const conversationSchema = Joi.object({
+  type: Joi.string().valid('direct', 'group').default('direct').messages({
+    'any.only': 'Conversation type must be either direct or group'
+  }),
+  name: Joi.string().max(255).optional().messages({
+    'string.max': 'Conversation name cannot exceed 255 characters'
+  }),
+  description: Joi.string().max(1000).optional().messages({
+    'string.max': 'Description cannot exceed 1000 characters'
+  }),
+  avatar_url: Joi.string().uri().optional().messages({
+    'string.uri': 'Please provide a valid avatar URL'
+  }),
+  participant_ids: Joi.array().items(Joi.string().uuid()).min(1).required().messages({
+    'array.min': 'At least one participant is required',
+    'any.required': 'Participant IDs are required'
+  })
+});
+
+// Lesson validation  
+export const lessonSchema = Joi.object({
+  title: Joi.string().min(1).max(255).required().messages({
+    'string.min': 'Lesson title is required',
+    'string.max': 'Title cannot exceed 255 characters',
+    'any.required': 'Title is required'
+  }),
+  description: Joi.string().max(2000).optional().messages({
+    'string.max': 'Description cannot exceed 2000 characters'
+  }),
+  subject: Joi.string().min(1).max(100).required().messages({
+    'string.min': 'Subject is required',
+    'string.max': 'Subject cannot exceed 100 characters',
+    'any.required': 'Subject is required'
+  }),
+  class_id: Joi.string().uuid().required().messages({
+    'string.guid': 'Class ID must be a valid UUID',
+    'any.required': 'Class ID is required'
+  }),
+  start_time: Joi.date().required().messages({
+    'any.required': 'Start time is required'
+  }),
+  end_time: Joi.date().greater(Joi.ref('start_time')).required().messages({
+    'date.greater': 'End time must be after start time',
+    'any.required': 'End time is required'
+  }),
+  location: Joi.string().max(100).optional().messages({
+    'string.max': 'Location cannot exceed 100 characters'
+  }),
+  status: Joi.string().valid('scheduled', 'ongoing', 'completed', 'cancelled').default('scheduled').messages({
+    'any.only': 'Status must be scheduled, ongoing, completed, or cancelled'
+  }),
+  materials: Joi.object().optional(),
+  settings: Joi.object().optional()
+});
+
+// Class validation
+export const classSchema = Joi.object({
+  name: Joi.string().min(1).max(100).required().messages({
+    'string.min': 'Class name is required',
+    'string.max': 'Name cannot exceed 100 characters',
+    'any.required': 'Class name is required'
+  }),
+  description: Joi.string().max(1000).optional().messages({
+    'string.max': 'Description cannot exceed 1000 characters'
+  }),
+  grade_level: Joi.string().max(20).optional().messages({
+    'string.max': 'Grade level cannot exceed 20 characters'
+  }),
+  section: Joi.string().max(10).optional().messages({
+    'string.max': 'Section cannot exceed 10 characters'
+  }),
+  academic_year: Joi.string().min(1).max(20).required().messages({
+    'string.min': 'Academic year is required',
+    'string.max': 'Academic year cannot exceed 20 characters',
+    'any.required': 'Academic year is required'
+  }),
+  school_id: Joi.string().uuid().required().messages({
+    'string.guid': 'School ID must be a valid UUID',
+    'any.required': 'School ID is required'
+  }),
+  settings: Joi.object().optional(),
+  is_active: Joi.boolean().default(true)
+});
+
 // Attachment validation schema
 export const attachmentSchema = Joi.object({
   id: Joi.string().uuid().required(),
@@ -166,6 +251,7 @@ export const classUpdateSchema = Joi.object({
     'any.required': 'Content is required'
   }),
   update_type: Joi.string().valid('announcement', 'homework', 'reminder', 'event').default('announcement'),
+  is_pinned: Joi.boolean().default(false),
   attachments: Joi.array().items(attachmentSchema).max(5).optional().messages({
     'array.max': 'Maximum 5 attachments allowed per update'
   })
@@ -252,4 +338,12 @@ export const isValidUpdateType = (type: string): type is 'announcement' | 'homew
 
 export const isValidFileType = (type: string): type is 'image' | 'video' | 'audio' | 'document' | 'other' => {
   return ['image', 'video', 'audio', 'document', 'other'].includes(type);
+};
+
+export const isValidConversationType = (type: string): type is 'direct' | 'group' => {
+  return ['direct', 'group'].includes(type);
+};
+
+export const isValidLessonStatus = (status: string): status is 'scheduled' | 'ongoing' | 'completed' | 'cancelled' => {
+  return ['scheduled', 'ongoing', 'completed', 'cancelled'].includes(status);
 }; 

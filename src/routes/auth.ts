@@ -17,9 +17,78 @@ const authService = new AuthService(authRepository);
 const { rateLimitSensitive } = require('../shared/middleware/auth');
 
 /**
- * @route POST /api/auth/register
- * @desc Register a new user
- * @access Public
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     description: Create a new user account in the system
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - firstName
+ *               - lastName
+ *               - role
+ *               - schoolId
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: User email address
+ *                 example: "john.doe@school.edu"
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: User password (minimum 8 characters)
+ *                 example: "SecurePass123!"
+ *               firstName:
+ *                 type: string
+ *                 description: User's first name
+ *                 example: "John"
+ *               lastName:
+ *                 type: string
+ *                 description: User's last name
+ *                 example: "Doe"
+ *               role:
+ *                 type: string
+ *                 enum: [student, teacher, parent, admin]
+ *                 description: User role in the school system
+ *                 example: "student"
+ *               schoolId:
+ *                 type: integer
+ *                 description: ID of the school the user belongs to
+ *                 example: 1
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Validation error or invalid school ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Email already registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/register', rateLimitSensitive, async (req: Request, res: Response) => {
   try {
@@ -68,9 +137,56 @@ router.post('/register', rateLimitSensitive, async (req: Request, res: Response)
 });
 
 /**
- * @route POST /api/auth/login
- * @desc Login user
- * @access Public
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login user
+ *     description: Authenticate user with email and password
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: User email address
+ *                 example: "john.doe@school.edu"
+ *               password:
+ *                 type: string
+ *                 description: User password
+ *                 example: "SecurePass123!"
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       401:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/login', rateLimitSensitive, async (req: Request, res: Response) => {
   try {
