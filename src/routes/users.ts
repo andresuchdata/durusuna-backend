@@ -1,11 +1,11 @@
 import express, { Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { UserService } from '@/services/userService';
-import { UserRepository } from '@/data/userRepository';
-import { authenticate } from '@/middleware/auth';
-import logger from '@/utils/logger';
-import db from '@/config/database';
-import { AuthenticatedUser } from '@/types/user';
+import { UserService } from '../services/userService';
+import { UserRepository } from '../data/userRepository';
+import { authenticate } from '../middleware/auth';
+import logger from '../utils/logger';
+import db from '../config/database';
+import { AuthenticatedUser } from '../types/user';
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 // Get current user profile
-router.get('/profile', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/profile', authenticate, async (req: any, res: Response) => {
   try {
     const user = await userService.getUserProfile(req.user.id);
     res.json(user);
@@ -34,14 +34,14 @@ router.get('/profile', authenticate, async (req: AuthenticatedRequest, res: Resp
 });
 
 // Update user profile
-router.put('/profile', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/profile', authenticate, async (req: any, res: Response) => {
   try {
     const updatedUser = await userService.updateUserProfile(req.user.id, req.body);
     res.json(updatedUser);
   } catch (error) {
     if (error instanceof ZodError) {
       return res.status(400).json({ 
-        errors: error.errors.map(err => ({
+        errors: error.issues.map((err: any) => ({
           field: err.path.join('.'),
           message: err.message
         }))
@@ -54,14 +54,14 @@ router.put('/profile', authenticate, async (req: AuthenticatedRequest, res: Resp
 });
 
 // Change password
-router.put('/password', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/password', authenticate, async (req: any, res: Response) => {
   try {
     await userService.changePassword(req.user.id, req.body);
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     if (error instanceof ZodError) {
       return res.status(400).json({ 
-        errors: error.errors.map(err => ({
+        errors: error.issues.map((err: any) => ({
           field: err.path.join('.'),
           message: err.message
         }))
@@ -82,7 +82,7 @@ router.put('/password', authenticate, async (req: AuthenticatedRequest, res: Res
 });
 
 // Get users by school (admin only)
-router.get('/school/:schoolId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/school/:schoolId', authenticate, async (req: any, res: Response) => {
   try {
     const { schoolId } = req.params;
     const users = await userService.getSchoolUsers(req.user, schoolId);
@@ -98,7 +98,7 @@ router.get('/school/:schoolId', authenticate, async (req: AuthenticatedRequest, 
 });
 
 // Get contacts for messaging (users in same school)
-router.get('/contacts', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/contacts', authenticate, async (req: any, res: Response) => {
   try {
     const { page = '1', limit = '50' } = req.query;
     const contacts = await userService.getContacts(
@@ -118,14 +118,14 @@ router.get('/contacts', authenticate, async (req: AuthenticatedRequest, res: Res
 });
 
 // Search users for messaging
-router.get('/search', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/search', authenticate, async (req: any, res: Response) => {
   try {
     const searchResult = await userService.searchUsers(req.user, req.query);
     res.json(searchResult);
   } catch (error) {
     if (error instanceof ZodError) {
       return res.status(400).json({ 
-        error: error.errors[0]?.message || 'Invalid search parameters'
+        error: error.issues[0]?.message || 'Invalid search parameters'
       });
     }
     

@@ -1,10 +1,10 @@
-# Bun Dockerfile for better Sevalla compatibility
+# Bun Dockerfile optimized for TypeScript
 FROM oven/bun:1.2-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for native modules
 RUN apk add --no-cache \
     dumb-init \
     python3 \
@@ -12,21 +12,22 @@ RUN apk add --no-cache \
     g++ \
     && ln -sf python3 /usr/bin/python
 
-# Create app user
+# Create app user for security
 RUN addgroup -g 1001 -S bunuser && \
     adduser -S bunuser -u 1001
 
-# Copy package files
-COPY package*.json bun.lock ./
+# Copy package files first for better caching
+COPY package*.json bun.lock* tsconfig.json ./
 
-# Install dependencies with fallback strategy
-RUN bun install --frozen-lockfile --production || bun install --production
+# Install all dependencies (including devDependencies for TypeScript)
+RUN bun install --frozen-lockfile || bun install
 RUN bun pm cache rm
 
-# Copy application code
-COPY . .
+# Copy application source code
+COPY src/ ./src/
+COPY tests/ ./tests/
 
-# Create necessary directories
+# Create necessary directories and set permissions
 RUN mkdir -p uploads logs && \
     chown -R bunuser:bunuser /app
 
@@ -36,9 +37,9 @@ USER bunuser
 # Expose port
 EXPOSE 3001
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD bun -e "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+# Health check using TypeScript entry point
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD bun -e "import('http').then(http => { http.get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }) })" || exit 1
 
-# Start the application
-CMD ["dumb-init", "bun", "src/server.js"]
+# Start the TypeScript application with Bun
+CMD ["dumb-init", "bun", "src/server.ts"]
