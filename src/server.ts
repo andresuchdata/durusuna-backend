@@ -25,6 +25,7 @@ import messageRoutes from './routes/messages';
 import conversationRoutes from './routes/conversations';
 import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
+import notificationRoutes from './routes/notifications';
 import socketHandler from './services/socketService';
 
 // Create Express app
@@ -101,6 +102,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/class-updates', classUpdatesRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 /**
  * @swagger
