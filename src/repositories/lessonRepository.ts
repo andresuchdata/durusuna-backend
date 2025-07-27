@@ -29,10 +29,12 @@ export class LessonRepository {
 
   async findByClassId(classId: string): Promise<Lesson[]> {
     return await this.db('lessons')
-      .select('*')
-      .where('class_id', classId)
-      .where('is_active', true)
-      .orderBy('lesson_date', 'desc');
+      .join('class_subjects', 'lessons.class_subject_id', 'class_subjects.id')
+      .select('lessons.*')
+      .where('class_subjects.class_id', classId)
+      .where('lessons.is_active', true)
+      .where('class_subjects.is_active', true)
+      .orderBy('lessons.lesson_date', 'desc');
   }
 
   async findById(id: string): Promise<Lesson | null> {
