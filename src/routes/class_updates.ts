@@ -340,7 +340,9 @@ router.get('/:updateId/comments', authenticate, async (req: Request, res: Respon
       return res.status(403).json({ error: 'Access denied to this class' });
     }
 
-    // Get comments with pagination
+    // Get comments with smart sorting:
+    // - Top-level comments (reply_to_id IS NULL): newest first (DESC)  
+    // - Replies (reply_to_id IS NOT NULL): oldest first within thread (ASC)
     const comments = await db('class_update_comments')
       .join('users', 'class_update_comments.author_id', 'users.id')
       .where('class_update_comments.class_update_id', updateId)
@@ -353,7 +355,11 @@ router.get('/:updateId/comments', authenticate, async (req: Request, res: Respon
         'users.avatar_url as author_avatar',
         'users.user_type as author_user_type'
       )
-      .orderBy('class_update_comments.created_at', 'asc')
+      .orderByRaw(`
+        CASE WHEN class_update_comments.reply_to_id IS NULL THEN class_update_comments.created_at END DESC,
+        COALESCE(class_update_comments.reply_to_id, class_update_comments.id),
+        class_update_comments.created_at ASC
+      `)
       .limit(parseInt(limit as string))
       .offset(offset);
 
