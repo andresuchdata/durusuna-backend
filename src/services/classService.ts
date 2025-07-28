@@ -176,4 +176,41 @@ export class ClassService {
     }
     return await this.classRepository.findTeachersByClassId(classId);
   }
+
+  async getClassSubjects(classId: string, currentUser: AuthenticatedUser) {
+    // Check class access first
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // Get class subjects with their details
+    const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId);
+
+    // Get lessons for each subject
+    const subjects = [];
+    for (const cs of classSubjects) {
+      const lessons = await this.lessonRepository.findByClassSubjectId(cs.class_subject_id);
+      
+      subjects.push({
+        subject_id: cs.subject_id,
+        subject_name: cs.subject_name,
+        subject_code: cs.subject_code,
+        subject_description: cs.subject_description,
+        hours_per_week: cs.hours_per_week,
+        classroom: cs.classroom,
+        schedule: cs.schedule,
+        teacher: {
+          id: cs.teacher_id,
+          first_name: cs.first_name,
+          last_name: cs.last_name,
+          email: cs.email,
+          avatar_url: cs.avatar_url
+        },
+        lessons: lessons
+      });
+    }
+
+    return subjects;
+  }
 } 

@@ -36,8 +36,11 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*", // Allow all origins for development
-    credentials: true
-  }
+    credentials: true,
+    methods: ["GET", "POST"]
+  },
+  allowEIO3: true, // Allow Engine.IO v3 clients
+  transports: ['polling', 'websocket']
 });
 
 // Security middleware
@@ -172,6 +175,9 @@ const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  logger.info(`📱 Android emulator: http://10.0.2.2:${PORT}`);
+  logger.info(`🍎 iOS simulator: http://localhost:${PORT}`);
+  logger.info(`💻 Physical device: http://192.168.1.7:${PORT}`);
 });
 
 // Make io available globally for routes

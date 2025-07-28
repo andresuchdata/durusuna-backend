@@ -587,7 +587,7 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Class ID is required' });
     }
     const students = await classService.getClassStudents(id, req.user);
-    res.json(students);
+    res.json({ students });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -614,7 +614,7 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Class ID is required' });
     }
     const teachers = await classService.getClassTeachers(id, req.user);
-    res.json(teachers);
+    res.json({ teachers });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -629,6 +629,32 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
   }
 });
 
+/**
+ * @route GET /api/classes/:id/subjects
+ * @desc Get subjects for a class with their lessons
+ * @access Private
+ */
+router.get('/:id/subjects', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    const subjects = await classService.getClassSubjects(id, req.user);
+    res.json({ subjects });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching class subjects:', error);
+    res.status(500).json({ error: 'Failed to fetch class subjects' });
+  }
+});
 
 
 /**
