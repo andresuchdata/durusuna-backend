@@ -1220,4 +1220,177 @@ router.put('/:updateId/pin', authenticate, async (req: Request, res: Response, n
   }
 });
 
+/**
+ * @swagger
+ * /api/class-updates/comments/{commentId}/reactions:
+ *   post:
+ *     summary: Toggle reaction on a comment
+ *     description: Add or remove a reaction (emoji) on a class update comment
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The comment ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - emoji
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *                 description: Emoji to react with
+ *                 example: "👍"
+ *     responses:
+ *       200:
+ *         description: Reaction toggled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 reactions:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: object
+ *                     properties:
+ *                       count:
+ *                         type: integer
+ *                         description: Number of reactions
+ *                       users:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         description: User IDs who reacted
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Comment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/comments/:commentId/reactions', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { commentId } = req.params;
+    const { emoji }: AddReactionRequest = req.body;
+
+    if (!emoji || typeof emoji !== 'string') {
+      return res.status(400).json({ error: 'Emoji is required' });
+    }
+
+    // Get the existing comment with update info
+    const existingComment = await db('class_update_comments')
+      .join('class_updates', 'class_update_comments.class_update_id', 'class_updates.id')
+      .where('class_update_comments.id', commentId)
+      .where('class_update_comments.is_deleted', false)
+      .where('class_updates.is_deleted', false)
+      .select(
+        'class_update_comments.*',
+        'class_updates.class_id'
+      )
+      .first();
+
+    if (!existingComment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Check if user has access to the class
+    let hasAccess = false;
+
+    if (authReq.user.user_type === 'teacher' && authReq.user.role === 'admin') {
+      // Admin teachers can react to comments in any class in their school
+      const classInfo = await db('classes')
+        .where('id', existingComment.class_id)
+        .where('school_id', authReq.user.school_id)
+        .first();
+      
+      hasAccess = !!classInfo;
+    } else {
+      // Regular users need to be enrolled in the class
+      const userClass = await db('user_classes')
+        .where({
+          user_id: authReq.user.id,
+          class_id: existingComment.class_id
+        })
+        .first();
+      
+      hasAccess = !!userClass;
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied to this class' });
+    }
+
+    // Parse existing reactions
+    const reactions = migrateReactions(safeJsonParse(existingComment.reactions, {}));
+    
+    // Initialize emoji reaction if it doesn't exist
+    if (!reactions[emoji]) {
+      reactions[emoji] = { count: 0, users: [] };
+    }
+
+    // Check if user has already reacted with this emoji
+    const userIndex = reactions[emoji].users.indexOf(authReq.user.id);
+    
+    if (userIndex > -1) {
+      // User has already reacted, remove the reaction
+      reactions[emoji].users.splice(userIndex, 1);
+      reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
+      
+      // Remove emoji entirely if no reactions left
+      if (reactions[emoji].count === 0) {
+        delete reactions[emoji];
+      }
+    } else {
+      // User hasn't reacted, add the reaction
+      reactions[emoji].users.push(authReq.user.id);
+      reactions[emoji].count += 1;
+    }
+
+    // Update the comment with new reactions
+    await db('class_update_comments')
+      .where('id', commentId)
+      .update({
+        reactions: safeJsonStringify(reactions),
+        updated_at: new Date()
+      });
+
+    const response: ReactionResponse = {
+      message: userIndex > -1 ? 'Reaction removed successfully' : 'Reaction added successfully',
+      reactions
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    logger.error('Error toggling comment reaction:', error);
+    res.status(500).json({ error: 'Failed to toggle comment reaction' });
+  }
+});
+
 export default router; 
