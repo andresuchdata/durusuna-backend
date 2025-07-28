@@ -368,6 +368,17 @@ const isUserOnline = (userId) => {
   return userData ? userData.isOnline : false;
 };
 
+// Global socket instance
+let globalIo: any = null;
+
+// Export getter for global io instance
+export const getSocketInstance = () => {
+  if (!globalIo) {
+    throw new Error('Socket.io instance not initialized. Call initializeSocket first.');
+  }
+  return globalIo;
+};
+
 const initializeSocket = (io) => {
   // Log all connection attempts
   io.engine.on("connection_error", (err) => {
@@ -397,6 +408,9 @@ const initializeSocket = (io) => {
   io.emitMessageDeleted = emitMessageDeleted.bind(null, io);
   io.getConnectedUsers = getConnectedUsers;
   io.isUserOnline = isUserOnline;
+
+  // Store global reference
+  globalIo = io;
 
   return io;
 };
