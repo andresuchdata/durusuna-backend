@@ -3,6 +3,7 @@ import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../utils/logger';
 import { safeJsonParse } from '../utils/json';
+import { getSocketInstance } from './socketService';
 import {
   MessageWithSender,
   SendMessageRequest,
@@ -185,6 +186,23 @@ export class MessageService {
       });
     } catch (cacheError) {
       logger.error('Error updating message cache:', cacheError);
+    }
+
+    // Emit real-time message
+    try {
+      const io = getSocketInstance();
+      if (io) {
+        io.emitNewMessage(formattedMessage, conversationId);
+        logger.info('✅ MessageService: Emitted real-time message', {
+          conversationId,
+          messageId: formattedMessage.id,
+          content: formattedMessage.content
+        });
+      } else {
+        logger.warn('⚠️ MessageService: Socket instance not available for real-time emission');
+      }
+    } catch (socketError) {
+      logger.error('❌ MessageService: Error emitting real-time message:', socketError);
     }
 
     return {
