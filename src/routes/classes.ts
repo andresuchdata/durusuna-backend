@@ -3,6 +3,8 @@ import { ZodError } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { ClassService } from '../services/classService';
 import { ClassRepository } from '../repositories/classRepository';
+import { LessonRepository } from '../repositories/lessonRepository';
+import { UserClassRepository } from '../repositories/userClassRepository';
 import { authenticate, authorize } from '../shared/middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
@@ -19,9 +21,11 @@ import {
 
 const router = express.Router();
 
-// Initialize service layer
+// Initialize service layer with all dependencies
 const classRepository = new ClassRepository(db);
-const classService = new ClassService(classRepository);
+const lessonRepository = new LessonRepository(db);
+const userClassRepository = new UserClassRepository(db);
+const classService = new ClassService(classRepository, lessonRepository, userClassRepository);
 
 // JSON utilities now imported from utils/json.ts
 
@@ -44,6 +48,21 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
   } catch (error) {
     logger.error('Error fetching classes:', error);
     res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+});
+
+/**
+ * @route GET /api/classes/my-classes
+ * @desc Get classes for current user (enrolled classes)
+ * @access Private
+ */
+router.get('/my-classes', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const classes = await classService.getUserClasses(req.user);
+    res.json({ classes });
+  } catch (error) {
+    logger.error('Error fetching user classes:', error);
+    res.status(500).json({ error: 'Failed to fetch user classes' });
   }
 });
 
@@ -569,7 +588,7 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Class ID is required' });
     }
     const students = await classService.getClassStudents(id, req.user);
-    res.json(students);
+    res.json({ students });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -596,7 +615,7 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Class ID is required' });
     }
     const teachers = await classService.getClassTeachers(id, req.user);
-    res.json(teachers);
+    res.json({ teachers });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -608,6 +627,57 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
     
     logger.error('Error fetching class teachers:', error);
     res.status(500).json({ error: 'Failed to fetch class teachers' });
+  }
+});
+
+/**
+ * @route GET /api/classes/:id/subjects
+ * @desc Get subjects for a class with their lessons
+ * @access Private
+ */
+router.get('/:id/subjects', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    const subjects = await classService.getClassSubjects(id, req.user);
+    res.json({ subjects });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching class subjects:', error);
+    res.status(500).json({ error: 'Failed to fetch class subjects' });
+  }
+});
+
+
+/**
+ * @route GET /api/classes/:id/lessons
+ * @desc Get lessons for a class
+ * @access Private
+ */
+router.get('/:id/lessons', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    const lessons = await classService.getClassLessons(id, req.user);
+    res.json({ lessons });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching class lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch class lessons' });
   }
 });
 

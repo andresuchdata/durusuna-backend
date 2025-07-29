@@ -1,14 +1,54 @@
 import jwt from 'jsonwebtoken';
+import { Server, Socket } from 'socket.io';
 import logger from '../utils/logger';
 
+// Types for socket events
+interface SocketUser extends Socket {
+  userId: string;
+  userRole: string;
+}
+
+interface ConversationJoinData {
+  conversationId: string;
+}
+
+interface TypingData {
+  conversationId: string;
+}
+
+interface MessageStatusData {
+  messageIds: string[];
+  deliveredAt?: string;
+  conversationId?: string;
+  readAt?: string;
+}
+
+interface ReactionData {
+  messageId: string;
+  emoji: string;
+}
+
+interface VoiceData {
+  conversationId: string;
+}
+
+interface LastSeenData {
+  conversationId: string;
+}
+
+interface UploadProgressData {
+  uploadId: string;
+  progress: number;
+}
+
 // Store connected users and their socket IDs
-const connectedUsers = new Map(); // userId -> { socketId, isOnline, lastSeen }
-const conversationRooms = new Map(); // conversationId -> Set of userIds
+const connectedUsers = new Map<string, { socketId: string; isOnline: boolean; lastSeen: Date }>(); 
+const conversationRooms = new Map<string, Set<string>>(); // conversationId -> Set of userIds
 
 // Global socket instance
-let globalIo = null;
+let globalIo: Server | null = null;
 
-const socketAuth = (socket, next) => {
+const socketAuth = (socket: Socket, next: (err?: Error) => void) => {
   try {
     logger.info('🔐 Socket authentication attempt', {
       'auth': socket.handshake.auth,
@@ -31,9 +71,15 @@ const socketAuth = (socket, next) => {
       return next(new Error('Authentication error: No token provided'));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.userId = decoded.id;
-    socket.userRole = decoded.role;
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      logger.error('🚫 JWT_SECRET not configured');
+      return next(new Error('Authentication error: Server configuration error'));
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as { id: string; role: string };
+    (socket as SocketUser).userId = decoded.id;
+    (socket as SocketUser).userRole = decoded.role;
     
     logger.info('✅ Socket authentication successful', {
       userId: decoded.id,
@@ -41,21 +87,23 @@ const socketAuth = (socket, next) => {
     });
     
     next();
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('❌ Socket authentication failed:', {
-      error: error.message,
+      error: errorMessage,
       tokenProvided: !!(socket.handshake.auth.token || socket.handshake.headers.authorization)
     });
     next(new Error('Authentication error: Invalid token'));
   }
 };
 
-const handleConnection = (socket) => {
-  const userId = socket.userId;
+const handleConnection = (socket: Socket) => {
+  const socketUser = socket as SocketUser;
+  const userId = socketUser.userId;
   logger.info(`✅ User ${userId} connected to socket successfully`, {
     socketId: socket.id,
     userId: userId,
-    userRole: socket.userRole
+    userRole: socketUser.userRole
   });
 
   // Store user connection
@@ -82,7 +130,7 @@ const handleConnection = (socket) => {
   // === CONVERSATION MANAGEMENT ===
   
   // Join conversation room
-  socket.on('conversation:join', (data) => {
+  socket.on('conversation:join', (data: ConversationJoinData) => {
     const { conversationId } = data;
     socket.join(`conversation_${conversationId}`);
     
@@ -90,20 +138,20 @@ const handleConnection = (socket) => {
     if (!conversationRooms.has(conversationId)) {
       conversationRooms.set(conversationId, new Set());
     }
-    conversationRooms.get(conversationId).add(userId);
+    conversationRooms.get(conversationId)!.add(userId);
     
     logger.info(`User ${userId} joined conversation ${conversationId}`);
   });
 
   // Leave conversation room
-  socket.on('conversation:leave', (data) => {
+  socket.on('conversation:leave', (data: ConversationJoinData) => {
     const { conversationId } = data;
     socket.leave(`conversation_${conversationId}`);
     
     // Remove from conversation tracking
     if (conversationRooms.has(conversationId)) {
-      conversationRooms.get(conversationId).delete(userId);
-      if (conversationRooms.get(conversationId).size === 0) {
+      conversationRooms.get(conversationId)!.delete(userId);
+      if (conversationRooms.get(conversationId)!.size === 0) {
         conversationRooms.delete(conversationId);
       }
     }
@@ -113,7 +161,7 @@ const handleConnection = (socket) => {
 
   // === TYPING INDICATORS ===
   
-  socket.on('typing:start', (data) => {
+  socket.on('typing:start', (data: TypingData) => {
     const { conversationId } = data;
     socket.to(`conversation_${conversationId}`).emit('typing:start', {
       userId: userId,
@@ -123,7 +171,7 @@ const handleConnection = (socket) => {
     });
   });
 
-  socket.on('typing:stop', (data) => {
+  socket.on('typing:stop', (data: TypingData) => {
     const { conversationId } = data;
     socket.to(`conversation_${conversationId}`).emit('typing:stop', {
       userId: userId,
@@ -135,10 +183,10 @@ const handleConnection = (socket) => {
 
   // === MESSAGE STATUS ===
   
-  socket.on('message:delivered', (data) => {
+  socket.on('message:delivered', (data: MessageStatusData) => {
     const { messageIds, deliveredAt } = data;
     // Broadcast to conversation participants
-    messageIds.forEach(messageId => {
+    messageIds.forEach((messageId: string) => {
       socket.broadcast.emit('message:delivered', {
         messageIds: [messageId],
         status: 'delivered',
@@ -148,7 +196,7 @@ const handleConnection = (socket) => {
     });
   });
 
-  socket.on('message:read', (data) => {
+  socket.on('message:read', (data: MessageStatusData) => {
     const { messageIds, conversationId, readAt } = data;
     // Broadcast to conversation participants
     socket.to(`conversation_${conversationId}`).emit('message:read', {
@@ -194,7 +242,7 @@ const handleConnection = (socket) => {
 
   // === REACTIONS ===
   
-  socket.on('reaction:add', (data) => {
+  socket.on('reaction:add', (data: ReactionData) => {
     const { messageId, emoji } = data;
     socket.broadcast.emit('reaction:added', {
       messageId: messageId,
@@ -205,7 +253,7 @@ const handleConnection = (socket) => {
     });
   });
 
-  socket.on('reaction:remove', (data) => {
+  socket.on('reaction:remove', (data: ReactionData) => {
     const { messageId, emoji } = data;
     socket.broadcast.emit('reaction:removed', {
       messageId: messageId,
@@ -218,7 +266,7 @@ const handleConnection = (socket) => {
 
   // === VOICE RECORDING ===
   
-  socket.on('voice:start', (data) => {
+  socket.on('voice:start', (data: VoiceData) => {
     const { conversationId } = data;
     socket.to(`conversation_${conversationId}`).emit('voice:recording', {
       userId: userId,
@@ -228,7 +276,7 @@ const handleConnection = (socket) => {
     });
   });
 
-  socket.on('voice:stop', (data) => {
+  socket.on('voice:stop', (data: VoiceData) => {
     const { conversationId } = data;
     socket.to(`conversation_${conversationId}`).emit('voice:stopped', {
       userId: userId,
@@ -240,7 +288,7 @@ const handleConnection = (socket) => {
 
   // === LAST SEEN ===
   
-  socket.on('user:lastseen', (data) => {
+  socket.on('user:lastseen', (data: LastSeenData) => {
     const { conversationId } = data;
     const userData = connectedUsers.get(userId);
     if (userData) {
@@ -257,7 +305,7 @@ const handleConnection = (socket) => {
 
   // === FILE UPLOAD ===
   
-  socket.on('upload:progress', (data) => {
+  socket.on('upload:progress', (data: UploadProgressData) => {
     const { uploadId, progress } = data;
     socket.emit('upload:progress', {
       uploadId: uploadId,
@@ -268,7 +316,7 @@ const handleConnection = (socket) => {
 
   // === DISCONNECT HANDLER ===
   
-  socket.on('disconnect', (reason) => {
+  socket.on('disconnect', (reason: string) => {
     logger.info(`❌ User ${userId} disconnected`, {
       userId: userId,
       socketId: socket.id,
@@ -316,15 +364,15 @@ const handleConnection = (socket) => {
 
 // === UTILITY FUNCTIONS FOR EMITTING EVENTS ===
 
-const emitToConversation = (io, conversationId, event, data) => {
+const emitToConversation = (io: Server, conversationId: string, event: string, data: any) => {
   io.to(`conversation_${conversationId}`).emit(event, data);
 };
 
-const emitToUser = (io, userId, event, data) => {
+const emitToUser = (io: Server, userId: string, event: string, data: any) => {
   io.to(`user_${userId}`).emit(event, data);
 };
 
-const emitNewMessage = (io, message, conversationId) => {
+const emitNewMessage = (io: Server, message: any, conversationId: string) => {
   emitToConversation(io, conversationId, 'message:new', {
     message: message,
     action: 'created',
@@ -332,8 +380,8 @@ const emitNewMessage = (io, message, conversationId) => {
   });
 };
 
-const emitConversationCreated = (io, conversation, participantIds) => {
-  participantIds.forEach(userId => {
+const emitConversationCreated = (io: Server, conversation: any, participantIds: string[]) => {
+  participantIds.forEach((userId: string) => {
     emitToUser(io, userId, 'conversation:created', {
       conversationId: conversation.id,
       action: 'created',
@@ -343,7 +391,7 @@ const emitConversationCreated = (io, conversation, participantIds) => {
   });
 };
 
-const emitMessageUpdated = (io, message, conversationId) => {
+const emitMessageUpdated = (io: Server, message: any, conversationId: string) => {
   emitToConversation(io, conversationId, 'message:updated', {
     message: message,
     action: 'updated',
@@ -351,7 +399,7 @@ const emitMessageUpdated = (io, message, conversationId) => {
   });
 };
 
-const emitMessageDeleted = (io, messageId, conversationId) => {
+const emitMessageDeleted = (io: Server, messageId: string, conversationId: string) => {
   emitToConversation(io, conversationId, 'message:deleted', {
     message: { id: messageId, is_deleted: true },
     action: 'deleted',
@@ -366,14 +414,22 @@ const getConnectedUsers = () => {
   }));
 };
 
-const isUserOnline = (userId) => {
+const isUserOnline = (userId: string) => {
   const userData = connectedUsers.get(userId);
   return userData ? userData.isOnline : false;
 };
 
-const initializeSocket = (io) => {
+// Export getter for global io instance
+export const getSocketInstance = (): Server => {
+  if (!globalIo) {
+    throw new Error('Socket.io instance not initialized. Call initializeSocket first.');
+  }
+  return globalIo;
+};
+
+const initializeSocket = (io: Server) => {
   // Log all connection attempts
-  io.engine.on("connection_error", (err) => {
+  io.engine.on("connection_error", (err: any) => {
     logger.error('❌ Socket.io connection error:', {
       error: err.message,
       code: err.code,
@@ -392,22 +448,19 @@ const initializeSocket = (io) => {
   logger.info('🔌 Socket.io server initialized and ready for connections');
 
   // Attach utility functions to io for use in routes
-  io.emitToConversation = emitToConversation.bind(null, io);
-  io.emitToUser = emitToUser.bind(null, io);
-  io.emitNewMessage = emitNewMessage.bind(null, io);
-  io.emitConversationCreated = emitConversationCreated.bind(null, io);
-  io.emitMessageUpdated = emitMessageUpdated.bind(null, io);
-  io.emitMessageDeleted = emitMessageDeleted.bind(null, io);
-  io.getConnectedUsers = getConnectedUsers;
-  io.isUserOnline = isUserOnline;
+  (io as any).emitToConversation = emitToConversation.bind(null, io);
+  (io as any).emitToUser = emitToUser.bind(null, io);
+  (io as any).emitNewMessage = emitNewMessage.bind(null, io);
+  (io as any).emitConversationCreated = emitConversationCreated.bind(null, io);
+  (io as any).emitMessageUpdated = emitMessageUpdated.bind(null, io);
+  (io as any).emitMessageDeleted = emitMessageDeleted.bind(null, io);
+  (io as any).getConnectedUsers = getConnectedUsers;
+  (io as any).isUserOnline = isUserOnline;
 
   // Store global reference
   globalIo = io;
 
   return io;
 };
-
-// Export function to get socket instance
-export const getSocketInstance = () => globalIo;
 
 export default initializeSocket; 

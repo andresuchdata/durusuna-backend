@@ -3,7 +3,6 @@ import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../utils/logger';
 import { safeJsonParse } from '../utils/json';
-import { getSocketInstance } from './socketService';
 import {
   MessageWithSender,
   SendMessageRequest,
@@ -11,6 +10,7 @@ import {
   MessageSearchParams,
   MessageSearchResponse
 } from '../types/message';
+import { getSocketInstance } from './socketService';
 
 export class MessageService {
   constructor(private messageRepository: MessageRepository) {}

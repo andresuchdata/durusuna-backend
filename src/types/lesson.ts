@@ -1,64 +1,100 @@
 export interface Lesson {
   id: string;
+  class_subject_id: string;
   title: string;
-  content?: string;
-  lesson_date: Date;
-  class_id: string;
-  teacher_id: string;
-  duration_minutes?: number;
-  materials?: string;
+  description?: string;
+  start_time: Date;
+  end_time: Date;
+  location?: string;
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  lesson_objectives?: string;
+  materials: any[];
   homework_assigned?: string;
-  learning_objectives?: string[];
-  status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  homework_due_date?: Date;
+  attendance_data?: Record<string, any>;
+  teacher_notes?: string;
+  settings?: Record<string, any>;
   is_active: boolean;
   created_at: Date;
   updated_at?: Date;
 }
 
-export interface LessonWithClass extends Lesson {
-  class: {
+export interface LessonWithDetails extends Lesson {
+  class_subject?: {
     id: string;
-    name: string;
-    subject: string;
-    school_id: string;
-  };
-}
-
-export interface LessonWithTeacher extends Lesson {
-  teacher: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    avatar_url?: string;
+    class_id: string;
+    subject_id: string;
+    hours_per_week: number;
+    classroom?: string;
+    class?: {
+      id: string;
+      name: string;
+      grade_level?: string;
+      section?: string;
+      academic_year: string;
+    };
+    subject?: {
+      id: string;
+      name: string;
+      subject_code: string;
+      subject_category?: string;
+    };
+    primary_teacher?: {
+      id: string;
+      first_name: string;
+      last_name: string;
+      email: string;
+      avatar_url?: string;
+    };
   };
 }
 
 export interface CreateLessonRequest {
+  class_subject_id: string;
   title: string;
-  content?: string;
-  lesson_date: Date;
-  class_id: string;
-  duration_minutes?: number;
-  materials?: string;
+  description?: string;
+  start_time: Date;
+  end_time: Date;
+  location?: string;
+  lesson_objectives?: string;
+  materials?: any[];
   homework_assigned?: string;
-  learning_objectives?: string[];
+  homework_due_date?: Date;
+  teacher_notes?: string;
+  settings?: Record<string, any>;
 }
 
-export interface UpdateLessonRequest extends Partial<CreateLessonRequest> {
-  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+export interface UpdateLessonRequest {
+  title?: string;
+  description?: string;
+  start_time?: Date;
+  end_time?: Date;
+  location?: string;
+  status?: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  lesson_objectives?: string;
+  materials?: any[];
+  homework_assigned?: string;
+  homework_due_date?: Date;
+  attendance_data?: Record<string, any>;
+  teacher_notes?: string;
+  settings?: Record<string, any>;
+  is_active?: boolean;
 }
 
 export interface LessonQueryParams {
   page?: number;
   limit?: number;
-  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  search?: string;
+  status?: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
   from_date?: string;
   to_date?: string;
+  class_id?: string;
+  subject_id?: string;
+  teacher_id?: string;
 }
 
 export interface LessonsResponse {
-  lessons: Lesson[];
+  lessons: LessonWithDetails[];
   pagination: {
     page: number;
     limit: number;

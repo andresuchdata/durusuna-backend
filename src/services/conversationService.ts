@@ -3,7 +3,6 @@ import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../utils/logger';
 import { safeJsonParse } from '../utils/json';
-import { getSocketInstance } from './socketService';
 import {
   MessageWithSender,
   ConversationWithDetails,
@@ -16,6 +15,7 @@ import {
   MessagePaginationResponse,
   Conversation
 } from '../types/message';
+import { getSocketInstance } from './socketService';
 
 export class ConversationService {
   constructor(private messageRepository: MessageRepository) {}

@@ -87,16 +87,34 @@ export class ClassRepository {
       .where('user_classes.is_active', true)
       .where('users.user_type', 'teacher')
       .where('users.is_active', true)
-      .select(
-        'users.id',
-        'users.first_name',
-        'users.last_name',
-        'users.email',
-        'users.employee_id',
-        'user_classes.role_in_class',
-        'user_classes.created_at as assigned_at'
-      )
+      .select('users.*')
       .orderBy('users.last_name', 'asc');
+  }
+
+  async findClassSubjectsWithDetails(classId: string) {
+    const result = await this.db.raw(`
+      SELECT 
+        cs.id as class_subject_id,
+        cs.hours_per_week,
+        cs.classroom,
+        cs.schedule,
+        s.id as subject_id,
+        s.name as subject_name,
+        s.subject_code,
+        s.description as subject_description,
+        u.id as teacher_id,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.avatar_url
+      FROM class_subjects cs
+      JOIN subjects s ON cs.subject_id = s.id
+      JOIN users u ON cs.primary_teacher_id = u.id
+      WHERE cs.class_id = ? AND cs.is_active = true AND s.is_active = true
+      ORDER BY s.subject_code
+    `, [classId]);
+
+    return result.rows;
   }
 
   private generateUUID(): string {
