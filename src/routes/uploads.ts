@@ -393,4 +393,76 @@ router.get('/serve/:folder/:year/:month/:filename', async (req: Request, res: Re
   }
 });
 
+/**
+ * @route GET /api/uploads/debug-sevalla
+ * @desc Debug Sevalla storage configuration
+ * @access Private
+ */
+router.get('/debug-sevalla', authenticate, async (req: Request, res: Response) => {
+  try {
+    const debugInfo = {
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      
+      // Environment variables check (without exposing secrets)
+      config: {
+        hasS3Endpoint: !!process.env.S3_ENDPOINT,
+        s3EndpointFormat: process.env.S3_ENDPOINT ? 
+          (process.env.S3_ENDPOINT.includes('cloudflarestorage.com') ? 'Cloudflare R2' : 'Other S3') : 
+          'Not configured',
+        hasS3AccessKey: !!process.env.S3_ACCESS_KEY,
+        hasS3SecretKey: !!process.env.S3_SECRET_KEY,
+        hasS3BucketName: !!process.env.S3_BUCKET_NAME,
+        s3Region: process.env.S3_REGION || 'Not set',
+        s3BucketName: process.env.S3_BUCKET_NAME || 'Not set',
+      },
+      
+      // Storage service test
+      storageService: {
+        available: true,
+        isSevallaStorage: storageService.isSevallaStorage(),
+      }
+    };
+
+    // Test basic storage service functionality
+    try {
+      const testValidation = storageService.validateFile('image/jpeg', 1024 * 1024); // 1MB
+      debugInfo.storageService = {
+        ...debugInfo.storageService,
+        validation: testValidation.isValid ? 'Working' : 'Failed',
+        validationErrors: testValidation.errors
+      };
+    } catch (validationError) {
+      debugInfo.storageService = {
+        ...debugInfo.storageService,
+        validation: 'Error',
+        validationError: (validationError as Error).message
+      };
+    }
+
+    // Test S3 client initialization
+    try {
+      const s3Client = storageService.s3Client;
+      debugInfo.storageService = {
+        ...debugInfo.storageService,
+        s3ClientInitialized: !!s3Client
+      };
+    } catch (s3Error) {
+      debugInfo.storageService = {
+        ...debugInfo.storageService,
+        s3ClientInitialized: false,
+        s3Error: (s3Error as Error).message
+      };
+    }
+
+    res.json(debugInfo);
+  } catch (error) {
+    logger.error('Error in debug endpoint:', error);
+    res.status(500).json({
+      error: 'Debug endpoint failed',
+      message: (error as Error).message
+    });
+  }
+});
+
 export default router; 

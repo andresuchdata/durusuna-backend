@@ -180,10 +180,27 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
 
     res.json(response);
   } catch (error) {
-    logger.error('Error uploading class update attachments:', error);
+    logger.error('Error uploading class update attachments:', {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+      fileCount: req.files?.length,
+      classId: req.body?.class_id,
+      userId: authReq.user?.id,
+      // Environment debug info (be careful not to log secrets)
+      environment: {
+        hasS3Endpoint: !!process.env.S3_ENDPOINT,
+        hasS3AccessKey: !!process.env.S3_ACCESS_KEY,
+        hasS3SecretKey: !!process.env.S3_SECRET_KEY,
+        hasS3BucketName: !!process.env.S3_BUCKET_NAME,
+        s3Region: process.env.S3_REGION,
+        nodeEnv: process.env.NODE_ENV
+      }
+    });
+    
     res.status(500).json({ 
       error: 'Failed to upload attachments',
-      message: (error as Error).message 
+      message: (error as Error).message,
+      timestamp: new Date().toISOString()
     });
   }
 });
