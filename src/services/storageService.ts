@@ -163,8 +163,24 @@ class StorageService {
         metadata,
       };
     } catch (error) {
-      logger.error('Error uploading file to S3:', error);
-      throw new Error(`Upload failed: ${(error as Error).message}`);
+      logger.error('Error uploading file to Sevalla:', error);
+      
+      // Enhanced error handling for Sevalla/Cloudflare R2
+      const errorMessage = (error as any)?.message || 'Unknown error';
+      
+      if (errorMessage.includes('NetworkingError') || errorMessage.includes('timeout')) {
+        throw new Error('Network connection failed. Please check your internet connection and try again.');
+      } else if (errorMessage.includes('InvalidAccessKeyId') || errorMessage.includes('SignatureDoesNotMatch')) {
+        throw new Error('Storage authentication failed. Please check your Sevalla credentials.');
+      } else if (errorMessage.includes('NoSuchBucket')) {
+        throw new Error('Storage bucket not found. Please verify your Sevalla bucket configuration.');
+      } else if (errorMessage.includes('AccessDenied')) {
+        throw new Error('Access denied to storage. Please check your Sevalla permissions.');
+      } else if (errorMessage.includes('EntityTooLarge') || errorMessage.includes('PayloadTooLarge')) {
+        throw new Error('File is too large. Please choose a smaller file.');
+      }
+      
+      throw new Error(`Upload failed: ${errorMessage}`);
     }
   }
 
@@ -262,8 +278,19 @@ class StorageService {
       await this._s3Client.send(command);
       return true;
     } catch (error) {
-      logger.error('Error deleting file from S3:', error);
-      throw new Error(`Delete failed: ${(error as Error).message}`);
+      logger.error('Error deleting file from Sevalla:', error);
+      
+      // Enhanced error handling for Sevalla/Cloudflare R2
+      const errorMessage = (error as any)?.message || 'Unknown error';
+      
+      if (errorMessage.includes('NoSuchKey')) {
+        logger.warn(`File not found for deletion: ${key}`);
+        return true; // Consider missing file as successful deletion
+      } else if (errorMessage.includes('AccessDenied')) {
+        throw new Error('Access denied to delete file. Please check your Sevalla permissions.');
+      }
+      
+      throw new Error(`Delete failed: ${errorMessage}`);
     }
   }
 
@@ -280,8 +307,18 @@ class StorageService {
 
       return await getSignedUrl(this._s3Client, command, { expiresIn });
     } catch (error) {
-      logger.error('Error generating presigned URL:', error);
-      throw new Error(`Presigned URL generation failed: ${(error as Error).message}`);
+      logger.error('Error generating presigned URL for Sevalla:', error);
+      
+      // Enhanced error handling for Sevalla/Cloudflare R2
+      const errorMessage = (error as any)?.message || 'Unknown error';
+      
+      if (errorMessage.includes('InvalidAccessKeyId') || errorMessage.includes('SignatureDoesNotMatch')) {
+        throw new Error('Storage authentication failed. Please check your Sevalla credentials.');
+      } else if (errorMessage.includes('NoSuchBucket')) {
+        throw new Error('Storage bucket not found. Please verify your Sevalla bucket configuration.');
+      }
+      
+      throw new Error(`Presigned URL generation failed: ${errorMessage}`);
     }
   }
 
@@ -297,8 +334,20 @@ class StorageService {
 
       return await getSignedUrl(this._s3Client, command, { expiresIn });
     } catch (error) {
-      logger.error('Error generating presigned download URL:', error);
-      throw new Error(`Presigned download URL generation failed: ${(error as Error).message}`);
+      logger.error('Error generating presigned download URL for Sevalla:', error);
+      
+      // Enhanced error handling for Sevalla/Cloudflare R2
+      const errorMessage = (error as any)?.message || 'Unknown error';
+      
+      if (errorMessage.includes('NoSuchKey')) {
+        throw new Error('File not found in storage.');
+      } else if (errorMessage.includes('InvalidAccessKeyId') || errorMessage.includes('SignatureDoesNotMatch')) {
+        throw new Error('Storage authentication failed. Please check your Sevalla credentials.');
+      } else if (errorMessage.includes('NoSuchBucket')) {
+        throw new Error('Storage bucket not found. Please verify your Sevalla bucket configuration.');
+      }
+      
+      throw new Error(`Presigned download URL generation failed: ${errorMessage}`);
     }
   }
 
@@ -329,6 +378,37 @@ class StorageService {
       isDocument,
       sizeFormatted: this.formatFileSize(fileSize),
     };
+  }
+
+  /**
+   * Generate optimized URL for Sevalla/Cloudflare R2
+   * Can use CDN URLs for better performance if configured
+   */
+  generateOptimizedUrl(key: string): string {
+    const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
+    const pathParts = key.split('/');
+    return `${backendUrl}/api/uploads/serve/${pathParts.join('/')}`;
+  }
+
+  /**
+   * Generate direct Sevalla URL (for specific use cases)
+   * Note: This exposes the storage endpoint, use with caution
+   */
+  generateDirectSevallaUrl(key: string): string {
+    const endpoint = process.env.S3_ENDPOINT || '';
+    const bucketName = this.bucketName;
+    
+    // For development and testing, we just return the backend proxied URL
+    // In production, this could be enhanced to use CDN URLs
+    return this.generateOptimizedUrl(key);
+  }
+
+  /**
+   * Check if the storage is Sevalla/Cloudflare R2
+   */
+  isSevallaStorage(): boolean {
+    const endpoint = process.env.S3_ENDPOINT || '';
+    return endpoint.includes('cloudflarestorage.com');
   }
 
   /**
