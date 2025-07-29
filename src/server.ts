@@ -179,14 +179,34 @@ const gracefulShutdown = (signal: string) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Function to run database seeding
+async function runSeedingIfRequested() {
+  if (process.env.RUN_SEED_ON_START === 'true') {
+    try {
+      logger.info('🌱 Running database seeds as requested...');
+      const seedFiles = await db.seed.run();
+      logger.info(`✅ Successfully ran ${seedFiles[0].length} seed files`);
+      seedFiles[0].forEach(file => logger.info(`  - ${file}`));
+      logger.info('🎉 Seeding completed! Container will exit.');
+      process.exit(0);
+    } catch (error) {
+      logger.error('❌ Seeding failed:', error);
+      process.exit(1);
+    }
+  }
+}
+
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
-  logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-  logger.info(`📱 Android emulator: http://10.0.2.2:${PORT}`);
-  logger.info(`🍎 iOS simulator: http://localhost:${PORT}`);
-  logger.info(`📱 Physical devices: http://192.168.1.7:${PORT}`);
-  logger.info(`💡 Find your local IP: ifconfig en0 | grep "inet " | awk '{print $2}'`);
+// Check if we should run seeding before starting the server
+runSeedingIfRequested().then(() => {
+  server.listen(PORT, () => {
+    logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+    logger.info(`📱 Android emulator: http://10.0.2.2:${PORT}`);
+    logger.info(`🍎 iOS simulator: http://localhost:${PORT}`);
+    logger.info(`📱 Physical devices: http://192.168.1.7:${PORT}`);
+    logger.info(`💡 Find your local IP: ifconfig en0 | grep "inet " | awk '{print $2}'`);
+  });
 });
 
 // Make io available globally for routes
