@@ -5,6 +5,9 @@ import logger from '../utils/logger';
 const connectedUsers = new Map(); // userId -> { socketId, isOnline, lastSeen }
 const conversationRooms = new Map(); // conversationId -> Set of userIds
 
+// Global socket instance
+let globalIo = null;
+
 const socketAuth = (socket, next) => {
   try {
     logger.info('🔐 Socket authentication attempt', {
@@ -414,5 +417,8 @@ const initializeSocket = (io) => {
 
   return io;
 };
+
+// Export function to get socket instance
+export const getSocketInstance = () => globalIo;
 
 export default initializeSocket; 

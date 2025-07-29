@@ -188,13 +188,21 @@ export class MessageService {
       logger.error('Error updating message cache:', cacheError);
     }
 
-    // Emit real-time message to conversation participants
+    // Emit real-time message
     try {
       const io = getSocketInstance();
-      io.emitNewMessage(formattedMessage, conversationId);
-      logger.info(`Real-time message emitted for conversation ${conversationId}`);
+      if (io) {
+        io.emitNewMessage(formattedMessage, conversationId);
+        logger.info('✅ MessageService: Emitted real-time message', {
+          conversationId,
+          messageId: formattedMessage.id,
+          content: formattedMessage.content
+        });
+      } else {
+        logger.warn('⚠️ MessageService: Socket instance not available for real-time emission');
+      }
     } catch (socketError) {
-      logger.error('Error emitting real-time message:', socketError);
+      logger.error('❌ MessageService: Error emitting real-time message:', socketError);
     }
 
     return {

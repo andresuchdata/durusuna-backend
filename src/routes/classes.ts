@@ -227,7 +227,8 @@ router.get('/:classId/updates', authenticate, async (req: AuthenticatedRequest, 
     const updates = await query
       .orderBy([
         { column: 'class_updates.is_pinned', order: 'desc' },
-        { column: 'class_updates.updated_at', order: 'desc' }
+        { column: 'class_updates.updated_at', order: 'desc' },
+        { column: 'class_updates.created_at', order: 'desc' }
       ])
       .limit(parseInt(limit))
       .offset(offset);
