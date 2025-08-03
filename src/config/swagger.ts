@@ -210,6 +210,39 @@ const swaggerDefinition: SwaggerDefinition = {
           environment: {
             type: 'string',
             description: 'Current environment'
+          },
+          services: {
+            type: 'object',
+            description: 'Status of backend services',
+            properties: {
+              websocket: {
+                type: 'object',
+                description: 'Websocket service status',
+                properties: {
+                  status: {
+                    type: 'string',
+                    enum: ['online', 'offline', 'error'],
+                    description: 'Websocket service status'
+                  },
+                  healthy: {
+                    type: 'boolean',
+                    description: 'Whether the websocket service is healthy'
+                  },
+                  connectedUsers: {
+                    type: 'integer',
+                    description: 'Number of currently connected users'
+                  },
+                  activeConversations: {
+                    type: 'integer',
+                    description: 'Number of active conversation rooms'
+                  },
+                  message: {
+                    type: 'string',
+                    description: 'Status message'
+                  }
+                }
+              }
+            }
           }
         }
       },

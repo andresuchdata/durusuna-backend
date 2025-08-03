@@ -419,6 +419,69 @@ const isUserOnline = (userId: string) => {
   return userData ? userData.isOnline : false;
 };
 
+// === WEBSOCKET SERVICE STATUS FUNCTIONS ===
+
+/**
+ * Check if the websocket service is running and healthy
+ */
+export const getWebsocketStatus = () => {
+  try {
+    if (!globalIo) {
+      return {
+        status: 'offline',
+        healthy: false,
+        message: 'Socket.io instance not initialized',
+        connectedUsers: 0,
+        activeConversations: 0
+      };
+    }
+
+    const connectedCount = connectedUsers.size;
+    const activeConversations = conversationRooms.size;
+    
+    return {
+      status: 'online',
+      healthy: true,
+      message: 'Socket.io service is running',
+      connectedUsers: connectedCount,
+      activeConversations: activeConversations,
+      transport: globalIo.engine.transports || ['polling', 'websocket']
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      status: 'error',
+      healthy: false,
+      message: `Socket.io service error: ${errorMessage}`,
+      connectedUsers: 0,
+      activeConversations: 0
+    };
+  }
+};
+
+/**
+ * Log websocket service status during startup
+ */
+export const logWebsocketStatus = () => {
+  const status = getWebsocketStatus();
+  
+  if (status.healthy) {
+    logger.info('✅ Websocket service is healthy', {
+      status: status.status,
+      connectedUsers: status.connectedUsers,
+      activeConversations: status.activeConversations,
+      transports: status.transport
+    });
+  } else {
+    logger.error('❌ Websocket service is not healthy', {
+      status: status.status,
+      message: status.message
+    });
+  }
+  
+  return status;
+};
+
 // Export getter for global io instance
 export const getSocketInstance = (): Server => {
   if (!globalIo) {

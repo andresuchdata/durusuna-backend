@@ -26,7 +26,7 @@ import conversationRoutes from './routes/conversations';
 import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
 import notificationRoutes from './routes/notifications';
-import socketHandler from './services/socketService';
+import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 
 // Create Express app
 const app = express();
@@ -59,7 +59,7 @@ app.use(helmet({
 // Rate limiting - More lenient for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 1000 : 5000, // 1000 for production, 5000 for development
+  max: process.env.NODE_ENV === 'production' ? 5000 : 10000, // 5000 for production, 10000 for development
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -132,11 +132,22 @@ app.use('/api/notifications', notificationRoutes);
  */
 // Health check endpoint
 app.get('/health', (req, res) => {
+  const websocketStatus = getWebsocketStatus();
+  
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    services: {
+      websocket: {
+        status: websocketStatus.status,
+        healthy: websocketStatus.healthy,
+        connectedUsers: websocketStatus.connectedUsers,
+        activeConversations: websocketStatus.activeConversations,
+        message: websocketStatus.message
+      }
+    }
   });
 });
 
@@ -206,6 +217,11 @@ runSeedingIfRequested().then(() => {
     logger.info(`🍎 iOS simulator: http://localhost:${PORT}`);
     logger.info(`📱 Physical devices: http://192.168.1.7:${PORT}`);
     logger.info(`💡 Find your local IP: ifconfig en0 | grep "inet " | awk '{print $2}'`);
+    
+    // Log websocket service status
+    setTimeout(() => {
+      logWebsocketStatus();
+    }, 100); // Small delay to ensure socket.io is fully initialized
   });
 });
 
