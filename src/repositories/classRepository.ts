@@ -96,11 +96,11 @@ export class ClassRepository {
       SELECT 
         cs.id as class_subject_id,
         cs.hours_per_week,
-        cs.classroom,
+        cs.room as classroom,
         cs.schedule,
         s.id as subject_id,
         s.name as subject_name,
-        s.subject_code,
+        s.code as subject_code,
         s.description as subject_description,
         u.id as teacher_id,
         u.first_name,
@@ -111,7 +111,7 @@ export class ClassRepository {
       JOIN subjects s ON cs.subject_id = s.id
       JOIN users u ON cs.teacher_id = u.id
       WHERE cs.class_id = ? AND cs.is_active = true AND s.is_active = true
-      ORDER BY s.subject_code
+      ORDER BY s.code
     `, [classId]);
 
     return result.rows;
