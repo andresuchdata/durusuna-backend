@@ -109,7 +109,7 @@ export class ClassRepository {
         u.avatar_url
       FROM class_subjects cs
       JOIN subjects s ON cs.subject_id = s.id
-      JOIN users u ON cs.primary_teacher_id = u.id
+      JOIN users u ON cs.teacher_id = u.id
       WHERE cs.class_id = ? AND cs.is_active = true AND s.is_active = true
       ORDER BY s.subject_code
     `, [classId]);
