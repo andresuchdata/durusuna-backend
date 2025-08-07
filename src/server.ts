@@ -32,17 +32,6 @@ import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './service
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.io with CORS configuration
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Allow all origins for development
-    credentials: true,
-    methods: ["GET", "POST"]
-  },
-  allowEIO3: true, // Allow Engine.IO v3 clients
-  transports: ['polling', 'websocket']
-});
-
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
@@ -75,11 +64,61 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// CORS configuration
+// CORS configuration - Secure implementation
+const getAllowedOrigins = () => {
+  if (process.env.NODE_ENV === 'production') {
+    // In production, use environment variables for security
+    const corsOrigin = process.env.CORS_ORIGIN;
+    
+    if (!corsOrigin) {
+      logger.error('❌ CORS_ORIGIN not specified for production - blocking all origins');
+      return [];
+    }
+    
+    if (corsOrigin === "*") {
+      // Only allow wildcard if explicitly set (not recommended for production)
+      logger.warn('⚠️ CORS_ORIGIN is set to "*" - this is not secure for production');
+      return "*";
+    }
+    
+    // Split comma-separated origins and validate they're HTTPS
+    const origins = corsOrigin.split(',').map(origin => origin.trim());
+    const validOrigins = origins.filter(origin => {
+      if (!origin.startsWith('https://') && !origin.startsWith('http://localhost')) {
+        logger.error(`❌ Invalid origin in production: ${origin} - must use HTTPS or localhost`);
+        return false;
+      }
+      return true;
+    });
+    
+    logger.info(`✅ Production CORS origins: ${validOrigins.join(', ')}`);
+    return validOrigins;
+  }
+  
+  // Development origins
+  return ["http://localhost:3000", "http://localhost:3001"];
+};
+
+const allowedOrigins = getAllowedOrigins();
+
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001"],
-  credentials: true
+  origin: allowedOrigins,
+  credentials: true,
+  optionsSuccessStatus: 200, // For legacy browser support
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Initialize Socket.io with secure CORS configuration (after CORS setup)
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST"]
+  },
+  allowEIO3: true, // Allow Engine.IO v3 clients
+  transports: ['polling', 'websocket']
+});
 
 app.use(compression());
 app.use(morgan('combined'));
