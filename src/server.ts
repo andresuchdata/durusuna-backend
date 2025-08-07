@@ -32,6 +32,12 @@ import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './service
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy for Railway deployment
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+  logger.info('✅ Trust proxy enabled for production');
+}
+
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
