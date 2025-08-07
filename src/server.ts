@@ -256,18 +256,24 @@ const PORT = process.env.PORT || 3001;
 
 // Check if we should run seeding before starting the server
 runSeedingIfRequested().then(() => {
+  logger.info('🎯 About to start server listening...');
   server.listen(PORT, () => {
     logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-    logger.info(`📱 Android emulator: http://10.0.2.2:${PORT}`);
-    logger.info(`🍎 iOS simulator: http://localhost:${PORT}`);
-    logger.info(`📱 Physical devices: http://192.168.1.7:${PORT}`);
-    logger.info(`💡 Find your local IP: ifconfig en0 | grep "inet " | awk '{print $2}'`);
+    logger.info(`🌐 Public URL: https://durusuna-backend-production.up.railway.app`);
+    logger.info(`🔗 Socket.IO endpoint: wss://durusuna-backend-production.up.railway.app/socket.io/`);
+    
+    // Log CORS status
+    logger.info(`🛡️ CORS Origins: ${Array.isArray(allowedOrigins) ? allowedOrigins.join(', ') : allowedOrigins}`);
     
     // Log websocket service status
     setTimeout(() => {
+      logger.info('🔌 Initializing WebSocket status check...');
       logWebsocketStatus();
     }, 100); // Small delay to ensure socket.io is fully initialized
   });
+}).catch(error => {
+  logger.error('❌ Failed to start server:', error);
+  process.exit(1);
 });
 
 // Make io available globally for routes
