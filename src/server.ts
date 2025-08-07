@@ -16,6 +16,9 @@ dotenv.config();
 // Import mixed JS/TS files
 import db from './config/database';
 import logger from './utils/logger';
+
+// Debug: Log that we've reached import completion
+logger.info('🔧 All imports loaded successfully');
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import schoolRoutes from './routes/schools';
@@ -28,9 +31,14 @@ import classUpdatesRoutes from './routes/class_updates';
 import notificationRoutes from './routes/notifications';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 
+// Debug: Log that all imports completed
+logger.info('🎯 All route and service imports completed');
+
 // Create Express app
 const app = express();
 const server = http.createServer(app);
+
+logger.info('🌐 Express app and HTTP server created');
 
 // Trust proxy for Railway deployment
 if (process.env.NODE_ENV === 'production') {
@@ -106,6 +114,7 @@ const getAllowedOrigins = () => {
 };
 
 const allowedOrigins = getAllowedOrigins();
+logger.info(`🛡️ CORS Origins determined: ${Array.isArray(allowedOrigins) ? allowedOrigins.join(', ') : allowedOrigins}`);
 
 app.use(cors({
   origin: allowedOrigins,
@@ -114,8 +123,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+logger.info('✅ Express CORS middleware configured');
 
 // Initialize Socket.io with secure CORS configuration (after CORS setup)
+logger.info('🔌 Initializing Socket.IO server...');
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -125,6 +136,7 @@ const io = new Server(server, {
   allowEIO3: true, // Allow Engine.IO v3 clients
   transports: ['polling', 'websocket']
 });
+logger.info('✅ Socket.IO server initialized');
 
 app.use(compression());
 app.use(morgan('combined'));

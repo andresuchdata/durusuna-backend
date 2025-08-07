@@ -1,10 +1,10 @@
 {
   "name": "durusuna-backend",
   "version": "1.0.0",
-  "description": "Backend API for Durusuna school communication app",
+  "description": "Backend API for Durusuna school communication app. Set DB_RESET_MODE=true to reset database on startup.",
   "main": "src/server.ts",
   "scripts": {
-    "start": "bun src/server.ts",
+    "start": "if [ \"$DB_RESET_MODE\" = \"true\" ]; then echo '🔥 DB_RESET_MODE detected - Running database reset...'; bun run db:force-reset; echo '✅ Database reset completed - Starting server...'; fi && bun src/server.ts",
     "start:seed": "bun scripts/migrate.ts seed && echo 'Seeding completed, container will exit'",
     "dev": "bun --watch src/server.ts",
     "test": "bun test",
@@ -24,6 +24,7 @@
     "db:rollback:all": "bun knex migrate:rollback --all --knexfile knexfile.ts",
     "db:reset": "bun run db:rollback:all && bun run db:migrate && bun run db:seed",
     "db:force-reset": "bun scripts/reset.ts && bun run db:migrate && bun run db:seed",
+    "start:reset": "echo '🔥 Starting with database reset...' && bun run db:force-reset && echo '✅ Database reset completed - Starting server...' && bun src/server.ts",
     "test:sevalla": "bun scripts/test-sevalla-connection.ts",
     "debug:railway": "bun scripts/debug-railway-sevalla.ts"
   },
