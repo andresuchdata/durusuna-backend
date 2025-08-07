@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { ConversationService } from '../services/conversationService';
+import { MessageService } from '../services/messageService';
 import { MessageRepository } from '../repositories/messageRepository';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
@@ -15,6 +16,7 @@ const router = express.Router();
 // Initialize service layer
 const messageRepository = new MessageRepository(db);
 const conversationService = new ConversationService(messageRepository);
+const messageService = new MessageService(messageRepository);
 
 /**
  * @route GET /api/conversations
@@ -184,6 +186,76 @@ router.put('/:conversationId/mark-read', authenticate, async (req: Request, res:
     
     logger.error('Error marking conversation as read:', error);
     res.status(500).json({ error: 'Failed to mark conversation as read' });
+  }
+});
+
+/**
+ * @route DELETE /api/conversations/:conversationId/messages/:messageId
+ * @desc Delete a single message (soft delete)
+ * @access Private
+ */
+router.delete('/:conversationId/messages/:messageId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { messageId } = req.params;
+
+    const result = await messageService.deleteMessage(messageId, authenticatedReq.user);
+
+    if (!result.success) {
+      if (result.message === 'Message not found or access denied') {
+        return res.status(404).json({ error: result.message });
+      }
+      return res.status(400).json({ error: result.message || 'Failed to delete message' });
+    }
+
+    res.json({
+      message: 'Message deleted successfully',
+      message_id: messageId
+    });
+
+  } catch (error) {
+    logger.error('Error deleting message:', error);
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+/**
+ * @route DELETE /api/conversations/:conversationId/messages/batch
+ * @desc Delete multiple messages in batch (soft delete)
+ * @access Private
+ */
+router.delete('/:conversationId/messages/batch', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { message_ids } = req.body;
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    if (message_ids.length > 50) {
+      return res.status(400).json({ error: 'Maximum 50 messages can be deleted at once' });
+    }
+
+    const result = await messageService.deleteBatchMessages(message_ids, authenticatedReq.user);
+
+    if (result.deletedCount === 0 && result.failedCount > 0) {
+      return res.status(404).json({ 
+        error: 'No messages were deleted',
+        deleted_count: 0,
+        failed_count: result.failedCount
+      });
+    }
+
+    res.json({
+      message: `${result.deletedCount} message${result.deletedCount !== 1 ? 's' : ''} deleted successfully`,
+      deleted_count: result.deletedCount,
+      failed_count: result.failedCount
+    });
+
+  } catch (error) {
+    logger.error('Error deleting batch messages:', error);
+    res.status(500).json({ error: 'Failed to delete messages' });
   }
 });
 

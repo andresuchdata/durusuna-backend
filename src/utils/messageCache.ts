@@ -182,6 +182,20 @@ class MessageCache {
   }
 
   /**
+   * Remove a message from cached conversation
+   */
+  removeMessage(conversationId: string, messageId: string): void {
+    const cached = this.recentMessages.get(conversationId);
+    if (!cached) return;
+    
+    // Remove message from cached messages
+    cached.messages = cached.messages.filter(msg => msg.id !== messageId);
+    
+    // Update timestamp
+    cached.timestamp = Date.now();
+  }
+
+  /**
    * Get cached conversation list for a user
    */
   getUserConversations(userId: string): ConversationData[] | null {

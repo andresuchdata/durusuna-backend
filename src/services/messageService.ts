@@ -15,6 +15,120 @@ import { getSocketInstance } from './socketService';
 export class MessageService {
   constructor(private messageRepository: MessageRepository) {}
 
+  async deleteMessage(
+    messageId: string,
+    currentUser: AuthenticatedUser
+  ): Promise<{ success: boolean; message?: string }> {
+    try {
+      // Check if message exists and belongs to user
+      const message = await this.messageRepository.findMessageForDeletion(messageId, currentUser.id);
+      
+      if (!message) {
+        return { success: false, message: 'Message not found or access denied' };
+      }
+
+      // Delete the message
+      const deleted = await this.messageRepository.deleteMessage(messageId, currentUser.id);
+      
+      if (!deleted) {
+        return { success: false, message: 'Failed to delete message' };
+      }
+
+      // Update cache - remove message
+      try {
+        messageCache.removeMessage(message.conversation_id, messageId);
+        
+        // Invalidate conversation lists for participants
+        const participantUserIds = await this.messageRepository.findParticipantUserIds(message.conversation_id);
+        participantUserIds.forEach(userId => {
+          messageCache.invalidateUser(userId);
+        });
+      } catch (cacheError) {
+        logger.error('Error updating cache after message deletion:', cacheError);
+      }
+
+      // Emit real-time deletion event
+      try {
+        const io = getSocketInstance();
+        if (io) {
+          io.emitMessageDeleted(messageId, message.conversation_id);
+          logger.info('✅ MessageService: Emitted message deletion event', {
+            messageId,
+            conversationId: message.conversation_id
+          });
+        }
+      } catch (socketError) {
+        logger.error('❌ MessageService: Error emitting deletion event:', socketError);
+      }
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Error deleting message:', error);
+      return { success: false, message: 'Internal server error' };
+    }
+  }
+
+  async deleteBatchMessages(
+    messageIds: string[],
+    currentUser: AuthenticatedUser
+  ): Promise<{ deletedCount: number; failedCount: number; message?: string }> {
+    try {
+      if (!messageIds || messageIds.length === 0) {
+        return { deletedCount: 0, failedCount: 0, message: 'No message IDs provided' };
+      }
+
+      // Limit batch size for performance
+      if (messageIds.length > 50) {
+        return { deletedCount: 0, failedCount: messageIds.length, message: 'Too many messages (max 50)' };
+      }
+
+      const result = await this.messageRepository.deleteBatchMessages(messageIds, currentUser.id);
+      
+      // Get conversation IDs for cache invalidation
+      const conversationIds = new Set<string>();
+      
+      // For successful deletions, emit real-time events and update cache
+      if (result.deletedCount > 0) {
+        try {
+          const validMessageIds = messageIds.filter(id => !result.failedIds.includes(id));
+          
+          // Get conversation IDs for the successfully deleted messages
+          for (const messageId of validMessageIds) {
+            // Note: We'd need to modify this to get conversation IDs efficiently
+            // For now, we'll invalidate all user conversations
+          }
+
+          // Update cache - invalidate conversations for user
+          messageCache.invalidateUser(currentUser.id);
+
+          // Emit real-time batch deletion event
+          const io = getSocketInstance();
+          if (io) {
+            io.emitBatchMessagesDeleted(validMessageIds);
+            logger.info('✅ MessageService: Emitted batch deletion event', {
+              deletedCount: result.deletedCount,
+              messageIds: validMessageIds.slice(0, 5) // Log first 5 for brevity
+            });
+          }
+        } catch (cacheError) {
+          logger.error('Error updating cache after batch deletion:', cacheError);
+        }
+      }
+
+      return {
+        deletedCount: result.deletedCount,
+        failedCount: result.failedIds.length
+      };
+    } catch (error) {
+      logger.error('Error deleting batch messages:', error);
+      return { 
+        deletedCount: 0, 
+        failedCount: messageIds.length, 
+        message: 'Internal server error' 
+      };
+    }
+  }
+
   async sendMessage(
     messageData: SendMessageRequest,
     currentUser: AuthenticatedUser

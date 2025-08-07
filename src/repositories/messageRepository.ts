@@ -46,6 +46,58 @@ export interface MessageQueryOptions {
 export class MessageRepository {
   constructor(private db: Knex) {}
 
+  // Message deletion methods
+  async deleteMessage(messageId: string, userId: string): Promise<boolean> {
+    const result = await this.db('messages')
+      .where('id', messageId)
+      .andWhere('sender_id', userId) // Only allow users to delete their own messages
+      .andWhere('is_deleted', false)
+      .update({
+        is_deleted: true,
+        deleted_at: new Date(),
+        updated_at: new Date()
+      });
+
+    return result > 0;
+  }
+
+  async deleteBatchMessages(messageIds: string[], userId: string): Promise<{ deletedCount: number; failedIds: string[] }> {
+    // Get messages that belong to the user and aren't already deleted
+    const validMessages = await this.db('messages')
+      .select('id')
+      .whereIn('id', messageIds)
+      .andWhere('sender_id', userId)
+      .andWhere('is_deleted', false);
+
+    const validMessageIds = validMessages.map(m => m.id);
+    const failedIds = messageIds.filter(id => !validMessageIds.includes(id));
+
+    if (validMessageIds.length === 0) {
+      return { deletedCount: 0, failedIds };
+    }
+
+    const deletedCount = await this.db('messages')
+      .whereIn('id', validMessageIds)
+      .update({
+        is_deleted: true,
+        deleted_at: new Date(),
+        updated_at: new Date()
+      });
+
+    return { deletedCount, failedIds };
+  }
+
+  async findMessageForDeletion(messageId: string, userId: string): Promise<{ id: string; conversation_id: string; sender_id: string } | null> {
+    const message = await this.db('messages')
+      .select('id', 'conversation_id', 'sender_id')
+      .where('id', messageId)
+      .andWhere('sender_id', userId)
+      .andWhere('is_deleted', false)
+      .first();
+
+    return message || null;
+  }
+
   // Conversation methods
   async findConversationsByUserId(userId: string, options: MessageQueryOptions = {}): Promise<any[]> {
     const { page = 1, limit = 15 } = options;

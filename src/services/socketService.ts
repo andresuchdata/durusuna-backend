@@ -407,6 +407,16 @@ const emitMessageDeleted = (io: Server, messageId: string, conversationId: strin
   });
 };
 
+const emitBatchMessagesDeleted = (io: Server, messageIds: string[]) => {
+  // For batch delete, we emit to all users since we don't have conversation IDs readily available
+  // In a production app, you'd want to optimize this by getting conversation IDs
+  io.emit('messages:batch_deleted', {
+    messageIds: messageIds,
+    action: 'batch_deleted',
+    timestamp: new Date().toISOString(),
+  });
+};
+
 const getConnectedUsers = () => {
   return Array.from(connectedUsers.entries()).map(([userId, data]) => ({
     userId,
@@ -517,6 +527,7 @@ const initializeSocket = (io: Server) => {
   (io as any).emitConversationCreated = emitConversationCreated.bind(null, io);
   (io as any).emitMessageUpdated = emitMessageUpdated.bind(null, io);
   (io as any).emitMessageDeleted = emitMessageDeleted.bind(null, io);
+  (io as any).emitBatchMessagesDeleted = emitBatchMessagesDeleted.bind(null, io);
   (io as any).getConnectedUsers = getConnectedUsers;
   (io as any).isUserOnline = isUserOnline;
 
