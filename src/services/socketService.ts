@@ -240,6 +240,30 @@ const handleConnection = (socket: Socket) => {
     });
   });
 
+  // Presence snapshot query: allow clients to request current presence state of another user
+  socket.on('presence:query', (data: { userId: string }) => {
+    try {
+      const targetUserId = data?.userId;
+      if (!targetUserId) {
+        return;
+      }
+
+      const target = connectedUsers.get(targetUserId);
+      const snapshot = {
+        userId: targetUserId,
+        isOnline: target ? target.isOnline : false,
+        timestamp: new Date().toISOString(),
+        lastSeen: target?.lastSeen ? target.lastSeen.toISOString() : undefined,
+      };
+
+      // Emit only to the requester
+      socket.emit('presence:snapshot', snapshot);
+      logger.info(`📦 Sent presence snapshot for ${targetUserId} to ${userId}`, snapshot);
+    } catch (err) {
+      logger.error('❌ Failed to handle presence:query', { error: (err as Error).message });
+    }
+  });
+
   // === REACTIONS ===
   
   socket.on('reaction:add', (data: ReactionData) => {
@@ -455,7 +479,7 @@ export const getWebsocketStatus = () => {
       message: 'Socket.io service is running',
       connectedUsers: connectedCount,
       activeConversations: activeConversations,
-      transport: globalIo.engine.transports || ['polling', 'websocket']
+      transport: (globalIo as any).engine?.transports || ['polling', 'websocket']
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
