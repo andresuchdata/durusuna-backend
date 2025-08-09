@@ -139,7 +139,8 @@ export class MessageService {
       content,
       message_type = 'text',
       reply_to_id,
-      metadata
+      metadata,
+      client_message_id
     } = messageData;
 
     let conversationId = conversation_id;
@@ -213,16 +214,24 @@ export class MessageService {
       }
     }
 
-    // Create message
-    const message = await this.messageRepository.createMessage({
-      conversation_id: conversationId,
-      sender_id: currentUser.id,
-      receiver_id: receiverId || undefined,
-      content: content || undefined,
-      message_type,
-      reply_to_id: reply_to_id || undefined,
-      metadata
-    });
+    // Idempotency by client_message_id if provided
+    let message: any | null = null;
+    if (client_message_id) {
+      message = await this.messageRepository.findMessageByClientMessageId(client_message_id, conversationId);
+    }
+
+    if (!message) {
+      message = await this.messageRepository.createMessage({
+        conversation_id: conversationId,
+        sender_id: currentUser.id,
+        receiver_id: receiverId || undefined,
+        content: content || undefined,
+        message_type,
+        reply_to_id: reply_to_id || undefined,
+        metadata,
+        client_message_id: client_message_id || undefined,
+      });
+    }
 
     // Get complete message data with sender info
     const completeMessage = await this.messageRepository.findMessageWithSender(message.id);

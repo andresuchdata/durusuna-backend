@@ -122,6 +122,7 @@ export const messageSchema = Joi.object({
   receiver_id: Joi.string().uuid().optional().messages({
     'string.guid': 'Receiver ID must be a valid UUID'
   }),
+  client_message_id: Joi.string().max(128).optional(),
   content: Joi.string().max(5000).optional().messages({
     'string.max': 'Message content cannot exceed 5000 characters'
   }),

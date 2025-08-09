@@ -34,6 +34,7 @@ export interface CreateMessageData {
   message_type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
   reply_to_id?: string;
   metadata?: Record<string, any>;
+  client_message_id?: string; // client-generated id for idempotency
 }
 
 export interface MessageQueryOptions {
@@ -358,6 +359,14 @@ export class MessageRepository {
       .returning('*');
 
     return message;
+  }
+
+  async findMessageByClientMessageId(clientMessageId: string, conversationId: string): Promise<any | null> {
+    const msg = await this.db('messages')
+      .where('client_message_id', clientMessageId)
+      .andWhere('conversation_id', conversationId)
+      .first();
+    return msg || null;
   }
 
   async findMessageWithSender(messageId: string): Promise<any | null> {

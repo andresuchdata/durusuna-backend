@@ -1,6 +1,7 @@
 export interface Message {
   id: string;
   conversation_id: string;
+  client_message_id?: string; // client-generated id for idempotency/dedupe
   sender_id: string;
   receiver_id?: string;
   content?: string;
@@ -125,6 +126,7 @@ export interface ConversationWithDetails extends Conversation {
 export interface SendMessageRequest {
   conversation_id?: string;
   receiver_id?: string;
+  client_message_id?: string;
   content?: string;
   message_type?: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
   reply_to_id?: string;
