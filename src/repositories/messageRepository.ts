@@ -247,6 +247,7 @@ export class MessageRepository {
       .select(
         'messages.id',
         'messages.conversation_id',
+        'messages.client_message_id',
         'messages.sender_id',
         'messages.receiver_id',
         'messages.content',
@@ -309,6 +310,7 @@ export class MessageRepository {
       .where('messages.is_deleted', false)
       .select(
         'messages.id',
+        'messages.client_message_id',
         'messages.sender_id',
         'messages.content',
         'messages.message_type',
@@ -434,6 +436,7 @@ export class MessageRepository {
     return await query
       .select(
         'messages.*',
+        'messages.client_message_id',
         'sender.first_name as sender_first_name',
         'sender.last_name as sender_last_name',
         'sender.avatar_url as sender_avatar',
