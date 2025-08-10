@@ -93,4 +93,37 @@ export class UserRepository {
     
     return user || null;
   }
+
+  async findStudentsBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
+    const students = await this.db('users')
+      .select('*')
+      .where('school_id', schoolId)
+      .where('user_type', 'student')
+      .where('is_active', true)
+      .orderBy('last_name', 'asc');
+    
+    return students.map(({ password, ...user }) => user);
+  }
+
+  async findTeachersBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
+    const teachers = await this.db('users')
+      .select('*')
+      .where('school_id', schoolId)
+      .where('user_type', 'teacher')
+      .where('is_active', true)
+      .orderBy('last_name', 'asc');
+    
+    return teachers.map(({ password, ...user }) => user);
+  }
+
+  async findUsersByTypeAndSchool(schoolId: string, userType: string): Promise<Omit<User, 'password'>[]> {
+    const users = await this.db('users')
+      .select('*')
+      .where('school_id', schoolId)
+      .where('user_type', userType)
+      .where('is_active', true)
+      .orderBy('last_name', 'asc');
+    
+    return users.map(({ password, ...user }) => user);
+  }
 } 

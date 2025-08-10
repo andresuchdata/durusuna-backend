@@ -29,16 +29,23 @@ export class LessonService {
   constructor(private lessonRepository: LessonRepository) {}
 
   async getAllLessons(currentUser: AuthenticatedUser): Promise<Lesson[]> {
-    // Get lessons based on user role and school
-    if (currentUser.role === 'teacher') {
-      return await this.lessonRepository.findByTeacherId(currentUser.id);
-    } else {
+    // Admins can see all lessons in their school
+    if (currentUser.role === 'admin') {
       return await this.lessonRepository.findBySchoolId(currentUser.school_id);
     }
+    
+    // Teachers see only their lessons
+    if (currentUser.user_type === 'teacher') {
+      return await this.lessonRepository.findByTeacherId(currentUser.id);
+    }
+    
+    // Students and other users see lessons in their school
+    return await this.lessonRepository.findBySchoolId(currentUser.school_id);
   }
 
   async getLessonsByClass(classId: string, currentUser: AuthenticatedUser): Promise<Lesson[]> {
-    // TODO: Verify user has access to this class
+    // Verify user has access to this class
+    await this.verifyClassAccess(classId, currentUser);
     return await this.lessonRepository.findByClassId(classId);
   }
 
@@ -48,17 +55,48 @@ export class LessonService {
       throw new Error('Lesson not found');
     }
 
-    // Check if user has access to this lesson - basic check for now
-    // In a real app, you'd check class membership or school access
+    // Verify user has access to the lesson's class
+    await this.verifyClassAccess(lesson.class_id, currentUser);
     
     return lesson;
   }
 
-  async createLesson(data: CreateLessonData, currentUser: AuthenticatedUser): Promise<Lesson> {
-    // Only teachers can create lessons
-    if (currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
-      throw new Error('Only teachers can create lessons');
+  private async verifyClassAccess(classId: string, currentUser: AuthenticatedUser): Promise<void> {
+    // Import classRepository to check class access
+    const { ClassRepository } = await import('../repositories/classRepository');
+    const { UserClassRepository } = await import('../repositories/userClassRepository');
+    const db = await import('../config/database');
+    
+    const classRepository = new ClassRepository(db.default);
+    const userClassRepository = new UserClassRepository(db.default);
+
+    // Admins can access all classes in their school
+    if (currentUser.role === 'admin') {
+      const classItem = await classRepository.findById(classId);
+      if (!classItem) {
+        throw new Error('Class not found');
+      }
+      if (classItem.school_id !== currentUser.school_id) {
+        throw new Error('Access denied to this class');
+      }
+      return;
     }
+
+    // Regular users need to be enrolled in the class
+    const hasAccess = await userClassRepository.checkUserClassAccess(currentUser.id, classId);
+    if (!hasAccess) {
+      throw new Error('Access denied to this class');
+    }
+  }
+
+  async createLesson(data: CreateLessonData, currentUser: AuthenticatedUser): Promise<Lesson> {
+    // Only admins and teachers can create lessons
+    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
+      throw new Error('Only admins and teachers can create lessons');
+    }
+
+    // Verify access to the class
+    await this.verifyClassAccess(data.class_id, currentUser);
 
     // Convert the data to match database schema
     const lessonData = {
@@ -89,9 +127,12 @@ export class LessonService {
       throw new Error('Lesson not found');
     }
 
-    // Check permissions - simplified for now
-    if (currentUser.role !== 'admin') {
-      // TODO: Add proper permission checking based on class access
+    // Verify access to the lesson's class
+    await this.verifyClassAccess(existingLesson.class_id, currentUser);
+
+    // Only admins and teachers can update lessons
+    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
+      throw new Error('Only admins and teachers can update lessons');
     }
 
     await this.lessonRepository.update(lessonId, data);
@@ -110,9 +151,12 @@ export class LessonService {
       throw new Error('Lesson not found');
     }
 
-    // Check permissions - simplified for now
-    if (currentUser.role !== 'admin') {
-      // TODO: Add proper permission checking based on class access
+    // Verify access to the lesson's class
+    await this.verifyClassAccess(existingLesson.class_id, currentUser);
+
+    // Only admins and teachers can delete lessons
+    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
+      throw new Error('Only admins and teachers can delete lessons');
     }
 
     await this.lessonRepository.delete(lessonId);

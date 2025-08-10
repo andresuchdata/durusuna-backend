@@ -47,8 +47,8 @@ export class SchoolService {
 
   async getSchoolById(schoolId: string, currentUser: AuthenticatedUser): Promise<School> {
     // Check if user has access to this school
-    if (currentUser.role !== 'admin' && currentUser.school_id !== schoolId) {
-      throw new Error('Access denied');
+    if (currentUser.school_id !== schoolId) {
+      throw new Error('Access denied: Can only access your own school');
     }
 
     const school = await this.schoolRepository.findById(schoolId);

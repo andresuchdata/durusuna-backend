@@ -24,11 +24,44 @@ export class ClassService {
   }
 
   async getAllClasses(currentUser: AuthenticatedUser): Promise<Class[]> {
-    // Users can only see classes in their school
+    // Admins and regular users can see all classes in their school
     return await this.classRepository.findBySchoolId(currentUser.school_id);
   }
 
   async getUserClasses(currentUser: AuthenticatedUser): Promise<ClassWithDetails[]> {
+    // Admins get all classes in their school, others get only enrolled classes
+    if (currentUser.role === 'admin') {
+      const allClasses = await this.classRepository.findBySchoolId(currentUser.school_id);
+      
+      // Get additional details for all classes
+      const classesWithDetails = await Promise.all(
+        allClasses.map(async (classItem) => {
+          const [studentCount, teacherCount] = await Promise.all([
+            this.userClassRepository.getClassStudentCount(classItem.id),
+            this.userClassRepository.getClassTeacherCount(classItem.id)
+          ]);
+
+          return {
+            id: classItem.id,
+            school_id: classItem.school_id,
+            name: classItem.name,
+            description: classItem.description,
+            grade_level: classItem.grade_level,
+            section: classItem.section,
+            academic_year: classItem.academic_year,
+            settings: classItem.settings,
+            is_active: classItem.is_active,
+            created_at: classItem.created_at,
+            updated_at: classItem.updated_at,
+            student_count: studentCount,
+            teacher_count: teacherCount
+          } as ClassWithDetails;
+        })
+      );
+
+      return classesWithDetails;
+    }
+
     // Get classes where user is enrolled (either as student or teacher)
     const userClasses = await this.userClassRepository.findUserClassesByUserId(currentUser.id);
 
@@ -101,19 +134,13 @@ export class ClassService {
   }
 
   async checkClassAccess(classId: string, currentUser: AuthenticatedUser): Promise<boolean> {
-    // Get user details from repository
-    const userDetails = await this.userClassRepository.getUserType(currentUser.id);
-    if (!userDetails) {
-      return false;
-    }
-
-    // Admin teachers can access all classes in their school
-    if (userDetails.role === 'admin' && userDetails.user_type === 'teacher') {
+    // Admins can access all classes in their school
+    if (currentUser.role === 'admin') {
       const classItem = await this.classRepository.findById(classId);
       if (!classItem) {
         return false;
       }
-      return classItem.school_id === userDetails.school_id;
+      return classItem.school_id === currentUser.school_id;
     }
 
     // Regular users need to be enrolled in the class
@@ -122,8 +149,13 @@ export class ClassService {
 
   async createClass(data: CreateClassData, currentUser: AuthenticatedUser): Promise<Class> {
     // Ensure user can only create classes in their school
-    if (currentUser.role !== 'admin' && currentUser.school_id !== data.school_id) {
-      throw new Error('Access denied');
+    if (currentUser.school_id !== data.school_id) {
+      throw new Error('Access denied: Can only create classes in your school');
+    }
+
+    // Only admins and authorized teachers can create classes
+    if (currentUser.role !== 'admin' && !(currentUser.user_type === 'teacher' && currentUser.role === 'user')) {
+      throw new Error('Access denied: Insufficient permissions to create class');
     }
 
     // TODO: Add validation with Zod schema
@@ -143,9 +175,17 @@ export class ClassService {
       throw new Error('Class not found');
     }
 
-    // Check permissions
-    if (currentUser.role !== 'admin' && currentUser.school_id !== existingClass.school_id) {
-      throw new Error('Access denied');
+    // Check school access first
+    if (currentUser.school_id !== existingClass.school_id) {
+      throw new Error('Access denied: Can only modify classes in your school');
+    }
+
+    // Check permissions - admins have full access, teachers need to be assigned to the class
+    if (currentUser.role !== 'admin') {
+      const hasAccess = await this.checkClassAccess(classId, currentUser);
+      if (!hasAccess) {
+        throw new Error('Access denied: Insufficient permissions to modify this class');
+      }
     }
 
     // TODO: Add validation with Zod schema

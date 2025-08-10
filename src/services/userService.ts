@@ -79,9 +79,14 @@ export class UserService {
   }
 
   async getSchoolUsers(currentUser: AuthenticatedUser, schoolId: string): Promise<Omit<User, 'password'>[]> {
-    // Check authorization
-    if (currentUser.role !== 'admin' && currentUser.school_id !== schoolId) {
-      throw new Error('Access denied');
+    // Check authorization - only admins can get all school users
+    if (currentUser.role !== 'admin') {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    // Admins can only access users from their own school
+    if (currentUser.school_id !== schoolId) {
+      throw new Error('Access denied: Can only access users from your school');
     }
 
     return await this.userRepository.findBySchoolId(schoolId);
@@ -173,5 +178,37 @@ export class UserService {
       },
       totalContacts: formattedUsers.length
     };
+  }
+
+  async getSchoolStudents(currentUser: AuthenticatedUser): Promise<Omit<User, 'password'>[]> {
+    // Only admins can get all school students
+    if (currentUser.role !== 'admin') {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    return await this.userRepository.findStudentsBySchoolId(currentUser.school_id);
+  }
+
+  async getSchoolTeachers(currentUser: AuthenticatedUser): Promise<Omit<User, 'password'>[]> {
+    // Only admins can get all school teachers
+    if (currentUser.role !== 'admin') {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    return await this.userRepository.findTeachersBySchoolId(currentUser.school_id);
+  }
+
+  async getUsersByType(currentUser: AuthenticatedUser, userType: string): Promise<Omit<User, 'password'>[]> {
+    // Only admins can get users by type
+    if (currentUser.role !== 'admin') {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    const validUserTypes = ['student', 'teacher', 'parent', 'admin'];
+    if (!validUserTypes.includes(userType)) {
+      throw new Error('Invalid user type');
+    }
+
+    return await this.userRepository.findUsersByTypeAndSchool(currentUser.school_id, userType);
   }
 } 

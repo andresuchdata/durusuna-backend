@@ -93,13 +93,27 @@ export const authorize = (allowedRoles: string[] = [], allowedUserTypes: string[
 
 /**
  * Check if user belongs to the same school
+ * Admins automatically have access to their school data
  */
 export const checkSchoolAccess = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { school_id } = req.user;
+    const { school_id, role } = req.user;
     const targetSchoolId = req.params.schoolId || req.body.school_id;
 
-    if (targetSchoolId && targetSchoolId !== school_id) {
+    // If no target school ID is specified, allow the request to proceed
+    if (!targetSchoolId) {
+      next();
+      return;
+    }
+
+    // Admins can access any data within their school
+    if (role === 'admin' && targetSchoolId === school_id) {
+      next();
+      return;
+    }
+
+    // Regular users must match school exactly
+    if (targetSchoolId !== school_id) {
       res.status(403).json({
         error: 'Forbidden',
         message: 'Access denied to this school'
@@ -118,11 +132,60 @@ export const checkSchoolAccess = async (req: AuthenticatedRequest, res: Response
 };
 
 /**
+ * Check if user is admin with school access
+ * This middleware ensures admins can only access data within their own school
+ */
+export const checkAdminSchoolAccess = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { role, school_id } = req.user;
+
+    // Check if user is admin
+    if (role !== 'admin') {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Admin access required'
+      });
+      return;
+    }
+
+    // Ensure admin has a school_id (should always be true)
+    if (!school_id) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Admin must be associated with a school'
+      });
+      return;
+    }
+
+    // Get target school ID from various possible sources
+    const targetSchoolId = req.params.schoolId || req.body.school_id || req.query.school_id;
+
+    // If target school ID is specified, ensure it matches admin's school
+    if (targetSchoolId && targetSchoolId !== school_id) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Access denied to this school'
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    logger.error('Admin school access check error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to verify admin school access'
+    });
+  }
+};
+
+/**
  * Check if user has access to a specific class
+ * Admins can access all classes within their school
  */
 export const checkClassAccess = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { id: userId, user_type, role } = req.user;
+    const { id: userId, user_type, role, school_id } = req.user;
     const classId = req.params.classId || req.body.class_id;
 
     if (!classId) {
@@ -132,6 +195,31 @@ export const checkClassAccess = async (req: AuthenticatedRequest, res: Response,
 
     // Admins have access to all classes in their school
     if (role === 'admin') {
+      // Verify the class belongs to the admin's school
+      const classData = await db('classes')
+        .select('school_id')
+        .where('id', classId)
+        .where('is_active', true)
+        .first();
+
+      if (!classData) {
+        res.status(404).json({
+          error: 'Not Found',
+          message: 'Class not found'
+        });
+        return;
+      }
+
+      if (classData.school_id !== school_id) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'Access denied to this class'
+        });
+        return;
+      }
+
+      // Admin access granted
+      (req as any).userClassRole = 'admin';
       next();
       return;
     }

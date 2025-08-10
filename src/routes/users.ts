@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { UserService } from '../services/userService';
 import { UserRepository } from '../repositories/userRepository';
-import { authenticate } from '../shared/middleware/auth';
+import { authenticate, checkAdminSchoolAccess } from '../middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
 import { AuthenticatedUser } from '../types/user';
@@ -170,6 +170,153 @@ router.get('/search', authenticate, async (req: any, res: Response) => {
     
     logger.error('Error searching users:', error);
     res.status(500).json({ error: 'Failed to search users' });
+  }
+});
+
+// Admin-only routes
+
+/**
+ * @swagger
+ * /api/users/school/{schoolId}:
+ *   get:
+ *     summary: Get all users in a school (Admin only)
+ *     description: Retrieve all users in the specified school. Only admins can access this endpoint.
+ *     tags: [Users, Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: schoolId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The school ID
+ *     responses:
+ *       200:
+ *         description: School users retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/school/:schoolId', authenticate, checkAdminSchoolAccess, async (req: any, res: Response) => {
+  try {
+    const users = await userService.getSchoolUsers(req.user, req.params.schoolId);
+    res.json(users);
+  } catch (error) {
+    logger.error('Error fetching school users:', error);
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to fetch school users' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/students:
+ *   get:
+ *     summary: Get all students in admin's school
+ *     description: Retrieve all students in the admin's school. Only admins can access this endpoint.
+ *     tags: [Users, Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Students retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/students', authenticate, checkAdminSchoolAccess, async (req: any, res: Response) => {
+  try {
+    const students = await userService.getSchoolStudents(req.user);
+    res.json(students);
+  } catch (error) {
+    logger.error('Error fetching school students:', error);
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to fetch school students' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/teachers:
+ *   get:
+ *     summary: Get all teachers in admin's school
+ *     description: Retrieve all teachers in the admin's school. Only admins can access this endpoint.
+ *     tags: [Users, Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Teachers retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/teachers', authenticate, checkAdminSchoolAccess, async (req: any, res: Response) => {
+  try {
+    const teachers = await userService.getSchoolTeachers(req.user);
+    res.json(teachers);
+  } catch (error) {
+    logger.error('Error fetching school teachers:', error);
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to fetch school teachers' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/by-type/{userType}:
+ *   get:
+ *     summary: Get users by type in admin's school
+ *     description: Retrieve users of a specific type in the admin's school. Only admins can access this endpoint.
+ *     tags: [Users, Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userType
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [student, teacher, parent, admin]
+ *         description: The user type to filter by
+ *     responses:
+ *       200:
+ *         description: Users retrieved successfully
+ *       400:
+ *         description: Invalid user type
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/by-type/:userType', authenticate, checkAdminSchoolAccess, async (req: any, res: Response) => {
+  try {
+    const users = await userService.getUsersByType(req.user, req.params.userType);
+    res.json(users);
+  } catch (error) {
+    logger.error('Error fetching users by type:', error);
+    if (error instanceof Error && (error.message.includes('Access denied') || error.message.includes('Invalid user type'))) {
+      return res.status(error.message.includes('Invalid user type') ? 400 : 403).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to fetch users by type' });
   }
 });
 
