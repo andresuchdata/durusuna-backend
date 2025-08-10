@@ -441,6 +441,16 @@ const emitBatchMessagesDeleted = (io: Server, messageIds: string[]) => {
   });
 };
 
+const emitMessageReactionUpdated = (io: Server, conversationId: string, messageId: string, reactions: any) => {
+  emitToConversation(io, conversationId, 'message:reaction_updated', {
+    messageId: messageId,
+    reactions: reactions,
+    action: 'reaction_updated',
+    conversationId: conversationId,
+    timestamp: new Date().toISOString(),
+  });
+};
+
 const getConnectedUsers = () => {
   return Array.from(connectedUsers.entries()).map(([userId, data]) => ({
     userId,
@@ -552,6 +562,7 @@ const initializeSocket = (io: Server) => {
   (io as any).emitMessageUpdated = emitMessageUpdated.bind(null, io);
   (io as any).emitMessageDeleted = emitMessageDeleted.bind(null, io);
   (io as any).emitBatchMessagesDeleted = emitBatchMessagesDeleted.bind(null, io);
+  (io as any).emitMessageReactionUpdated = emitMessageReactionUpdated.bind(null, io);
   (io as any).getConnectedUsers = getConnectedUsers;
   (io as any).isUserOnline = isUserOnline;
 

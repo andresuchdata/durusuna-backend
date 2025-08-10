@@ -2,7 +2,6 @@ import { MessageRepository } from '../repositories/messageRepository';
 import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../utils/logger';
-import { safeJsonParse } from '../utils/json';
 import {
   MessageWithSender,
   SendMessageRequest,
@@ -11,6 +10,7 @@ import {
   MessageSearchResponse
 } from '../types/message';
 import { getSocketInstance } from './socketService';
+import { migrateReactions, safeJsonStringify, safeJsonParse } from '../utils/json';
 
 export class MessageService {
   constructor(private messageRepository: MessageRepository) {}
@@ -66,6 +66,52 @@ export class MessageService {
       logger.error('Error deleting message:', error);
       return { success: false, message: 'Internal server error' };
     }
+  }
+
+  async toggleReaction(messageId: string, emoji: string, currentUser: AuthenticatedUser): Promise<{ reactions: Record<string, any> }> {
+    if (!emoji || typeof emoji !== 'string') {
+      throw new Error('Emoji is required');
+    }
+
+    const message = await this.messageRepository.findMessageById(messageId);
+    if (!message) {
+      throw new Error('Message not found');
+    }
+
+    // Verify user is a participant of the conversation
+    const participant = await this.messageRepository.findConversationParticipant(message.conversation_id, currentUser.id);
+    if (!participant) {
+      throw new Error('Access denied');
+    }
+
+    const reactions = migrateReactions(safeJsonParse(message.reactions, {}));
+    if (!reactions[emoji]) {
+      reactions[emoji] = { count: 0, users: [] };
+    }
+
+    const idx = reactions[emoji].users.indexOf(currentUser.id);
+    if (idx > -1) {
+      reactions[emoji].users.splice(idx, 1);
+      reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
+      if (reactions[emoji].count === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji].users.push(currentUser.id);
+      reactions[emoji].count += 1;
+    }
+
+    await this.messageRepository.updateMessageReactions(messageId, safeJsonStringify(reactions));
+
+    // Emit realtime reaction event (optional)
+    try {
+      const io = getSocketInstance();
+      if (io) {
+        io.emitMessageReactionUpdated(message.conversation_id, messageId, reactions);
+      }
+    } catch (e) {
+      logger.warn('Socket emit failed for reaction update', e);
+    }
+
+    return { reactions };
   }
 
   async deleteBatchMessages(

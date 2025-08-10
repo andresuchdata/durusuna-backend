@@ -395,6 +395,19 @@ export class MessageRepository {
       .first();
   }
 
+  async findMessageById(messageId: string): Promise<any | null> {
+    return await this.db('messages')
+      .where('id', messageId)
+      .andWhere('is_deleted', false)
+      .first();
+  }
+
+  async updateMessageReactions(messageId: string, reactionsJson: string): Promise<void> {
+    await this.db('messages')
+      .where('id', messageId)
+      .update({ reactions: reactionsJson, updated_at: new Date() });
+  }
+
   async searchMessages(
     userId: string, 
     searchParams: MessageSearchParams,

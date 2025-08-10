@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { MessageService } from '../services/messageService';
 import { MessageRepository } from '../repositories/messageRepository';
 import db from '../config/database';
@@ -9,6 +9,7 @@ import { AuthenticatedRequest } from '../types/auth';
 import {
   MessageSearchParams
 } from '../types/message';
+import { safeJsonParse } from '../utils/json';
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ const messageService = new MessageService(messageRepository);
  * @desc Send a direct message (creates conversation if needed)
  * @access Private
  */
-router.post('/', authenticate, validate(messageSchema), async (req: Request, res: Response) => {
+router.post('/', authenticate, validate(messageSchema), async (req, res, next) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     const response = await messageService.sendMessage(req.body, authenticatedReq.user);
@@ -56,7 +57,7 @@ router.post('/', authenticate, validate(messageSchema), async (req: Request, res
  * @desc Search messages across all conversations
  * @access Private
  */
-router.get('/search', authenticate, async (req: Request, res: Response) => {
+router.get('/search', authenticate, async (req, res, next) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { q, user_id, message_type, page = '1', limit = '20' } = req.query as MessageSearchParams & { page?: string; limit?: string };
@@ -80,4 +81,39 @@ router.get('/search', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-export default router; 
+/**
+ * @route POST /api/messages/:messageId/reactions
+ * @desc Toggle a reaction on a message
+ * @access Private
+ */
+router.post('/:messageId/reactions', authenticate, async (req, res, next) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { messageId } = req.params;
+    const { emoji } = req.body as { emoji?: string };
+
+    if (!emoji || typeof emoji !== 'string') {
+      return res.status(400).json({ error: 'Emoji is required' });
+    }
+
+    const result = await messageService.toggleReaction(messageId!, emoji, authenticatedReq.user);
+    return res.json({ message: 'Reaction toggled', reactions: result.reactions });
+
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Message not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied') {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.message === 'Emoji is required') {
+        return res.status(400).json({ error: error.message });
+      }
+    }
+    logger.error('Error toggling message reaction:', error);
+    res.status(500).json({ error: 'Failed to toggle reaction' });
+  }
+});
+
+export default router;
