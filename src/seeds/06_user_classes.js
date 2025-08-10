@@ -23,8 +23,28 @@ exports.seed = async function(knex) {
   // Get users by email and type
   const teacher1 = users.find(u => u.email === 'teacher@demo.com');
   const teacher2 = users.find(u => u.email === 'teacher2@demo.com');
-  const student1 = users.find(u => u.email === 'student@demo.com');
-  const student2 = users.find(u => u.email === 'student2@demo.com');
+  
+  // Elementary students
+  const elementaryStudents = users.filter(u => u.user_type === 'student' && (
+    u.email === 'student@demo.com' || 
+    u.email === 'student3@demo.com' || 
+    u.email === 'student4@demo.com' || 
+    u.email === 'student5@demo.com' || 
+    u.email === 'student6@demo.com' || 
+    u.email === 'student7@demo.com' || 
+    u.email === 'student8@demo.com'
+  ));
+  
+  // High school students  
+  const highSchoolStudents = users.filter(u => u.user_type === 'student' && (
+    u.email === 'student2@demo.com' || 
+    u.email === 'student9@demo.com' || 
+    u.email === 'student10@demo.com' || 
+    u.email === 'student11@demo.com' || 
+    u.email === 'student12@demo.com' || 
+    u.email === 'student13@demo.com' || 
+    u.email === 'student14@demo.com'
+  ));
 
   // Deletes ALL existing entries
   await knex('user_classes').del();
@@ -81,31 +101,47 @@ exports.seed = async function(knex) {
     });
   }
 
-  // Assign Student 1 to Primary 5A (following the rule: students can be in 0-1 class max)
-  if (student1 && primary5A && student1.school_id === primary5A.school_id) {
-    userClassAssignments.push({
-      id: uuidv4(),
-      user_id: student1.id,
-      class_id: primary5A.id,
-      role_in_class: 'student',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    });
-  }
+  // Assign elementary students to classes
+  // Distribute students between Primary 5A and Primary 6B
+  elementaryStudents.forEach((student, index) => {
+    if (!student) return;
+    
+    // Assign to Primary 5A (first 4 students) and Primary 6B (remaining 3 students)
+    const targetClass = index < 4 ? primary5A : primary6B;
+    
+    if (targetClass && student.school_id === targetClass.school_id) {
+      userClassAssignments.push({
+        id: uuidv4(),
+        user_id: student.id,
+        class_id: targetClass.id,
+        role_in_class: 'student',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+    }
+  });
 
-  // Assign Student 2 to Secondary 2A
-  if (student2 && secondary2A && student2.school_id === secondary2A.school_id) {
-    userClassAssignments.push({
-      id: uuidv4(),
-      user_id: student2.id,
-      class_id: secondary2A.id,
-      role_in_class: 'student',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    });
-  }
+  // Assign high school students to classes
+  // Distribute students between Secondary 2A and Secondary 3B
+  highSchoolStudents.forEach((student, index) => {
+    if (!student) return;
+    
+    // Assign to Secondary 2A (first 4 students) and Secondary 3B (remaining 3 students)
+    const targetClass = index < 4 ? secondary2A : secondary3B;
+    
+    if (targetClass && student.school_id === targetClass.school_id) {
+      userClassAssignments.push({
+        id: uuidv4(),
+        user_id: student.id,
+        class_id: targetClass.id,
+        role_in_class: 'student',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+    }
+  });
 
   await knex('user_classes').insert(userClassAssignments);
 

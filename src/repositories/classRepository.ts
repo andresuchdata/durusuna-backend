@@ -73,7 +73,15 @@ export class ClassRepository {
         'users.first_name',
         'users.last_name',
         'users.email',
+        'users.phone',
+        'users.avatar_url',
+        'users.user_type',
+        'users.role',
+        'users.school_id',
         'users.student_id',
+        'users.is_active',
+        'users.created_at',
+        'users.updated_at',
         'user_classes.role_in_class',
         'user_classes.created_at as enrolled_at'
       )
@@ -87,7 +95,23 @@ export class ClassRepository {
       .where('user_classes.is_active', true)
       .where('users.user_type', 'teacher')
       .where('users.is_active', true)
-      .select('users.*')
+      .select(
+        'users.id',
+        'users.first_name',
+        'users.last_name',
+        'users.email',
+        'users.phone',
+        'users.avatar_url',
+        'users.user_type',
+        'users.role',
+        'users.school_id',
+        'users.employee_id',
+        'users.is_active',
+        'users.created_at',
+        'users.updated_at',
+        'user_classes.role_in_class',
+        'user_classes.created_at as enrolled_at'
+      )
       .orderBy('users.last_name', 'asc');
   }
 
