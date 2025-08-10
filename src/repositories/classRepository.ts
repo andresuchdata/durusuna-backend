@@ -61,7 +61,9 @@ export class ClassRepository {
       });
   }
 
-  async findStudentsByClassId(classId: string) {
+  async findStudentsByClassId(classId: string, page: number = 1, limit: number = 20) {
+    const offset = (page - 1) * limit;
+    
     return await this.db('user_classes')
       .join('users', 'user_classes.user_id', 'users.id')
       .where('user_classes.class_id', classId)
@@ -85,10 +87,14 @@ export class ClassRepository {
         'user_classes.role_in_class',
         'user_classes.created_at as enrolled_at'
       )
-      .orderBy('users.last_name', 'asc');
+      .orderBy('users.last_name', 'asc')
+      .limit(limit)
+      .offset(offset);
   }
 
-  async findTeachersByClassId(classId: string) {
+  async findTeachersByClassId(classId: string, page: number = 1, limit: number = 20) {
+    const offset = (page - 1) * limit;
+    
     return await this.db('user_classes')
       .join('users', 'user_classes.user_id', 'users.id')
       .where('user_classes.class_id', classId)
@@ -112,7 +118,9 @@ export class ClassRepository {
         'user_classes.role_in_class',
         'user_classes.created_at as enrolled_at'
       )
-      .orderBy('users.last_name', 'asc');
+      .orderBy('users.last_name', 'asc')
+      .limit(limit)
+      .offset(offset);
   }
 
   async findClassSubjectsWithDetails(classId: string) {

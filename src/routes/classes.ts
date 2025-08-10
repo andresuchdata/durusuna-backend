@@ -578,17 +578,29 @@ router.put('/:id', authenticate, authorize([], ['teacher']), async (req: Authent
 
 /**
  * @route GET /api/classes/:id/students
- * @desc Get students in a class
+ * @desc Get students in a class with pagination
  * @access Private
+ * @query page: number (default: 1)
+ * @query limit: number (default: 20, max: 100)
  */
 router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const { page = '1', limit = '20' } = req.query as { page?: string; limit?: string };
+    
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const students = await classService.getClassStudents(id, req.user);
-    res.json({ students });
+    
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 100); // Max 100 students per page
+    
+    if (pageNum < 1 || limitNum < 1) {
+      return res.status(400).json({ error: 'Page and limit must be positive numbers' });
+    }
+    
+    const response = await classService.getClassStudents(id, req.user, pageNum, limitNum);
+    res.json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -605,17 +617,29 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
 
 /**
  * @route GET /api/classes/:id/teachers
- * @desc Get teachers in a class
+ * @desc Get teachers in a class with pagination
  * @access Private
+ * @query page: number (default: 1)
+ * @query limit: number (default: 20, max: 100)
  */
 router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const { page = '1', limit = '20' } = req.query as { page?: string; limit?: string };
+    
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const teachers = await classService.getClassTeachers(id, req.user);
-    res.json({ teachers });
+    
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 100); // Max 100 teachers per page
+    
+    if (pageNum < 1 || limitNum < 1) {
+      return res.status(400).json({ error: 'Page and limit must be positive numbers' });
+    }
+    
+    const response = await classService.getClassTeachers(id, req.user, pageNum, limitNum);
+    res.json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
       return res.status(404).json({ error: error.message });
@@ -627,6 +651,35 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
     
     logger.error('Error fetching class teachers:', error);
     res.status(500).json({ error: 'Failed to fetch class teachers' });
+  }
+});
+
+/**
+ * @route GET /api/classes/:id/counts
+ * @desc Get student and teacher counts for a class
+ * @access Private
+ */
+router.get('/:id/counts', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    const counts = await classService.getClassCounts(id, req.user);
+    res.json(counts);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching class counts:', error);
+    res.status(500).json({ error: 'Failed to fetch class counts' });
   }
 });
 

@@ -1,7 +1,9 @@
 import { ClassRepository } from '../repositories/classRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
-import { AuthenticatedUser } from '../types/user';
+import { AuthenticatedRequest } from '../types/auth';
+
+type AuthenticatedUser = AuthenticatedRequest['user'];
 import {
   Class,
   CreateClassRequest as CreateClassData,
@@ -199,22 +201,72 @@ export class ClassService {
     return updatedClass;
   }
 
-  async getClassStudents(classId: string, currentUser: AuthenticatedUser) {
+  async getClassStudents(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
       throw new Error('Access denied');
     }
-    return await this.classRepository.findStudentsByClassId(classId);
+    
+    // Get students with pagination
+    const [students, totalCount] = await Promise.all([
+      this.classRepository.findStudentsByClassId(classId, page, limit),
+      this.userClassRepository.getClassStudentCount(classId)
+    ]);
+
+    return {
+      students,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        hasMore: (page * limit) < totalCount
+      }
+    };
   }
 
-  async getClassTeachers(classId: string, currentUser: AuthenticatedUser) {
+  async getClassTeachers(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
       throw new Error('Access denied');
     }
-    return await this.classRepository.findTeachersByClassId(classId);
+    
+    // Get teachers with pagination
+    const [teachers, totalCount] = await Promise.all([
+      this.classRepository.findTeachersByClassId(classId, page, limit),
+      this.userClassRepository.getClassTeacherCount(classId)
+    ]);
+
+    return {
+      teachers,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        hasMore: (page * limit) < totalCount
+      }
+    };
+  }
+
+  async getClassCounts(classId: string, currentUser: AuthenticatedUser) {
+    // Check class access first
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+    
+    // Get counts in parallel
+    const [studentCount, teacherCount] = await Promise.all([
+      this.userClassRepository.getClassStudentCount(classId),
+      this.userClassRepository.getClassTeacherCount(classId)
+    ]);
+
+    return {
+      student_count: studentCount,
+      teacher_count: teacherCount,
+      total_members: studentCount + teacherCount
+    };
   }
 
   async getClassSubjects(classId: string, currentUser: AuthenticatedUser) {
