@@ -85,16 +85,34 @@ export class MessageService {
     }
 
     const reactions = migrateReactions(safeJsonParse(message.reactions, {}));
+    
+    // First, remove user from ALL other emoji reactions (one reaction per user)
+    for (const [existingEmoji, reactionData] of Object.entries(reactions)) {
+      if (existingEmoji !== emoji && reactionData.users) {
+        const userIndex = reactionData.users.indexOf(currentUser.id);
+        if (userIndex > -1) {
+          reactionData.users.splice(userIndex, 1);
+          reactionData.count = Math.max(0, reactionData.count - 1);
+          if (reactionData.count === 0) {
+            delete reactions[existingEmoji];
+          }
+        }
+      }
+    }
+
+    // Then handle the current emoji reaction
     if (!reactions[emoji]) {
       reactions[emoji] = { count: 0, users: [] };
     }
 
     const idx = reactions[emoji].users.indexOf(currentUser.id);
     if (idx > -1) {
+      // User is removing their reaction
       reactions[emoji].users.splice(idx, 1);
       reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
       if (reactions[emoji].count === 0) delete reactions[emoji];
     } else {
+      // User is adding their reaction (after removing from others)
       reactions[emoji].users.push(currentUser.id);
       reactions[emoji].count += 1;
     }
