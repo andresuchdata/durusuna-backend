@@ -534,4 +534,22 @@ export class ConversationService {
     const participant = await this.messageRepository.findConversationParticipant(conversationId, userId);
     return participant !== null;
   }
+
+  async findDirectConversation(userId1: string, userId2: string): Promise<any | null> {
+    // This would need to be implemented in the repository
+    // For now, return null to indicate no existing conversation
+    return null;
+  }
+
+  async createConversation(params: {
+    type: string;
+    createdBy: string;
+    participantIds: string[];
+    name?: string;
+    description?: string;
+  }): Promise<any> {
+    // Implementation would depend on your database schema
+    // This is a placeholder that would need proper implementation
+    throw new Error('createConversation method needs to be implemented');
+  }
 } 

@@ -260,6 +260,69 @@ router.delete('/:conversationId/messages/batch', authenticate, async (req: Reque
 });
 
 /**
+ * @route POST /api/conversations
+ * @desc Create a new conversation (direct or group)
+ * @access Private
+ */
+router.post('/', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { type, participant_ids, name, description } = req.body as {
+      type?: string;
+      participant_ids?: string[];
+      name?: string;
+      description?: string;
+    };
+
+    if (!type || !['direct', 'group'].includes(type)) {
+      return res.status(400).json({ error: 'Valid conversation type (direct or group) is required' });
+    }
+
+    if (!Array.isArray(participant_ids) || participant_ids.length === 0) {
+      return res.status(400).json({ error: 'participant_ids array is required' });
+    }
+
+    if (type === 'direct' && participant_ids.length !== 1) {
+      return res.status(400).json({ error: 'Direct conversations must have exactly one participant' });
+    }
+
+    if (type === 'group' && participant_ids.length < 2) {
+      return res.status(400).json({ error: 'Group conversations must have at least 2 participants' });
+    }
+
+    if (type === 'group' && (!name || name.trim().length === 0)) {
+      return res.status(400).json({ error: 'Group conversations must have a name' });
+    }
+
+    // For direct conversations, check if one already exists
+    if (type === 'direct') {
+      const existingConversation = await conversationService.findDirectConversation(
+        authenticatedReq.user.id,
+        participant_ids[0]
+      );
+      if (existingConversation) {
+        return res.json({ conversation: existingConversation });
+      }
+    }
+
+    // Create the conversation
+    const conversation = await conversationService.createConversation({
+      type,
+      createdBy: authenticatedReq.user.id,
+      participantIds: [authenticatedReq.user.id, ...participant_ids],
+      name: type === 'group' ? name : undefined,
+      description: type === 'group' ? description : undefined,
+    });
+
+    res.status(201).json({ conversation });
+
+  } catch (error) {
+    logger.error('Error creating conversation:', error);
+    res.status(500).json({ error: 'Failed to create conversation' });
+  }
+});
+
+/**
  * @route POST /api/conversations/:conversationId/messages/reactions
  * @desc Fetch reactions for multiple messages in a conversation
  * @access Private
