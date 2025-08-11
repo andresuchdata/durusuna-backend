@@ -578,15 +578,16 @@ router.put('/:id', authenticate, authorize([], ['teacher']), async (req: Authent
 
 /**
  * @route GET /api/classes/:id/students
- * @desc Get students in a class with pagination
+ * @desc Get students in a class with pagination and search
  * @access Private
  * @query page: number (default: 1)
  * @query limit: number (default: 20, max: 100)
+ * @query search: string (optional search term)
  */
 router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { page = '1', limit = '20' } = req.query as { page?: string; limit?: string };
+    const { page = '1', limit = '20', search } = req.query as { page?: string; limit?: string; search?: string };
     
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
@@ -599,7 +600,7 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Page and limit must be positive numbers' });
     }
     
-    const response = await classService.getClassStudents(id, req.user, pageNum, limitNum);
+    const response = await classService.getClassStudents(id, req.user, pageNum, limitNum, search);
     res.json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {

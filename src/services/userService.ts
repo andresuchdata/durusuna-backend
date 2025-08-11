@@ -108,7 +108,8 @@ export class UserService {
       currentUserData.school_id,
       currentUser.id,
       validatedParams.q,
-      validatedParams.limit || 20
+      validatedParams.limit || 20,
+      validatedParams.userType
     );
 
     // Format users for response (add additional fields as needed)
@@ -134,7 +135,7 @@ export class UserService {
     };
   }
 
-  async getContacts(currentUser: AuthenticatedUser, page: number = 1, limit: number = 50) {
+  async getContacts(currentUser: AuthenticatedUser, page: number = 1, limit: number = 50, search?: string, userType?: string) {
     const offset = (page - 1) * limit;
 
     // Get current user's school
@@ -144,13 +145,13 @@ export class UserService {
       throw new Error('User not associated with a school');
     }
 
-    // For now, use the same search logic but without search term
-    // In a full implementation, you might want a separate method for this
+    // Use search logic with optional search term and user type filter
     const users = await this.userRepository.searchUsers(
       currentUserData.school_id,
       currentUser.id,
-      '', // Empty search term to get all users
-      limit
+      search || '', // Use provided search term or empty string
+      limit,
+      userType
     );
 
     const formattedUsers = users.map(user => ({

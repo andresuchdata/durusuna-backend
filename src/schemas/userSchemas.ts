@@ -18,8 +18,9 @@ export const changePasswordSchema = z.object({
 });
 
 export const searchUsersSchema = z.object({
-  q: z.string().min(2, 'Search query must be at least 2 characters long'),
-  limit: z.string().transform(val => parseInt(val)).pipe(z.number().min(1).max(100)).optional()
+  q: z.string().min(1, 'Search query is required').optional().default(''),
+  limit: z.string().transform(val => parseInt(val)).pipe(z.number().min(1).max(100)).optional(),
+  userType: z.enum(['all', 'teacher', 'student', 'parent']).optional()
 });
 
 // Export types from schemas

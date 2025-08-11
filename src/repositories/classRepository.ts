@@ -61,15 +61,28 @@ export class ClassRepository {
       });
   }
 
-  async findStudentsByClassId(classId: string, page: number = 1, limit: number = 20) {
+  async findStudentsByClassId(classId: string, page: number = 1, limit: number = 20, search?: string) {
     const offset = (page - 1) * limit;
     
-    return await this.db('user_classes')
+    let query = this.db('user_classes')
       .join('users', 'user_classes.user_id', 'users.id')
       .where('user_classes.class_id', classId)
       .where('user_classes.is_active', true)
       .where('users.user_type', 'student')
-      .where('users.is_active', true)
+      .where('users.is_active', true);
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+      const searchPattern = `%${search.trim()}%`;
+      query = query.where(function() {
+        this.where('users.first_name', 'ilike', searchPattern)
+            .orWhere('users.last_name', 'ilike', searchPattern)
+            .orWhere('users.email', 'ilike', searchPattern)
+            .orWhere(this.client.raw("CONCAT(users.first_name, ' ', users.last_name)"), 'ilike', searchPattern);
+      });
+    }
+
+    return await query
       .select(
         'users.id',
         'users.first_name',

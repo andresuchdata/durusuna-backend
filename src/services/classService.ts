@@ -201,16 +201,16 @@ export class ClassService {
     return updatedClass;
   }
 
-  async getClassStudents(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20) {
+  async getClassStudents(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20, search?: string) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
       throw new Error('Access denied');
     }
     
-    // Get students with pagination
+    // Get students with pagination and search
     const [students, totalCount] = await Promise.all([
-      this.classRepository.findStudentsByClassId(classId, page, limit),
+      this.classRepository.findStudentsByClassId(classId, page, limit, search),
       this.userClassRepository.getClassStudentCount(classId)
     ]);
 

@@ -64,20 +64,32 @@ export class UserRepository {
     currentUserSchoolId: string, 
     currentUserId: string, 
     searchTerm: string, 
-    limit: number = 20
+    limit: number = 20,
+    userType?: string
   ): Promise<Omit<User, 'password'>[]> {
     const searchPattern = `%${searchTerm}%`;
     
-    const users = await this.db('users')
+    let query = this.db('users')
       .where('school_id', currentUserSchoolId)
       .where('id', '!=', currentUserId)
-      .where('is_active', true)
-      .where(function() {
+      .where('is_active', true);
+
+    // Add user type filter if provided
+    if (userType && userType !== 'all') {
+      query = query.where('user_type', userType);
+    }
+
+    // Add search term filter if provided
+    if (searchTerm.trim()) {
+      query = query.where(function() {
         this.where('first_name', 'ilike', searchPattern)
             .orWhere('last_name', 'ilike', searchPattern)
             .orWhere('email', 'ilike', searchPattern)
             .orWhere(this.client.raw("CONCAT(first_name, ' ', last_name)"), 'ilike', searchPattern);
-      })
+      });
+    }
+
+    const users = await query
       .select('*')
       .orderBy('first_name', 'asc')
       .limit(limit);

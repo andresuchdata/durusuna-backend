@@ -135,11 +135,13 @@ router.get('/school/:schoolId', authenticate, async (req: any, res: Response) =>
 // Get contacts for messaging (users in same school)
 router.get('/contacts', authenticate, async (req: any, res: Response) => {
   try {
-    const { page = '1', limit = '50' } = req.query;
+    const { page = '1', limit = '50', search, userType } = req.query;
     const contacts = await userService.getContacts(
       req.user, 
       parseInt(page as string), 
-      parseInt(limit as string)
+      parseInt(limit as string),
+      search as string,
+      userType as string
     );
     res.json(contacts);
   } catch (error) {
