@@ -408,6 +408,14 @@ export class MessageRepository {
       .update({ reactions: reactionsJson, updated_at: new Date() });
   }
 
+  async getMessagesWithReactions(conversationId: string, messageIds: string[]): Promise<any[]> {
+    return await this.db('messages')
+      .select('id', 'reactions')
+      .where('conversation_id', conversationId)
+      .whereIn('id', messageIds)
+      .where('is_deleted', false);
+  }
+
   async searchMessages(
     userId: string, 
     searchParams: MessageSearchParams,

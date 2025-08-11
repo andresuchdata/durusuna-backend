@@ -529,4 +529,9 @@ export class ConversationService {
     // Also mark individual messages as read (optional, for consistency)
     await this.messageRepository.markMessagesAsRead(conversationId, currentUser.id);
   }
+
+  async isUserParticipant(conversationId: string, userId: string): Promise<boolean> {
+    const participant = await this.messageRepository.findConversationParticipant(conversationId, userId);
+    return participant !== null;
+  }
 } 

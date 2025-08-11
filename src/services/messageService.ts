@@ -114,6 +114,16 @@ export class MessageService {
     return { reactions };
   }
 
+  async getMessagesWithReactions(conversationId: string, messageIds: string[]): Promise<any[]> {
+    try {
+      const messages = await this.messageRepository.getMessagesWithReactions(conversationId, messageIds);
+      return messages;
+    } catch (error) {
+      logger.error('Error fetching messages with reactions:', error);
+      throw new Error('Failed to fetch messages with reactions');
+    }
+  }
+
   async deleteBatchMessages(
     messageIds: string[],
     currentUser: AuthenticatedUser

@@ -259,4 +259,45 @@ router.delete('/:conversationId/messages/batch', authenticate, async (req: Reque
   }
 });
 
+/**
+ * @route POST /api/conversations/:conversationId/messages/reactions
+ * @desc Fetch reactions for multiple messages in a conversation
+ * @access Private
+ */
+router.post('/:conversationId/messages/reactions', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversationId } = req.params;
+    const { messageIds } = req.body as { messageIds?: string[] };
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds array is required' });
+    }
+
+    if (messageIds.length > 100) {
+      return res.status(400).json({ error: 'Maximum 100 messages can be fetched at once' });
+    }
+
+    // Verify user is a participant of the conversation
+    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Fetch messages with reactions
+    const messages = await messageService.getMessagesWithReactions(conversationId, messageIds);
+
+    res.json({
+      messages: messages.map(msg => ({
+        id: msg.id,
+        reactions: msg.reactions || {}
+      }))
+    });
+
+  } catch (error) {
+    logger.error('Error fetching message reactions:', error);
+    res.status(500).json({ error: 'Failed to fetch message reactions' });
+  }
+});
+
 export default router; 
