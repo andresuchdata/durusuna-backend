@@ -269,6 +269,27 @@ export class MessageService {
 
         // Add participants
         await this.messageRepository.addParticipants(conversationId, [currentUser.id, receiverId]);
+
+        // CRITICAL: Notify participants about new conversation creation
+        try {
+          const io = getSocketInstance();
+          if (io) {
+            // Get the full conversation data for the notification
+            const newConversation = await this.messageRepository.findConversationById(conversationId);
+            if (newConversation) {
+              // Notify both participants about the new conversation
+              (io as any).emitConversationCreated(newConversation, [currentUser.id, receiverId]);
+              logger.info('✅ MessageService: Emitted conversation created event', {
+                conversationId,
+                participants: [currentUser.id, receiverId]
+              });
+            }
+          } else {
+            logger.warn('⚠️ MessageService: Socket instance not available for conversation creation emission');
+          }
+        } catch (socketError) {
+          logger.error('❌ MessageService: Error emitting conversation created event:', socketError);
+        }
       }
     } else {
       throw new Error('Either conversation_id or receiver_id is required');
