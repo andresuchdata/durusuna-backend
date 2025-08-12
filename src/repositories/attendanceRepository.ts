@@ -144,6 +144,12 @@ export class AttendanceRepository {
     data: CreateAttendanceRecordRequest,
     markedBy?: string
   ): Promise<AttendanceRecord> {
+    const checkInTimeValue = data.check_in_time
+      ? (typeof data.check_in_time === 'string'
+          ? data.check_in_time
+          : new Date(data.check_in_time).toISOString().substring(11, 19))
+      : null;
+
     const [record] = await this.db('attendance_records')
       .insert({
         id: uuidv4(),
@@ -151,7 +157,7 @@ export class AttendanceRepository {
         student_id: studentId,
         attendance_date: attendanceDate,
         status: data.status,
-        check_in_time: data.check_in_time ? new Date(data.check_in_time) : null,
+        check_in_time: checkInTimeValue,
         notes: data.notes,
         marked_by: markedBy,
         marked_via: data.marked_via || 'manual',
@@ -170,10 +176,17 @@ export class AttendanceRepository {
     recordId: string,
     data: Partial<CreateAttendanceRecordRequest>
   ): Promise<AttendanceRecord> {
+    const checkInTimeValue = data.check_in_time
+      ? (typeof data.check_in_time === 'string'
+          ? data.check_in_time
+          : new Date(data.check_in_time).toISOString().substring(11, 19))
+      : null;
+
     const [updated] = await this.db('attendance_records')
       .where('id', recordId)
       .update({
         ...data,
+        check_in_time: checkInTimeValue,
         updated_at: new Date()
       })
       .returning('*');
@@ -352,7 +365,7 @@ export class AttendanceRepository {
       student_id: record.student_id,
       attendance_date: attendanceDate,
       status: record.status,
-      check_in_time: record.check_in_time ? new Date(record.check_in_time) : null,
+      check_in_time: record.check_in_time ? (typeof record.check_in_time === 'string' ? record.check_in_time : new Date(record.check_in_time).toISOString().substring(11, 19)) : null,
       notes: record.notes,
       marked_by: markedBy,
       marked_via: record.marked_via || 'manual',
