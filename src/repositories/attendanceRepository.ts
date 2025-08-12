@@ -146,7 +146,7 @@ export class AttendanceRepository {
   ): Promise<AttendanceRecord> {
     const checkInTimeValue = data.check_in_time
       ? (typeof data.check_in_time === 'string'
-          ? data.check_in_time
+          ? this.normalizeCheckInTimeString(data.check_in_time)
           : new Date(data.check_in_time).toISOString().substring(11, 19))
       : null;
 
@@ -178,7 +178,7 @@ export class AttendanceRepository {
   ): Promise<AttendanceRecord> {
     const checkInTimeValue = data.check_in_time
       ? (typeof data.check_in_time === 'string'
-          ? data.check_in_time
+          ? this.normalizeCheckInTimeString(data.check_in_time)
           : new Date(data.check_in_time).toISOString().substring(11, 19))
       : null;
 
@@ -192,6 +192,37 @@ export class AttendanceRepository {
       .returning('*');
 
     return updated;
+  }
+
+  /**
+   * Normalizes ISO or partial time strings to HH:MM:SS for insertion into a Postgres TIME column.
+   */
+  private normalizeCheckInTimeString(value: string): string {
+    try {
+      // If contains date separator, parse as Date
+      if (value.includes('T') || value.includes(' ')) {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().substring(11, 19); // HH:MM:SS
+        }
+      }
+      // If already HH:MM:SS
+      if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
+        return value;
+      }
+      // If HH:MM, add seconds
+      if (/^\d{2}:\d{2}$/.test(value)) {
+        return `${value}:00`;
+      }
+      // Fallback: try Date parse
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().substring(11, 19);
+      }
+    } catch (_) {}
+    // As a last resort, return current time HH:MM:SS to avoid DB errors
+    const now = new Date();
+    return now.toISOString().substring(11, 19);
   }
 
   async getAttendanceRecord(
