@@ -2,15 +2,15 @@ import express, { Request, Response } from 'express';
 import { AttendanceService } from '../services/attendanceService';
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
-import { authenticate } from '../shared/middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types/auth';
 import {
   CreateAttendanceRecordRequest,
   BulkUpdateAttendanceRequest,
   StudentAttendanceRequest
 } from '../types/attendance';
-import logger from '../shared/utils/logger';
-import db from '../shared/database/connection';
+import logger from '../utils/logger';
+import db from '../config/database';
 
 const router = express.Router();
 
