@@ -1,6 +1,5 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import sharp from 'sharp';
 import mime from 'mime-types';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
@@ -189,6 +188,25 @@ class StorageService {
    */
   async processImage(buffer: Buffer, options: ImageProcessingOptions = {}): Promise<ProcessedImageInfo> {
     try {
+      // Lazy-load sharp to avoid startup failures on environments without native binaries
+      // If loading fails, we fall back to original buffer
+      let sharp: any;
+      try {
+        sharp = (await import('sharp')).default;
+      } catch (e) {
+        logger.warn('Sharp not available, skipping image processing');
+        return {
+          buffer,
+          thumbnailBuffer: null,
+          metadata: {
+            originalWidth: 0,
+            originalHeight: 0,
+            processedWidth: 0,
+            processedHeight: 0,
+            format: 'original',
+          },
+        };
+      }
       const {
         maxWidth = 1920,
         maxHeight = 1080,

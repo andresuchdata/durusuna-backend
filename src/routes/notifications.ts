@@ -1,6 +1,11 @@
 import express, { Request, Response } from 'express';
 import { NotificationService } from '../services/notificationService';
 import { NotificationRepository } from '../repositories/notificationRepository';
+import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
+import { NotificationDeliveryRepository } from '../repositories/notificationDeliveryRepository';
+import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
+import { SocketChannelProvider } from '../services/notification/channels/SocketChannelProvider';
+import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import logger from '../utils/logger';
@@ -12,6 +17,12 @@ const router = express.Router();
 // Initialize service layer
 const notificationRepository = new NotificationRepository(db);
 const notificationService = new NotificationService(notificationRepository);
+
+// Phase 1: minimal dispatcher setup (Socket + Email) behind env flag
+const outboxRepo = new NotificationOutboxRepository(db);
+const deliveryRepo = new NotificationDeliveryRepository(db);
+const providers = [new SocketChannelProvider(), new EmailChannelProvider(db)];
+const dispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
 
 /**
  * @route GET /api/notifications
@@ -133,6 +144,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       authenticatedReq.user
     );
 
+    // Enqueue for delivery (Socket + Email by default)
+    const channels = (process.env.NOTIF_CHANNELS_ENABLED || 'socket,email').split(',').map(s => s.trim()) as any;
+    await dispatcher.enqueue(notification, [user_id], channels);
+
     res.status(201).json(notification);
 
   } catch (error) {
@@ -193,6 +208,12 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
       },
       authenticatedReq.user
     );
+
+    // Enqueue each for delivery
+    const channels = (process.env.NOTIF_CHANNELS_ENABLED || 'socket,email').split(',').map(s => s.trim()) as any;
+    for (const n of notifications) {
+      await dispatcher.enqueue(n, [n.user_id], channels);
+    }
 
     res.status(201).json({
       success: true,

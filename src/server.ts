@@ -31,6 +31,12 @@ import classUpdatesRoutes from './routes/class_updates';
 import notificationRoutes from './routes/notifications';
 import attendanceRoutes from './routes/attendance';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
+import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
+import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
+import { NotificationRepository } from './repositories/notificationRepository';
+import { NotificationDispatcher } from './services/notification/NotificationDispatcher';
+import { SocketChannelProvider } from './services/notification/channels/SocketChannelProvider';
+import { EmailChannelProvider } from './services/notification/channels/EmailChannelProvider';
 
 // Debug: Log that all imports completed
 logger.info('🎯 All route and service imports completed');
@@ -213,6 +219,46 @@ app.get('/health', (req, res) => {
 // Socket.io handlers
 socketHandler(io);
 
+// Phase 1: In-process notification outbox processor to allow Socket channel access to io
+const startOutboxProcessor = () => {
+  const outboxRepo = new NotificationOutboxRepository(db);
+  const deliveryRepo = new NotificationDeliveryRepository(db);
+  const notificationRepo = new NotificationRepository(db);
+  const providers = [new SocketChannelProvider(), new EmailChannelProvider(db)];
+  const dispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
+
+  const runOnce = async () => {
+    try {
+      const batch = await outboxRepo.leaseNextBatch(50);
+      for (const job of batch) {
+        try {
+          const raw = await db('notifications').where('id', job.notification_id).first();
+          if (!raw) {
+            await outboxRepo.markSent(job.id);
+            continue;
+          }
+          const notification = (notificationRepo as any).parseNotification
+            ? (notificationRepo as any).parseNotification(raw)
+            : raw;
+          await dispatcher.process(job.id, {
+            notification,
+            userId: job.user_id,
+            channels: job.channels as any,
+          });
+        } catch (err) {
+          logger.error('Outbox processor job error', err);
+          await outboxRepo.rescheduleFailure(job.id, (err as any)?.message || String(err), 60000, job.attempts);
+        }
+      }
+    } catch (e) {
+      logger.error('Outbox processor loop error', e);
+    }
+  };
+
+  setInterval(runOnce, 2000);
+  logger.info('🧵 Notification outbox processor started');
+};
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -279,7 +325,8 @@ runSeedingIfRequested().then(() => {
     // Log CORS status
     logger.info(`🛡️ CORS Origins: ${Array.isArray(allowedOrigins) ? allowedOrigins.join(', ') : allowedOrigins}`);
     
-    // Log websocket service status
+    // Start outbox processor and log websocket service status
+    startOutboxProcessor();
     setTimeout(() => {
       logger.info('🔌 Initializing WebSocket status check...');
       logWebsocketStatus();
