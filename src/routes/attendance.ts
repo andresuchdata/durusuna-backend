@@ -10,6 +10,12 @@ import {
   StudentAttendanceRequest
 } from '../types/attendance';
 import logger from '../shared/utils/logger';
+import {
+  presentAttendanceRecord,
+  presentAttendanceRecords,
+  presentAttendanceSession,
+  presentStudentsWithAttendance,
+} from '../presenters/attendancePresenter';
 import db from '../shared/database/connection';
 
 const router = express.Router();
@@ -111,8 +117,8 @@ router.post('/sessions/:classId/open', authenticate, async (req: Request, res: R
 
     res.json({
       message: 'Attendance session opened successfully',
-      session: result.session,
-      students: result.students
+      session: presentAttendanceSession(result.session),
+      students: presentStudentsWithAttendance(result.students)
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -161,7 +167,7 @@ router.post('/mark/:classId/:studentId', authenticate, async (req: Request, res:
 
     res.json({
       message: 'Attendance marked successfully',
-      record
+      record: presentAttendanceRecord(record)
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -211,7 +217,7 @@ router.post('/bulk-update/:classId', authenticate, async (req: Request, res: Res
     res.json({
       message: 'Bulk attendance update completed successfully',
       updated_count: records.length,
-      records
+      records: presentAttendanceRecords(records)
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -255,7 +261,7 @@ router.post('/sessions/:classId/finalize', authenticate, async (req: Request, re
 
     res.json({
       message: 'Attendance session finalized successfully',
-      session
+      session: presentAttendanceSession(session)
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -291,10 +297,11 @@ router.post('/student/mark', authenticate, async (req: Request, res: Response) =
       authenticatedReq.user
     );
 
+    const presented = presentAttendanceRecord(record);
     res.json({
       message: 'Attendance marked successfully',
-      record,
-      status: record.status
+      record: presented,
+      status: presented.status
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -422,7 +429,7 @@ router.get('/student/:studentId/history', authenticate, async (req: Request, res
       authenticatedReq.user
     );
 
-    res.json({ history });
+    res.json({ history: presentAttendanceRecords(history) });
   } catch (error) {
     if (error instanceof Error && error.message.includes('Access denied')) {
       return res.status(403).json({ error: error.message });
