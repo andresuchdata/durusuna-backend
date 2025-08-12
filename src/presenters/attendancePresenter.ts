@@ -57,6 +57,8 @@ export function presentAttendanceRecord(record: any): any {
     ...record,
     attendance_date: attendanceDate ? formatDateOnly(attendanceDate) : attendanceDate,
     check_in_time: checkInOut,
+    student_latitude: record.student_latitude ? Number(record.student_latitude) : record.student_latitude,
+    student_longitude: record.student_longitude ? Number(record.student_longitude) : record.student_longitude,
     created_at: record.created_at ? formatDateTimeLocal(record.created_at) : record.created_at,
     updated_at: record.updated_at ? formatDateTimeLocal(record.updated_at) : record.updated_at,
   };
