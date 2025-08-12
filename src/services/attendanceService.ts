@@ -2,7 +2,6 @@ import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import {
   AttendanceRecord,
-  AttendanceRecordWithStudent,
   AttendanceSession,
   SchoolAttendanceSettings,
   CreateAttendanceRecordRequest,
@@ -11,9 +10,10 @@ import {
   AttendanceStatsResponse,
   AttendanceReportResponse,
   StudentAttendanceSummary,
-  LocationVerificationResult
 } from '../types/attendance';
-import { AuthenticatedUser } from '../types/auth';
+import { AuthenticatedRequest } from '../types/auth';
+
+type AuthenticatedUser = AuthenticatedRequest['user'];
 
 export class AttendanceService {
   constructor(
@@ -76,7 +76,7 @@ export class AttendanceService {
     );
 
     // Combine students with their attendance status
-    const studentsWithAttendance = students.map(student => ({
+    const studentsWithAttendance = students.map((student: any) => ({
       ...student,
       attendance: attendanceMap.get(student.user_id) || null
     }));
@@ -234,7 +234,9 @@ export class AttendanceService {
     let status: 'present' | 'late' = 'present';
 
     if (settings?.attendance_hours?.start && settings.late_threshold_minutes) {
-      const [startHour, startMinute] = settings.attendance_hours.start.split(':').map(Number);
+      const timeParts = settings.attendance_hours.start.split(':').map(Number);
+      const startHour = timeParts[0] || 0;
+      const startMinute = timeParts[1] || 0;
       const schoolStartTime = new Date(today);
       schoolStartTime.setHours(startHour, startMinute, 0, 0);
       
@@ -322,8 +324,8 @@ export class AttendanceService {
       class_id: classId,
       class_name: classInfo.name,
       date_range: {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0]
+        start_date: startDate.toISOString().split('T')[0] || '',
+        end_date: endDate.toISOString().split('T')[0] || ''
       },
       summary: {
         total_students: students.length,

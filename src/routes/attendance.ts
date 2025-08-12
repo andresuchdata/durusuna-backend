@@ -1,16 +1,16 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { AttendanceService } from '../services/attendanceService';
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
-import { authenticate } from '../middleware/auth';
+import { authenticate } from '../shared/middleware/auth';
 import { AuthenticatedRequest } from '../types/auth';
 import {
   CreateAttendanceRecordRequest,
   BulkUpdateAttendanceRequest,
   StudentAttendanceRequest
 } from '../types/attendance';
-import logger from '../utils/logger';
-import db from '../config/database';
+import logger from '../shared/utils/logger';
+import db from '../shared/database/connection';
 
 const router = express.Router();
 
@@ -24,12 +24,17 @@ const attendanceService = new AttendanceService(attendanceRepository, userClassR
  * @desc Get school attendance settings
  * @access Private (Admin only)
  */
-router.get('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/settings/:schoolId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { schoolId } = req.params;
+    
+    if (!schoolId) {
+      return res.status(400).json({ error: 'School ID is required' });
+    }
 
     // Verify user is admin of this school
-    if (req.user.role !== 'admin' || req.user.school_id !== schoolId) {
+    if (authenticatedReq.user.role !== 'admin' || authenticatedReq.user.school_id !== schoolId) {
       return res.status(403).json({ error: 'Access denied - admin access required' });
     }
 
@@ -46,15 +51,20 @@ router.get('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest
  * @desc Update school attendance settings
  * @access Private (Admin only)
  */
-router.put('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/settings/:schoolId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { schoolId } = req.params;
     const settings = req.body;
 
+    if (!schoolId) {
+      return res.status(400).json({ error: 'School ID is required' });
+    }
+
     const updatedSettings = await attendanceService.updateSchoolAttendanceSettings(
       schoolId,
       settings,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({ 
@@ -76,10 +86,15 @@ router.put('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest
  * @desc Open attendance session for a class on a specific date
  * @access Private (Teachers only)
  */
-router.post('/sessions/:classId/open', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/sessions/:classId/open', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
     const { date } = req.body; // YYYY-MM-DD format
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
 
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
@@ -91,7 +106,7 @@ router.post('/sessions/:classId/open', authenticate, async (req: AuthenticatedRe
     const result = await attendanceService.openAttendanceSession(
       classId,
       sessionDate,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({
@@ -119,10 +134,15 @@ router.post('/sessions/:classId/open', authenticate, async (req: AuthenticatedRe
  * @desc Mark attendance for a specific student
  * @access Private (Teachers only)
  */
-router.post('/mark/:classId/:studentId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/mark/:classId/:studentId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId, studentId } = req.params;
     const { date, ...attendanceData }: { date: string } & CreateAttendanceRecordRequest = req.body;
+
+    if (!classId || !studentId) {
+      return res.status(400).json({ error: 'Class ID and Student ID are required' });
+    }
 
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
@@ -136,7 +156,7 @@ router.post('/mark/:classId/:studentId', authenticate, async (req: Authenticated
       studentId,
       attendanceDate,
       attendanceData,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({
@@ -160,10 +180,15 @@ router.post('/mark/:classId/:studentId', authenticate, async (req: Authenticated
  * @desc Bulk update attendance for multiple students
  * @access Private (Teachers only)
  */
-router.post('/bulk-update/:classId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/bulk-update/:classId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
     const { date, ...bulkData }: { date: string } & BulkUpdateAttendanceRequest = req.body;
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
 
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
@@ -180,7 +205,7 @@ router.post('/bulk-update/:classId', authenticate, async (req: AuthenticatedRequ
       classId,
       attendanceDate,
       bulkData,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({
@@ -205,10 +230,15 @@ router.post('/bulk-update/:classId', authenticate, async (req: AuthenticatedRequ
  * @desc Finalize attendance session for a class
  * @access Private (Teachers only)
  */
-router.post('/sessions/:classId/finalize', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/sessions/:classId/finalize', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
     const { date } = req.body;
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
 
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
@@ -220,7 +250,7 @@ router.post('/sessions/:classId/finalize', authenticate, async (req: Authenticat
     const session = await attendanceService.finalizeAttendance(
       classId,
       sessionDate,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({
@@ -247,7 +277,8 @@ router.post('/sessions/:classId/finalize', authenticate, async (req: Authenticat
  * @desc Student marks their own attendance via GPS
  * @access Private (Students only)
  */
-router.post('/student/mark', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/student/mark', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const requestData: StudentAttendanceRequest = req.body;
 
@@ -257,7 +288,7 @@ router.post('/student/mark', authenticate, async (req: AuthenticatedRequest, res
 
     const record = await attendanceService.markStudentAttendanceGPS(
       requestData,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({
@@ -289,10 +320,15 @@ router.post('/student/mark', authenticate, async (req: AuthenticatedRequest, res
  * @desc Get attendance statistics for a specific date
  * @access Private
  */
-router.get('/:classId/stats', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:classId/stats', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
     const { date } = req.query;
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
 
     if (!date || typeof date !== 'string') {
       return res.status(400).json({ error: 'Date query parameter is required' });
@@ -304,7 +340,7 @@ router.get('/:classId/stats', authenticate, async (req: AuthenticatedRequest, re
     const stats = await attendanceService.getAttendanceStats(
       classId,
       attendanceDate,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({ stats });
@@ -323,10 +359,15 @@ router.get('/:classId/stats', authenticate, async (req: AuthenticatedRequest, re
  * @desc Get attendance report for a date range
  * @access Private
  */
-router.get('/:classId/report', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:classId/report', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
     const { start_date, end_date } = req.query;
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
 
     if (!start_date || !end_date || typeof start_date !== 'string' || typeof end_date !== 'string') {
       return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
@@ -342,7 +383,7 @@ router.get('/:classId/report', authenticate, async (req: AuthenticatedRequest, r
       classId,
       startDate,
       endDate,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({ report });
@@ -361,10 +402,15 @@ router.get('/:classId/report', authenticate, async (req: AuthenticatedRequest, r
  * @desc Get attendance history for a specific student
  * @access Private
  */
-router.get('/student/:studentId/history', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/student/:studentId/history', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { studentId } = req.params;
     const { class_id } = req.query;
+
+    if (!studentId) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
 
     if (!class_id || typeof class_id !== 'string') {
       return res.status(400).json({ error: 'class_id query parameter is required' });
@@ -373,7 +419,7 @@ router.get('/student/:studentId/history', authenticate, async (req: Authenticate
     const history = await attendanceService.getStudentAttendanceHistory(
       studentId,
       class_id,
-      req.user
+      authenticatedReq.user
     );
 
     res.json({ history });

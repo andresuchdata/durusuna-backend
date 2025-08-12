@@ -160,6 +160,75 @@ export class UserClassRepository {
       });
   }
 
+  async getUserClass(userId: string, classId: string): Promise<UserClass | null> {
+    const result = await this.db('user_classes')
+      .where({
+        user_id: userId,
+        class_id: classId,
+        is_active: true
+      })
+      .first();
+
+    return result || null;
+  }
+
+  async getClassMembers(classId: string, role?: 'student' | 'teacher' | 'assistant'): Promise<UserClassWithUser[]> {
+    let query = this.db('user_classes')
+      .join('users', 'user_classes.user_id', 'users.id')
+      .where('user_classes.class_id', classId)
+      .where('user_classes.is_active', true)
+      .where('users.is_active', true);
+
+    if (role) {
+      query = query.where('user_classes.role_in_class', role);
+    }
+
+    const results = await query
+      .select(
+        'user_classes.*',
+        'users.id as user_id',
+        'users.email as user_email',
+        'users.first_name as user_first_name',
+        'users.last_name as user_last_name',
+        'users.user_type as user_user_type',
+        'users.avatar_url as user_avatar_url',
+        'users.student_id as user_student_id',
+        'users.employee_id as user_employee_id'
+      )
+      .orderBy('users.last_name', 'asc')
+      .orderBy('users.first_name', 'asc');
+
+    return results.map(result => ({
+      id: result.id,
+      user_id: result.user_id,
+      class_id: result.class_id,
+      role_in_class: result.role_in_class,
+      enrolled_at: result.created_at,
+      is_active: result.is_active,
+      created_at: result.created_at,
+      updated_at: result.updated_at,
+      user: {
+        id: result.user_id,
+        email: result.user_email,
+        first_name: result.user_first_name,
+        last_name: result.user_last_name,
+        user_type: result.user_user_type,
+        avatar_url: result.user_avatar_url,
+        student_id: result.user_student_id,
+        employee_id: result.user_employee_id
+      }
+    }));
+  }
+
+  async getClassById(classId: string): Promise<any> {
+    const result = await this.db('classes')
+      .where('id', classId)
+      .where('is_active', true)
+      .first();
+
+    return result || null;
+  }
+
   private generateUUID(): string {
     // Simple UUID generation - in production, use a proper UUID library
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {

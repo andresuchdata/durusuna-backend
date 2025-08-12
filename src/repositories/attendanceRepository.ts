@@ -31,7 +31,7 @@ export class AttendanceRepository {
     schoolId: string, 
     settings: Partial<SchoolAttendanceSettings>
   ): Promise<SchoolAttendanceSettings> {
-    const settingsToUpdate = { ...settings };
+    const settingsToUpdate: any = { ...settings };
     if (settingsToUpdate.attendance_hours) {
       settingsToUpdate.attendance_hours = JSON.stringify(settingsToUpdate.attendance_hours);
     }
