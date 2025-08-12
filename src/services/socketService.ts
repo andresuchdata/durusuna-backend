@@ -240,6 +240,22 @@ const handleConnection = (socket: Socket) => {
     });
   });
 
+  // === NOTIFICATIONS ===
+  socket.on('notification:ack', (data: { notificationId: string }) => {
+    const notificationId = data?.notificationId;
+    try {
+      // Defer DB write to repository from route layer to keep service decoupled.
+      // For Phase 1, do a lightweight emit back confirming ack.
+      socket.emit('notification:acknowledged', {
+        notificationId,
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      // swallow errors
+    }
+  });
+
   // Presence snapshot query: allow clients to request current presence state of another user
   socket.on('presence:query', (data: { userId: string }) => {
     try {

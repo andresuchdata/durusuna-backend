@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
-      - "5433:5432"  # Use different port to avoid conflict
+      - "5443:5432"  # Use different port to avoid conflict
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/migrations:/docker-entrypoint-initdb.d/migrations:ro
@@ -89,6 +89,9 @@ services:
       
       # Logging
       LOG_LEVEL: debug
+
+      # Notifications
+      NOTIF_CHANNELS_ENABLED: socket
       
       # CORS
       CORS_ORIGIN: "*"
@@ -129,7 +132,7 @@ services:
     restart: unless-stopped
     platform: linux/amd64  # Fix for Apple Silicon
     ports:
-      - "1025:1025" # SMTP
+      - "1026:1025" # SMTP (avoid conflict with local MTA)
       - "8025:8025" # Web UI
     networks:
       - durusuna_network
