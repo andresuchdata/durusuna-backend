@@ -21,7 +21,9 @@ export class AttendanceRepository {
       .first();
     
     if (settings && settings.attendance_hours) {
-      settings.attendance_hours = JSON.parse(settings.attendance_hours);
+      if (typeof settings.attendance_hours === 'string') {
+        settings.attendance_hours = JSON.parse(settings.attendance_hours);
+      }
     }
     
     return settings || null;
@@ -91,7 +93,9 @@ export class AttendanceRepository {
       })
       .returning('*');
     
-    session.settings = JSON.parse(session.settings);
+    if (session.settings && typeof session.settings === 'string') {
+      session.settings = JSON.parse(session.settings);
+    }
     return session;
   }
 
@@ -107,7 +111,9 @@ export class AttendanceRepository {
       .first();
     
     if (session && session.settings) {
-      session.settings = JSON.parse(session.settings);
+      if (typeof session.settings === 'string') {
+        session.settings = JSON.parse(session.settings);
+      }
     }
     
     return session || null;
@@ -123,7 +129,7 @@ export class AttendanceRepository {
       })
       .returning('*');
     
-    if (session.settings) {
+    if (session.settings && typeof session.settings === 'string') {
       session.settings = JSON.parse(session.settings);
     }
     
@@ -164,18 +170,15 @@ export class AttendanceRepository {
     recordId: string,
     data: Partial<CreateAttendanceRecordRequest>
   ): Promise<AttendanceRecord> {
-    const updateData: any = { ...data, updated_at: new Date() };
-    
-    if (data.check_in_time) {
-      updateData.check_in_time = new Date(data.check_in_time);
-    }
-
-    const [record] = await this.db('attendance_records')
+    const [updated] = await this.db('attendance_records')
       .where('id', recordId)
-      .update(updateData)
+      .update({
+        ...data,
+        updated_at: new Date()
+      })
       .returning('*');
-    
-    return record;
+
+    return updated;
   }
 
   async getAttendanceRecord(
