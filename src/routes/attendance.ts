@@ -1,0 +1,390 @@
+import express, { Request, Response } from 'express';
+import { AttendanceService } from '../services/attendanceService';
+import { AttendanceRepository } from '../repositories/attendanceRepository';
+import { UserClassRepository } from '../repositories/userClassRepository';
+import { authenticate } from '../shared/middleware/auth';
+import { AuthenticatedRequest } from '../types/auth';
+import {
+  CreateAttendanceRecordRequest,
+  BulkUpdateAttendanceRequest,
+  StudentAttendanceRequest
+} from '../types/attendance';
+import logger from '../shared/utils/logger';
+import db from '../shared/database/connection';
+
+const router = express.Router();
+
+// Initialize service layer
+const attendanceRepository = new AttendanceRepository(db);
+const userClassRepository = new UserClassRepository(db);
+const attendanceService = new AttendanceService(attendanceRepository, userClassRepository);
+
+/**
+ * @route GET /api/attendance/settings/:schoolId
+ * @desc Get school attendance settings
+ * @access Private (Admin only)
+ */
+router.get('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { schoolId } = req.params;
+
+    // Verify user is admin of this school
+    if (req.user.role !== 'admin' || req.user.school_id !== schoolId) {
+      return res.status(403).json({ error: 'Access denied - admin access required' });
+    }
+
+    const settings = await attendanceService.getSchoolAttendanceSettings(schoolId);
+    res.json({ settings });
+  } catch (error) {
+    logger.error('Error fetching attendance settings:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance settings' });
+  }
+});
+
+/**
+ * @route PUT /api/attendance/settings/:schoolId
+ * @desc Update school attendance settings
+ * @access Private (Admin only)
+ */
+router.put('/settings/:schoolId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { schoolId } = req.params;
+    const settings = req.body;
+
+    const updatedSettings = await attendanceService.updateSchoolAttendanceSettings(
+      schoolId,
+      settings,
+      req.user
+    );
+
+    res.json({ 
+      message: 'Attendance settings updated successfully',
+      settings: updatedSettings 
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error updating attendance settings:', error);
+    res.status(500).json({ error: 'Failed to update attendance settings' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/sessions/:classId/open
+ * @desc Open attendance session for a class on a specific date
+ * @access Private (Teachers only)
+ */
+router.post('/sessions/:classId/open', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId } = req.params;
+    const { date } = req.body; // YYYY-MM-DD format
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const sessionDate = new Date(date);
+    sessionDate.setHours(0, 0, 0, 0); // Normalize to start of day
+
+    const result = await attendanceService.openAttendanceSession(
+      classId,
+      sessionDate,
+      req.user
+    );
+
+    res.json({
+      message: 'Attendance session opened successfully',
+      session: result.session,
+      students: result.students
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied')) {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error opening attendance session:', error);
+    res.status(500).json({ error: 'Failed to open attendance session' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/:classId/mark/:studentId
+ * @desc Mark attendance for a specific student
+ * @access Private (Teachers only)
+ */
+router.post('/mark/:classId/:studentId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId, studentId } = req.params;
+    const { date, ...attendanceData }: { date: string } & CreateAttendanceRecordRequest = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const record = await attendanceService.markStudentAttendance(
+      classId,
+      studentId,
+      attendanceDate,
+      attendanceData,
+      req.user
+    );
+
+    res.json({
+      message: 'Attendance marked successfully',
+      record
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied') || error.message.includes('not found')) {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error marking attendance:', error);
+    res.status(500).json({ error: 'Failed to mark attendance' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/:classId/bulk-update
+ * @desc Bulk update attendance for multiple students
+ * @access Private (Teachers only)
+ */
+router.post('/bulk-update/:classId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId } = req.params;
+    const { date, ...bulkData }: { date: string } & BulkUpdateAttendanceRequest = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    if (!bulkData.records || !Array.isArray(bulkData.records)) {
+      return res.status(400).json({ error: 'Records array is required' });
+    }
+
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const records = await attendanceService.bulkUpdateAttendance(
+      classId,
+      attendanceDate,
+      bulkData,
+      req.user
+    );
+
+    res.json({
+      message: 'Bulk attendance update completed successfully',
+      updated_count: records.length,
+      records
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied')) {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error in bulk attendance update:', error);
+    res.status(500).json({ error: 'Failed to update attendance' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/sessions/:classId/finalize
+ * @desc Finalize attendance session for a class
+ * @access Private (Teachers only)
+ */
+router.post('/sessions/:classId/finalize', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId } = req.params;
+    const { date } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const sessionDate = new Date(date);
+    sessionDate.setHours(0, 0, 0, 0);
+
+    const session = await attendanceService.finalizeAttendance(
+      classId,
+      sessionDate,
+      req.user
+    );
+
+    res.json({
+      message: 'Attendance session finalized successfully',
+      session
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied')) {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.message.includes('not found') || error.message.includes('already finalized')) {
+        return res.status(400).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error finalizing attendance session:', error);
+    res.status(500).json({ error: 'Failed to finalize attendance session' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/student/mark
+ * @desc Student marks their own attendance via GPS
+ * @access Private (Students only)
+ */
+router.post('/student/mark', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const requestData: StudentAttendanceRequest = req.body;
+
+    if (!requestData.class_id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    const record = await attendanceService.markStudentAttendanceGPS(
+      requestData,
+      req.user
+    );
+
+    res.json({
+      message: 'Attendance marked successfully',
+      record,
+      status: record.status
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied')) {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.message.includes('already marked')) {
+        return res.status(409).json({ error: error.message });
+      }
+      if (error.message.includes('Location verification failed') || 
+          error.message.includes('GPS location is required')) {
+        return res.status(400).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error in student GPS attendance:', error);
+    res.status(500).json({ error: 'Failed to mark attendance' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/:classId/stats
+ * @desc Get attendance statistics for a specific date
+ * @access Private
+ */
+router.get('/:classId/stats', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId } = req.params;
+    const { date } = req.query;
+
+    if (!date || typeof date !== 'string') {
+      return res.status(400).json({ error: 'Date query parameter is required' });
+    }
+
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const stats = await attendanceService.getAttendanceStats(
+      classId,
+      attendanceDate,
+      req.user
+    );
+
+    res.json({ stats });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error fetching attendance stats:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance statistics' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/:classId/report
+ * @desc Get attendance report for a date range
+ * @access Private
+ */
+router.get('/:classId/report', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { classId } = req.params;
+    const { start_date, end_date } = req.query;
+
+    if (!start_date || !end_date || typeof start_date !== 'string' || typeof end_date !== 'string') {
+      return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
+    }
+
+    const startDate = new Date(start_date);
+    const endDate = new Date(end_date);
+    
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    const report = await attendanceService.getClassAttendanceReport(
+      classId,
+      startDate,
+      endDate,
+      req.user
+    );
+
+    res.json({ report });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error generating attendance report:', error);
+    res.status(500).json({ error: 'Failed to generate attendance report' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/student/:studentId/history
+ * @desc Get attendance history for a specific student
+ * @access Private
+ */
+router.get('/student/:studentId/history', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const { class_id } = req.query;
+
+    if (!class_id || typeof class_id !== 'string') {
+      return res.status(400).json({ error: 'class_id query parameter is required' });
+    }
+
+    const history = await attendanceService.getStudentAttendanceHistory(
+      studentId,
+      class_id,
+      req.user
+    );
+
+    res.json({ history });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error fetching student attendance history:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance history' });
+  }
+});
+
+export default router;

@@ -29,6 +29,7 @@ import conversationRoutes from './routes/conversations';
 import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
 import notificationRoutes from './routes/notifications';
+import attendanceRoutes from './routes/attendance';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 
 // Debug: Log that all imports completed
@@ -171,6 +172,7 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/class-updates', classUpdatesRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 /**
  * @swagger
