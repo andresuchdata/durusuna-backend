@@ -18,6 +18,7 @@ export class NotificationDispatcher {
   ) {}
 
   async enqueue(notification: Notification, userIds: string[], channels: NotificationChannel[] = ['socket', 'email']) {
+    logger.info(`🔔 Enqueue request: notif=${notification.id} users=${userIds.length} channels=${channels.join(',')}`);
     for (const userId of userIds) {
       // Create delivery records up-front for dedupe/observability
       for (const channel of channels) {

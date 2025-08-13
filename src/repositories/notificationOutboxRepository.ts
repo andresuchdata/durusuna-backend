@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import logger from '../shared/utils/logger';
 
 export type OutboxStatus = 'queued' | 'processing' | 'sent' | 'failed';
 
@@ -34,6 +35,7 @@ export class NotificationOutboxRepository {
         next_run_at: params.runAt || this.db.fn.now(),
       })
       .returning('*');
+    logger.info(`🧾 Outbox inserted: notif=${params.notificationId} user=${params.userId} channels=${params.channels.length}`);
     return this.parse(row);
   }
 

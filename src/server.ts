@@ -14,7 +14,7 @@ import swaggerSpec from './config/swagger';
 dotenv.config();
 
 // Import mixed JS/TS files
-import db from './config/database';
+import db from './shared/database/connection';
 import logger from './shared/utils/logger';
 
 // Debug: Log that we've reached import completion
