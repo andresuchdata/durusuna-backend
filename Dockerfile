@@ -27,7 +27,7 @@ RUN bun pm cache rm
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
-COPY knexfile.ts ./
+# knexfile.ts is now in src/ directory
 COPY start-production.sh ./
 RUN chmod +x start-production.sh scripts/migrate.ts
 

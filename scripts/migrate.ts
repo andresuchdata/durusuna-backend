@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import knex from 'knex';
-import config from '../knexfile';
+import config from '../src/knexfile';
 
 const environment = process.env.NODE_ENV || 'development';
 const knexConfig = config[environment];
