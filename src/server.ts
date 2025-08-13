@@ -227,8 +227,32 @@ const startOutboxProcessor = () => {
   const providers = [new SocketChannelProvider(), new EmailChannelProvider(db)];
   const dispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
 
+  let tablesReady = false;
+
+  const checkTables = async () => {
+    try {
+      // Check if notification_outbox table exists
+      await db.raw("SELECT 1 FROM notification_outbox LIMIT 1");
+      tablesReady = true;
+      logger.info('📋 Notification tables ready');
+      return true;
+    } catch (e) {
+      // Tables don't exist yet, wait for migrations
+      return false;
+    }
+  };
+
   const runOnce = async () => {
     try {
+      // Check if tables are ready first
+      if (!tablesReady) {
+        const ready = await checkTables();
+        if (!ready) {
+          // Tables not ready yet, skip this run
+          return;
+        }
+      }
+
       const batch = await outboxRepo.leaseNextBatch(50);
       for (const job of batch) {
         try {
@@ -251,12 +275,18 @@ const startOutboxProcessor = () => {
         }
       }
     } catch (e) {
+      // If this is a "relation does not exist" error, it's expected during startup
+      if (e && typeof e === 'object' && 'code' in e && e.code === '42P01') {
+        // Table doesn't exist yet, reset flag and wait
+        tablesReady = false;
+        return;
+      }
       logger.error('Outbox processor loop error', e);
     }
   };
 
   setInterval(runOnce, 2000);
-  logger.info('🧵 Notification outbox processor started');
+  logger.info('🧵 Notification outbox processor started (waiting for tables...)');
 };
 
 // 404 handler
