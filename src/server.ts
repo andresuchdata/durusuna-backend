@@ -15,7 +15,7 @@ dotenv.config();
 
 // Import mixed JS/TS files
 import db from './config/database';
-import logger from './utils/logger';
+import logger from './shared/utils/logger';
 
 // Debug: Log that we've reached import completion
 logger.info('🔧 All imports loaded successfully');
@@ -249,11 +249,14 @@ const startOutboxProcessor = () => {
         const ready = await checkTables();
         if (!ready) {
           // Tables not ready yet, skip this run
+          logger.debug('⏳ Notification outbox tables not ready yet, waiting...');
           return;
         }
       }
 
       const batch = await outboxRepo.leaseNextBatch(50);
+      logger.debug(`🔄 Outbox processor: Found ${batch.length} jobs to process`);
+      
       for (const job of batch) {
         try {
           const raw = await db('notifications').where('id', job.notification_id).first();
@@ -287,6 +290,12 @@ const startOutboxProcessor = () => {
 
   setInterval(runOnce, 2000);
   logger.info('🧵 Notification outbox processor started (waiting for tables...)');
+  
+  // Run once immediately to test
+  setTimeout(() => {
+    logger.debug('🔧 Running initial outbox processor check...');
+    runOnce();
+  }, 5000);
 };
 
 // 404 handler
