@@ -1,6 +1,6 @@
 import { ChannelProvider, NotificationChannel } from '../NotificationDispatcher';
 import { Notification } from '../../../types/notification';
-import logger from '../../../utils/logger';
+import logger from '../../../shared/utils/logger';
 
 export class SocketChannelProvider implements ChannelProvider {
   public readonly channel: NotificationChannel = 'socket';

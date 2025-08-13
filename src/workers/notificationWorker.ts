@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import db from '../config/database';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from '../repositories/notificationDeliveryRepository';
 import { NotificationRepository } from '../repositories/notificationRepository';

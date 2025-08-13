@@ -1,7 +1,7 @@
 import { ChannelProvider, NotificationChannel } from '../NotificationDispatcher';
 import { Notification } from '../../../types/notification';
 import nodemailer from 'nodemailer';
-import logger from '../../../utils/logger';
+import logger from '../../../shared/utils/logger';
 import { Knex } from 'knex';
 
 export class EmailChannelProvider implements ChannelProvider {

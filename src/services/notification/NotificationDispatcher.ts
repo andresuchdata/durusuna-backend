@@ -1,7 +1,7 @@
 import { Notification } from '../../types/notification';
 import { NotificationOutboxRepository } from '../../repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from '../../repositories/notificationDeliveryRepository';
-import logger from '../../utils/logger';
+import logger from '../../shared/utils/logger';
 
 export type NotificationChannel = 'socket' | 'email';
 
