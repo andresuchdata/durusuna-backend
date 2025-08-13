@@ -231,13 +231,18 @@ const startOutboxProcessor = () => {
 
   const checkTables = async () => {
     try {
-      // Check if notification_outbox table exists
-      await db.raw("SELECT 1 FROM notification_outbox LIMIT 1");
-      tablesReady = true;
-      logger.info('📋 Notification tables ready');
-      return true;
+      // Use to_regclass to avoid raising an error when relation doesn't exist
+      const result = await db.raw(
+        "SELECT to_regclass('public.notification_outbox') AS outbox, to_regclass('public.notification_deliveries') AS deliveries"
+      );
+      const row = (result as any)?.rows?.[0];
+      const ready = !!row?.outbox && !!row?.deliveries;
+      if (ready && !tablesReady) {
+        tablesReady = true;
+        logger.info('📋 Notification tables ready');
+      }
+      return ready;
     } catch (e) {
-      // Tables don't exist yet, wait for migrations
       return false;
     }
   };
@@ -288,14 +293,15 @@ const startOutboxProcessor = () => {
     }
   };
 
-  setInterval(runOnce, 2000);
-  logger.info('🧵 Notification outbox processor started (waiting for tables...)');
-  
-  // Run once immediately to test
+  // Delay worker startup to avoid racing migrations on Railway when DB_RESET_MODE=true
+  const startupDelayMs = process.env.NOTIF_OUTBOX_STARTUP_DELAY_MS
+    ? parseInt(process.env.NOTIF_OUTBOX_STARTUP_DELAY_MS, 10)
+    : (process.env.DB_RESET_MODE === 'true' ? 10000 : 0);
+
   setTimeout(() => {
-    logger.debug('🔧 Running initial outbox processor check...');
-    runOnce();
-  }, 5000);
+    setInterval(runOnce, 2000);
+    logger.info(`🧵 Notification outbox processor started after ${startupDelayMs}ms`);
+  }, startupDelayMs);
 };
 
 // 404 handler
