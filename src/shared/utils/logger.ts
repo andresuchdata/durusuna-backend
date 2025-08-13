@@ -45,15 +45,15 @@ const logger = winston.createLogger({
   ]
 });
 
-// If not in production, log to console as well
-if (process.env.NODE_ENV !== 'production') {
+// Log to console in all environments by default (toggle with LOG_TO_CONSOLE=false)
+if (process.env.LOG_TO_CONSOLE !== 'false') {
   logger.add(new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
       winston.format.simple(),
-      winston.format.printf(({ timestamp, level, message, ...meta }) => {
-        return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
-      })
+      winston.format.printf(({ timestamp, level, message, ...meta }) =>
+        `${timestamp ?? ''} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`
+      )
     )
   }));
 }
