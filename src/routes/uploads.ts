@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';
 import {

@@ -4,7 +4,7 @@ import { MessageRepository } from '../repositories/messageRepository';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { validate, messageSchema } from '../utils/validation';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
 import {
   MessageSearchParams

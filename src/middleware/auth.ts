@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import db from '../config/database';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
 
 // Import JWT utilities (keeping require for now due to CommonJS)

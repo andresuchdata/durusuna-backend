@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
 import {
   Lesson,

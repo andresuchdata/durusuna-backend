@@ -2,7 +2,7 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import mime from 'mime-types';
 import { v4 as uuidv4 } from 'uuid';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 
 interface FileUploadOptions {
   processImage?: boolean;

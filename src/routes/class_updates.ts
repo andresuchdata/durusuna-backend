@@ -4,7 +4,7 @@ import multer from 'multer';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { validate, classUpdateSchema, commentSchema } from '../utils/validation';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { safeJsonParse, migrateReactions, safeJsonStringify, ReactionData } from '../utils/json';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';

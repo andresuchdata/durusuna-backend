@@ -8,7 +8,7 @@ import { SocketChannelProvider } from '../services/notification/channels/SocketC
 import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
 import { NotificationQueryParams } from '../types/notification';
 

@@ -1,6 +1,6 @@
 import { NotificationRepository } from '../repositories/notificationRepository';
 import { AuthenticatedUser } from '../types/user';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import {
   Notification,
   NotificationWithSender,

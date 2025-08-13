@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 
 // Types for socket events
 interface SocketUser extends Socket {

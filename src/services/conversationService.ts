@@ -1,7 +1,7 @@
 import { MessageRepository } from '../repositories/messageRepository';
 import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
-import logger from '../utils/logger';
+import logger from '../shared/utils/logger';
 import { safeJsonParse } from '../utils/json';
 import {
   MessageWithSender,
