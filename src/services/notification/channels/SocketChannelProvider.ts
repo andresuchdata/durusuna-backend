@@ -8,10 +8,24 @@ export class SocketChannelProvider implements ChannelProvider {
   async send(input: { userId: string; notification: Notification }): Promise<'sent' | 'skipped'> {
     try {
       logger.info(`📡 SocketChannelProvider: Attempting to send notification ${input.notification.id} to user ${input.userId}`);
-      
+
       if (!global.io || typeof (global.io as any).emitToUser !== 'function') {
         logger.warn('SocketChannelProvider: io.emitToUser not available; skipping');
         return 'skipped';
+      }
+
+      // Visibility: is the user currently online (joined to personal room)?
+      try {
+        const isOnline = typeof (global.io as any).isUserOnline === 'function'
+          ? (global.io as any).isUserOnline(input.userId)
+          : undefined;
+        if (isOnline === false) {
+          logger.warn(`📴 SocketChannelProvider: User ${input.userId} offline at send time`);
+        } else if (isOnline === true) {
+          logger.info(`🟢 SocketChannelProvider: User ${input.userId} is online`);
+        }
+      } catch (_) {
+        // ignore
       }
 
       const payload = {
