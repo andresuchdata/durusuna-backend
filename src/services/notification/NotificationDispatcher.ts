@@ -3,7 +3,7 @@ import { NotificationOutboxRepository } from '../../repositories/notificationOut
 import { NotificationDeliveryRepository } from '../../repositories/notificationDeliveryRepository';
 import logger from '../../shared/utils/logger';
 
-export type NotificationChannel = 'socket' | 'email';
+export type NotificationChannel = 'socket' | 'email' | 'firebase';
 
 export interface ChannelProvider {
   channel: NotificationChannel;
@@ -17,7 +17,7 @@ export class NotificationDispatcher {
     private providers: ChannelProvider[],
   ) {}
 
-  async enqueue(notification: Notification, userIds: string[], channels: NotificationChannel[] = ['socket', 'email']) {
+  async enqueue(notification: Notification, userIds: string[], channels: NotificationChannel[] = ['socket', 'email', 'firebase']) {
     logger.info(`🔔 Enqueue request: notif=${notification.id} users=${userIds.length} channels=${channels.join(',')}`);
     for (const userId of userIds) {
       // Create delivery records up-front for dedupe/observability

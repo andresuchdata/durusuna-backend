@@ -138,4 +138,24 @@ export class UserRepository {
     
     return users.map(({ password, ...user }) => user);
   }
+
+  async updateFCMToken(userId: string, fcmToken: string): Promise<void> {
+    await this.db('users')
+      .where('id', userId)
+      .update({
+        fcm_token: fcmToken,
+        fcm_token_updated_at: new Date(),
+        updated_at: new Date()
+      });
+  }
+
+  async clearFCMToken(userId: string): Promise<void> {
+    await this.db('users')
+      .where('id', userId)
+      .update({
+        fcm_token: null,
+        fcm_token_updated_at: new Date(),
+        updated_at: new Date()
+      });
+  }
 } 

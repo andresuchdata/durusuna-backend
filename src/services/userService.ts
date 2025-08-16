@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 import { UserRepository } from '../repositories/userRepository';
+import { FCMTokenRepository } from '../repositories/fcmTokenRepository';
 import { 
   User, 
   UserWithSchool, 
@@ -17,7 +18,12 @@ import {
 } from '../schemas/userSchemas';
 
 export class UserService {
-  constructor(private userRepository: UserRepository) {}
+  private fcmTokenRepository: FCMTokenRepository;
+
+  constructor(private userRepository: UserRepository) {
+    // Get db instance from userRepository (cleaner than passing separately)
+    this.fcmTokenRepository = new FCMTokenRepository((this.userRepository as any).db);
+  }
 
   async getUserProfile(userId: string): Promise<UserWithSchool> {
     const user = await this.userRepository.findById(userId);
@@ -211,5 +217,13 @@ export class UserService {
     }
 
     return await this.userRepository.findUsersByTypeAndSchool(currentUser.school_id, userType);
+  }
+
+  async updateFCMToken(userId: string, fcmToken: string): Promise<void> {
+    await this.fcmTokenRepository.updateToken(userId, fcmToken);
+  }
+
+  async clearFCMToken(userId: string): Promise<void> {
+    await this.fcmTokenRepository.removeToken(userId);
   }
 } 

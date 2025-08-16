@@ -37,6 +37,7 @@ import { NotificationRepository } from './repositories/notificationRepository';
 import { NotificationDispatcher } from './services/notification/NotificationDispatcher';
 import { SocketChannelProvider } from './services/notification/channels/SocketChannelProvider';
 import { EmailChannelProvider } from './services/notification/channels/EmailChannelProvider';
+import { FirebaseChannelProvider } from './services/notification/channels/FirebaseChannelProvider';
 
 // Debug: Log that all imports completed
 logger.info('🎯 All route and service imports completed');
@@ -224,7 +225,11 @@ const startOutboxProcessor = () => {
   const outboxRepo = new NotificationOutboxRepository(db);
   const deliveryRepo = new NotificationDeliveryRepository(db);
   const notificationRepo = new NotificationRepository(db);
-  const providers = [new SocketChannelProvider(), new EmailChannelProvider(db)];
+  const providers = [
+    new SocketChannelProvider(), 
+    new EmailChannelProvider(db),
+    new FirebaseChannelProvider(db)
+  ];
   const dispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
 
   let tablesReady = false;
