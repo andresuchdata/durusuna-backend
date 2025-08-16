@@ -1,5 +1,11 @@
 const { v4: uuidv4 } = require('uuid');
 
+// Fixed UUIDs for consistent seeding
+const SCHOOL_IDS = {
+  SDIT: '11111111-1111-1111-1111-111111111111',
+  SMP: '22222222-2222-2222-2222-222222222222'
+};
+
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> } 
@@ -11,36 +17,53 @@ exports.seed = async function(knex) {
   // Inserts seed entries
   await knex('schools').insert([
     {
-      id: uuidv4(),
-      name: 'Demo Elementary School',
-      address: '123 Education Street, Learning City, LC 12345',
-      phone: '+1-555-0123',
-      email: 'admin@demo-elementary.edu',
-      website: 'https://demo-elementary.edu',
+      id: SCHOOL_IDS.SDIT,
+      name: 'SDIT Darel Iman 1',
+      address: 'Jl. Khatib Sulaiman No.52, Padang Utara, Kota Padang, Sumatera Barat 25173',
+      phone: '+62-751-123456',
+      email: 'admin@sditdareliman1.sch.id',
+      website: 'https://sditdareliman1.sch.id',
       settings: JSON.stringify({
-        timezone: 'America/New_York',
+        timezone: 'Asia/Jakarta',
         academic_year: '2024-2025',
-        grading_system: 'letter_grades'
+        grading_system: 'percentage',
+        attendance_location: {
+          name: 'SDIT Darel Iman 1 Campus',
+          google_maps_url: 'https://www.google.com/maps/place/SDIT+Dareliman+1+Padang/@-0.9009373,100.3035648,17635m/data=!3m1!1e3!4m6!3m5!1s0x2fd4b8a579c9cb91:0x97ccc540bd434f5b!8m2!3d-0.9009373!4d100.3756626!16s%2Fg%2F11b6c9tx3s?entry=ttu&g_ep=EgoyMDI1MDgxMy4wIKXMDSoASAFQAw%3D%3D',
+          latitude: -0.9009373,
+          longitude: 100.3756626,
+          radius_meters: 100
+        }
       }),
       is_active: true,
       created_at: new Date(),
       updated_at: new Date()
     },
     {
-      id: uuidv4(),
-      name: 'Demo High School',
-      address: '456 Knowledge Avenue, Study Town, ST 67890',
-      phone: '+1-555-0124',
-      email: 'office@demo-highschool.edu',
-      website: 'https://demo-highschool.edu',
+      id: SCHOOL_IDS.SMP,
+      name: 'SMP IT Darel Iman',
+      address: 'Jl. Prof. Dr. Hamka No.Air Tawar Tim., Padang Utara, Kota Padang, Sumatera Barat',
+      phone: '+62-751-789012',
+      email: 'admin@smpitdareliman.sch.id',
+      website: 'https://smpitdareliman.sch.id',
       settings: JSON.stringify({
-        timezone: 'America/New_York',
+        timezone: 'Asia/Jakarta',
         academic_year: '2024-2025',
-        grading_system: 'percentage'
+        grading_system: 'percentage',
+        attendance_location: {
+          name: 'SMP IT Darel Iman Campus',
+          latitude: -0.8981452379675374,
+          longitude: 100.3614347974181,
+          radius_meters: 100
+        }
       }),
       is_active: true,
       created_at: new Date(),
       updated_at: new Date()
     }
   ]);
-}; 
+
+  console.log('✅ Schools seeded successfully');
+  console.log('   - SDIT Darel Iman 1:', SCHOOL_IDS.SDIT);
+  console.log('   - SMP IT Darel Iman:', SCHOOL_IDS.SMP);
+};

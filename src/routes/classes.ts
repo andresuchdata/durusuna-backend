@@ -18,6 +18,9 @@ import { NotificationDeliveryRepository } from '../repositories/notificationDeli
 import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
 import { SocketChannelProvider } from '../services/notification/channels/SocketChannelProvider';
 import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
+import { FirebaseChannelProvider } from '../services/notification/channels/FirebaseChannelProvider';
+import { buildClassUpdateFCMContent } from '../services/notification/fcm/FCMContentUtils';
+import { ClassUpdateNotificationService } from '../services/classUpdateNotificationService';
 import { Class, ClassWithDetails } from '../types/class';
 import {
   ClassUpdateWithAuthor,
@@ -33,6 +36,17 @@ const classRepository = new ClassRepository(db);
 const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
 const classService = new ClassService(classRepository, lessonRepository, userClassRepository);
+
+// Initialize notification system
+const outboxRepo = new NotificationOutboxRepository(db);
+const deliveryRepo = new NotificationDeliveryRepository(db);
+const providers = [
+  new SocketChannelProvider(),
+  new EmailChannelProvider(db),
+  new FirebaseChannelProvider(db)
+];
+const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
+const classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
 
 // JSON utilities now imported from utils/json.ts
 
@@ -499,66 +513,21 @@ router.post('/:classId/updates', authenticate, validate(classUpdateSchema), asyn
 
     res.status(201).json({ update: formattedUpdate });
 
-    // Fire test notifications to class subscribers (students and parents). Admin excluded.
+    // Send notifications to class subscribers (students, teachers, and parents)
     try {
-      logger.info(`🔔 Enqueuing class update notifications for classId: ${classId}`);
-      
-      const recipientRows = await db('user_classes')
-        .join('users', 'user_classes.user_id', 'users.id')
-        .where('user_classes.class_id', classId)
-        .whereIn('users.user_type', ['student', 'parent'])
-        .select('users.id as user_id');
+      await classUpdateNotificationService.notifyClassUpdateCreated({
+        updateId: newUpdate.id,
+        classId: classId,
+        authorId: req.user.id,
+        title: newUpdate.title,
+        content: newUpdate.content,
+        updateType: newUpdate.update_type
+      });
 
-      logger.info(`🔔 Found ${recipientRows.length} potential recipients`);
-
-      const userIds = recipientRows
-        .map(r => r.user_id)
-        .filter((id: string) => id !== req.user.id);
-
-      logger.info(`🔔 After filtering author, ${userIds.length} recipients: ${userIds.join(', ')}`);
-
-      if (userIds.length > 0) {
-        const notificationRepository = new NotificationRepository(db as any);
-        const notificationService = new AppNotificationService(notificationRepository);
-        const outboxRepo = new NotificationOutboxRepository(db as any);
-        const deliveryRepo = new NotificationDeliveryRepository(db as any);
-        const providers = [new SocketChannelProvider(), new EmailChannelProvider(db as any)];
-      
-        const dispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
-
-        const titleText = title || 'New class update';
-        const bodyText = content?.slice(0, 140) || 'A new update was posted.';
-
-        const created = await notificationService.createBulkNotifications(
-          userIds,
-          {
-            title: titleText,
-            content: bodyText,
-            notification_type: 'announcement',
-            priority: 'normal',
-            sender_id: req.user.id,
-            action_url: undefined,
-            action_data: { class_id: classId, update_id: updateId, update_type },
-          },
-          req.user
-        );
-
-        logger.info(`🔔 Created ${created.length} notifications`);
-
-        const channels = (process.env.NOTIF_CHANNELS_ENABLED || 'socket').split(',').map(s => s.trim()) as any;
-        logger.info(`🔔 Using channels: ${channels.join(', ')}`);
-        
-        for (const n of created) {
-          logger.info(`🔔 Enqueuing notification ${n.id} for user ${n.user_id}`);
-          await dispatcher.enqueue(n, [n.user_id], channels);
-        }
-        
-        logger.info(`🔔 Successfully enqueued ${created.length} notifications`);
-      } else {
-        logger.info('🔔 No recipients found for class update notifications');
-      }
-    } catch (notifyError) {
-      logger.error('Failed to enqueue class update notifications', notifyError);
+      logger.info(`🔔 Successfully sent class update notifications for update ${newUpdate.id}`);
+    } catch (notificationError) {
+      logger.error('🔔 Failed to send class update notifications:', notificationError);
+      // Don't fail the request if notification fails
     }
 
   } catch (error) {

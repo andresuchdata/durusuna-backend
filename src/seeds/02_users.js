@@ -1,315 +1,371 @@
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
+// Fixed UUIDs for consistent seeding
+const SCHOOL_IDS = {
+  SDIT: '11111111-1111-1111-1111-111111111111',
+  SMP: '22222222-2222-2222-2222-222222222222'
+};
+
+const USER_IDS = {
+  // Admins
+  ADMIN_SDIT: '10000000-0000-0000-0000-000000000001',
+  ADMIN_SMP: '10000000-0000-0000-0000-000000000002',
+  
+  // Teachers SDIT
+  TEACHER_SDIT_1: '20000000-0000-0000-0000-000000000001',
+  TEACHER_SDIT_2: '20000000-0000-0000-0000-000000000002',
+  TEACHER_SDIT_3: '20000000-0000-0000-0000-000000000003',
+  TEACHER_SDIT_4: '20000000-0000-0000-0000-000000000004',
+  
+  // Teachers SMP
+  TEACHER_SMP_1: '20000000-0000-0000-0000-000000000011',
+  TEACHER_SMP_2: '20000000-0000-0000-0000-000000000012',
+  TEACHER_SMP_3: '20000000-0000-0000-0000-000000000013',
+  TEACHER_SMP_4: '20000000-0000-0000-0000-000000000014',
+  
+  // Students SDIT (30 students - 5 per class)
+  STUDENT_SDIT_1A_1: '30000000-0000-0000-0000-000000000001',
+  STUDENT_SDIT_1A_2: '30000000-0000-0000-0000-000000000002',
+  STUDENT_SDIT_1A_3: '30000000-0000-0000-0000-000000000003',
+  STUDENT_SDIT_1A_4: '30000000-0000-0000-0000-000000000004',
+  STUDENT_SDIT_1A_5: '30000000-0000-0000-0000-000000000005',
+  
+  STUDENT_SDIT_2C_1: '30000000-0000-0000-0000-000000000011',
+  STUDENT_SDIT_2C_2: '30000000-0000-0000-0000-000000000012',
+  STUDENT_SDIT_2C_3: '30000000-0000-0000-0000-000000000013',
+  STUDENT_SDIT_2C_4: '30000000-0000-0000-0000-000000000014',
+  STUDENT_SDIT_2C_5: '30000000-0000-0000-0000-000000000015',
+  
+  STUDENT_SDIT_3D_1: '30000000-0000-0000-0000-000000000021',
+  STUDENT_SDIT_3D_2: '30000000-0000-0000-0000-000000000022',
+  STUDENT_SDIT_3D_3: '30000000-0000-0000-0000-000000000023',
+  STUDENT_SDIT_3D_4: '30000000-0000-0000-0000-000000000024',
+  STUDENT_SDIT_3D_5: '30000000-0000-0000-0000-000000000025',
+  
+  STUDENT_SDIT_4B_1: '30000000-0000-0000-0000-000000000031',
+  STUDENT_SDIT_4B_2: '30000000-0000-0000-0000-000000000032',
+  STUDENT_SDIT_4B_3: '30000000-0000-0000-0000-000000000033',
+  STUDENT_SDIT_4B_4: '30000000-0000-0000-0000-000000000034',
+  STUDENT_SDIT_4B_5: '30000000-0000-0000-0000-000000000035',
+  
+  STUDENT_SDIT_5A_1: '30000000-0000-0000-0000-000000000041',
+  STUDENT_SDIT_5A_2: '30000000-0000-0000-0000-000000000042',
+  STUDENT_SDIT_5A_3: '30000000-0000-0000-0000-000000000043',
+  STUDENT_SDIT_5A_4: '30000000-0000-0000-0000-000000000044',
+  STUDENT_SDIT_5A_5: '30000000-0000-0000-0000-000000000045',
+  
+  STUDENT_SDIT_6C_1: '30000000-0000-0000-0000-000000000051',
+  STUDENT_SDIT_6C_2: '30000000-0000-0000-0000-000000000052',
+  STUDENT_SDIT_6C_3: '30000000-0000-0000-0000-000000000053',
+  STUDENT_SDIT_6C_4: '30000000-0000-0000-0000-000000000054',
+  STUDENT_SDIT_6C_5: '30000000-0000-0000-0000-000000000055',
+  
+  // Students SMP (30 students - 5 per class)
+  STUDENT_SMP_7M1_1: '30000000-0000-0000-0000-000000000101',
+  STUDENT_SMP_7M1_2: '30000000-0000-0000-0000-000000000102',
+  STUDENT_SMP_7M1_3: '30000000-0000-0000-0000-000000000103',
+  STUDENT_SMP_7M1_4: '30000000-0000-0000-0000-000000000104',
+  STUDENT_SMP_7M1_5: '30000000-0000-0000-0000-000000000105',
+  
+  STUDENT_SMP_7MD1_1: '30000000-0000-0000-0000-000000000111',
+  STUDENT_SMP_7MD1_2: '30000000-0000-0000-0000-000000000112',
+  STUDENT_SMP_7MD1_3: '30000000-0000-0000-0000-000000000113',
+  STUDENT_SMP_7MD1_4: '30000000-0000-0000-0000-000000000114',
+  STUDENT_SMP_7MD1_5: '30000000-0000-0000-0000-000000000115',
+  
+  STUDENT_SMP_8M1_1: '30000000-0000-0000-0000-000000000121',
+  STUDENT_SMP_8M1_2: '30000000-0000-0000-0000-000000000122',
+  STUDENT_SMP_8M1_3: '30000000-0000-0000-0000-000000000123',
+  STUDENT_SMP_8M1_4: '30000000-0000-0000-0000-000000000124',
+  STUDENT_SMP_8M1_5: '30000000-0000-0000-0000-000000000125',
+  
+  STUDENT_SMP_8MD1_1: '30000000-0000-0000-0000-000000000131',
+  STUDENT_SMP_8MD1_2: '30000000-0000-0000-0000-000000000132',
+  STUDENT_SMP_8MD1_3: '30000000-0000-0000-0000-000000000133',
+  STUDENT_SMP_8MD1_4: '30000000-0000-0000-0000-000000000134',
+  STUDENT_SMP_8MD1_5: '30000000-0000-0000-0000-000000000135',
+  
+  STUDENT_SMP_9M1_1: '30000000-0000-0000-0000-000000000141',
+  STUDENT_SMP_9M1_2: '30000000-0000-0000-0000-000000000142',
+  STUDENT_SMP_9M1_3: '30000000-0000-0000-0000-000000000143',
+  STUDENT_SMP_9M1_4: '30000000-0000-0000-0000-000000000144',
+  STUDENT_SMP_9M1_5: '30000000-0000-0000-0000-000000000145',
+  
+  STUDENT_SMP_9MD2_1: '30000000-0000-0000-0000-000000000151',
+  STUDENT_SMP_9MD2_2: '30000000-0000-0000-0000-000000000152',
+  STUDENT_SMP_9MD2_3: '30000000-0000-0000-0000-000000000153',
+  STUDENT_SMP_9MD2_4: '30000000-0000-0000-0000-000000000154',
+  STUDENT_SMP_9MD2_5: '30000000-0000-0000-0000-000000000155',
+  
+  // Parents (20 parents)
+  PARENT_1: '40000000-0000-0000-0000-000000000001',
+  PARENT_2: '40000000-0000-0000-0000-000000000002',
+  PARENT_3: '40000000-0000-0000-0000-000000000003',
+  PARENT_4: '40000000-0000-0000-0000-000000000004',
+  PARENT_5: '40000000-0000-0000-0000-000000000005',
+  PARENT_6: '40000000-0000-0000-0000-000000000006',
+  PARENT_7: '40000000-0000-0000-0000-000000000007',
+  PARENT_8: '40000000-0000-0000-0000-000000000008',
+  PARENT_9: '40000000-0000-0000-0000-000000000009',
+  PARENT_10: '40000000-0000-0000-0000-000000000010',
+  PARENT_11: '40000000-0000-0000-0000-000000000011',
+  PARENT_12: '40000000-0000-0000-0000-000000000012',
+  PARENT_13: '40000000-0000-0000-0000-000000000013',
+  PARENT_14: '40000000-0000-0000-0000-000000000014',
+  PARENT_15: '40000000-0000-0000-0000-000000000015',
+  PARENT_16: '40000000-0000-0000-0000-000000000016',
+  PARENT_17: '40000000-0000-0000-0000-000000000017',
+  PARENT_18: '40000000-0000-0000-0000-000000000018',
+  PARENT_19: '40000000-0000-0000-0000-000000000019',
+  PARENT_20: '40000000-0000-0000-0000-000000000020'
+};
+
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> } 
  */
 exports.seed = async function(knex) {
-  // Get school IDs from the previous seed
-  const schools = await knex('schools').select('id').limit(2);
-  const elementarySchoolId = schools[0].id;
-  const highSchoolId = schools[1].id;
-
   // Deletes ALL existing entries
   await knex('users').del();
   
   // Hash passwords
-  const hashedPassword = await bcrypt.hash('password123', 12);
+  const hashedPassword = await bcrypt.hash('pass123', 12);
   
-  // Inserts seed entries
-  await knex('users').insert([
-    // Teachers
+  // Generate sample FCM tokens for demo
+  const generateFCMToken = (userId) => `fcm_token_${userId.split('-')[0]}_${Date.now()}`;
+  
+  const users = [];
+  
+  // Admins
+  users.push(
     {
-      id: uuidv4(),
-      email: 'teacher@demo.com',
+      id: USER_IDS.ADMIN_SDIT,
+      email: 'admin.sdit@dareliman.sch.id',
       password_hash: hashedPassword,
-      first_name: 'Sarah',
-      last_name: 'Johnson',
-      phone: '+1-555-1001',
-      user_type: 'teacher',
-      role: 'user',
-      school_id: elementarySchoolId,
-      employee_id: 'T001',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'teacher2@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Michael',
-      last_name: 'Davis',
-      phone: '+1-555-1002',
-      user_type: 'teacher',
-      role: 'user',
-      school_id: highSchoolId,
-      employee_id: 'T002',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    
-    // Students - Elementary School
-    {
-      id: uuidv4(),
-      email: 'student@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Emma',
-      last_name: 'Wilson',
-      phone: '+1-555-2001',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S001',
-      date_of_birth: new Date('2010-05-15'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student3@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Oliver',
-      last_name: 'Martinez',
-      phone: '+1-555-2003',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S003',
-      date_of_birth: new Date('2010-03-10'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student4@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Sophia',
-      last_name: 'Garcia',
-      phone: '+1-555-2004',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S004',
-      date_of_birth: new Date('2010-07-22'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student5@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Liam',
-      last_name: 'Anderson',
-      phone: '+1-555-2005',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S005',
-      date_of_birth: new Date('2009-12-05'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student6@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Ava',
-      last_name: 'Taylor',
-      phone: '+1-555-2006',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S006',
-      date_of_birth: new Date('2009-09-18'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student7@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Noah',
-      last_name: 'Thomas',
-      phone: '+1-555-2007',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S007',
-      date_of_birth: new Date('2010-01-30'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student8@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Isabella',
-      last_name: 'Jackson',
-      phone: '+1-555-2008',
-      user_type: 'student',
-      role: 'user',
-      school_id: elementarySchoolId,
-      student_id: 'S008',
-      date_of_birth: new Date('2009-11-14'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-
-    // Students - High School
-    {
-      id: uuidv4(),
-      email: 'student2@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'James',
-      last_name: 'Brown',
-      phone: '+1-555-2002',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S002',
-      date_of_birth: new Date('2008-08-20'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student9@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Ethan',
-      last_name: 'White',
-      phone: '+1-555-2009',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S009',
-      date_of_birth: new Date('2008-04-12'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student10@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Mia',
-      last_name: 'Harris',
-      phone: '+1-555-2010',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S010',
-      date_of_birth: new Date('2007-10-25'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student11@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Lucas',
-      last_name: 'Clark',
-      phone: '+1-555-2011',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S011',
-      date_of_birth: new Date('2008-02-08'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student12@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Charlotte',
-      last_name: 'Lewis',
-      phone: '+1-555-2012',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S012',
-      date_of_birth: new Date('2007-06-17'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student13@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Alexander',
-      last_name: 'Walker',
-      phone: '+1-555-2013',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S013',
-      date_of_birth: new Date('2008-09-03'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    {
-      id: uuidv4(),
-      email: 'student14@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Amelia',
-      last_name: 'Hall',
-      phone: '+1-555-2014',
-      user_type: 'student',
-      role: 'user',
-      school_id: highSchoolId,
-      student_id: 'S014',
-      date_of_birth: new Date('2007-12-21'),
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    
-    // Parents
-    {
-      id: uuidv4(),
-      email: 'parent@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Robert',
-      last_name: 'Wilson',
-      phone: '+1-555-3001',
-      user_type: 'parent',
-      role: 'user',
-      school_id: elementarySchoolId,
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    },
-    
-    // Admin
-    {
-      id: uuidv4(),
-      email: 'admin@demo.com',
-      password_hash: hashedPassword,
-      first_name: 'Admin',
-      last_name: 'User',
-      phone: '+1-555-0001',
+      first_name: 'Ahmad',
+      last_name: 'Siddiq',
+      phone: '+62-812-1111-0001',
       user_type: 'teacher',
       role: 'admin',
-      school_id: elementarySchoolId,
-      employee_id: 'A001',
+      school_id: SCHOOL_IDS.SDIT,
+      employee_id: 'ADM001',
+      fcm_token: generateFCMToken(USER_IDS.ADMIN_SDIT),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    },
+    {
+      id: USER_IDS.ADMIN_SMP,
+      email: 'admin.smp@dareliman.sch.id',
+      password_hash: hashedPassword,
+      first_name: 'Fatimah',
+      last_name: 'Zahra',
+      phone: '+62-812-2222-0001',
+      user_type: 'teacher',
+      role: 'admin',
+      school_id: SCHOOL_IDS.SMP,
+      employee_id: 'ADM002',
+      fcm_token: generateFCMToken(USER_IDS.ADMIN_SMP),
+      fcm_token_updated_at: new Date(),
       is_active: true,
       created_at: new Date(),
       updated_at: new Date()
     }
-  ]);
-}; 
+  );
+  
+  // Teachers SDIT
+  const sdItTeachers = [
+    { id: USER_IDS.TEACHER_SDIT_1, name: 'Ustadz Muhammad', surname: 'Rahman', empId: 'TCH001' },
+    { id: USER_IDS.TEACHER_SDIT_2, name: 'Ustadzah Siti', surname: 'Aminah', empId: 'TCH002' },
+    { id: USER_IDS.TEACHER_SDIT_3, name: 'Ustadz Abdul', surname: 'Hadi', empId: 'TCH003' },
+    { id: USER_IDS.TEACHER_SDIT_4, name: 'Ustadzah Maryam', surname: 'Saleha', empId: 'TCH004' }
+  ];
+  
+  sdItTeachers.forEach((teacher, index) => {
+    users.push({
+      id: teacher.id,
+      email: `${teacher.name.toLowerCase().replace(' ', '.')}.${teacher.surname.toLowerCase()}@sditdareliman1.sch.id`,
+      password_hash: hashedPassword,
+      first_name: teacher.name,
+      last_name: teacher.surname,
+      phone: `+62-812-1111-100${index + 1}`,
+      user_type: 'teacher',
+      role: 'user',
+      school_id: SCHOOL_IDS.SDIT,
+      employee_id: teacher.empId,
+      fcm_token: generateFCMToken(teacher.id),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  });
+  
+  // Teachers SMP
+  const smpTeachers = [
+    { id: USER_IDS.TEACHER_SMP_1, name: 'Ustadz Ali', surname: 'Akbar', empId: 'TCH011' },
+    { id: USER_IDS.TEACHER_SMP_2, name: 'Ustadzah Khadijah', surname: 'Binti', empId: 'TCH012' },
+    { id: USER_IDS.TEACHER_SMP_3, name: 'Ustadz Umar', surname: 'Faruq', empId: 'TCH013' },
+    { id: USER_IDS.TEACHER_SMP_4, name: 'Ustadzah Aisha', surname: 'Radhia', empId: 'TCH014' }
+  ];
+  
+  smpTeachers.forEach((teacher, index) => {
+    users.push({
+      id: teacher.id,
+      email: `${teacher.name.toLowerCase().replace(' ', '.')}.${teacher.surname.toLowerCase()}@smpitdareliman.sch.id`,
+      password_hash: hashedPassword,
+      first_name: teacher.name,
+      last_name: teacher.surname,
+      phone: `+62-812-2222-100${index + 1}`,
+      user_type: 'teacher',
+      role: 'user',
+      school_id: SCHOOL_IDS.SMP,
+      employee_id: teacher.empId,
+      fcm_token: generateFCMToken(teacher.id),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  });
+  
+  // Students SDIT
+  const sdItStudentNames = [
+    'Ahmad Zaki', 'Fatimah Azzahra', 'Muhammad Hafiz', 'Khadijah Salsabila', 'Ali Imran',
+    'Maryam Suci', 'Umar Fadhil', 'Aisha Kamila', 'Yusuf Hakim', 'Zaynab Rahma',
+    'Ibrahim Akmal', 'Safiyyah Nur', 'Ismail Rafi', 'Ruqayyah Hana', 'Idris Faris',
+    'Ummu Salamah', 'Hamzah Dzaky', 'Juwairiyah Aulia', 'Bilal Rizky', 'Hafsah Naila',
+    'Khalid Arkan', 'Sawda Anisa', 'Zaid Azka', 'Ummu Habibah', 'Mu'adz Irfan',
+    'Maymunah Syifa', 'Sa'd Naufal', 'Zainab Qonita', 'Anas Ghazy', 'Ummu Ayman'
+  ];
+  
+  const sdItStudentIds = [
+    // 1A
+    USER_IDS.STUDENT_SDIT_1A_1, USER_IDS.STUDENT_SDIT_1A_2, USER_IDS.STUDENT_SDIT_1A_3, USER_IDS.STUDENT_SDIT_1A_4, USER_IDS.STUDENT_SDIT_1A_5,
+    // 2C  
+    USER_IDS.STUDENT_SDIT_2C_1, USER_IDS.STUDENT_SDIT_2C_2, USER_IDS.STUDENT_SDIT_2C_3, USER_IDS.STUDENT_SDIT_2C_4, USER_IDS.STUDENT_SDIT_2C_5,
+    // 3D
+    USER_IDS.STUDENT_SDIT_3D_1, USER_IDS.STUDENT_SDIT_3D_2, USER_IDS.STUDENT_SDIT_3D_3, USER_IDS.STUDENT_SDIT_3D_4, USER_IDS.STUDENT_SDIT_3D_5,
+    // 4B
+    USER_IDS.STUDENT_SDIT_4B_1, USER_IDS.STUDENT_SDIT_4B_2, USER_IDS.STUDENT_SDIT_4B_3, USER_IDS.STUDENT_SDIT_4B_4, USER_IDS.STUDENT_SDIT_4B_5,
+    // 5A
+    USER_IDS.STUDENT_SDIT_5A_1, USER_IDS.STUDENT_SDIT_5A_2, USER_IDS.STUDENT_SDIT_5A_3, USER_IDS.STUDENT_SDIT_5A_4, USER_IDS.STUDENT_SDIT_5A_5,
+    // 6C
+    USER_IDS.STUDENT_SDIT_6C_1, USER_IDS.STUDENT_SDIT_6C_2, USER_IDS.STUDENT_SDIT_6C_3, USER_IDS.STUDENT_SDIT_6C_4, USER_IDS.STUDENT_SDIT_6C_5
+  ];
+  
+  sdItStudentIds.forEach((studentId, index) => {
+    const [firstName, lastName] = sdItStudentNames[index].split(' ');
+    const studentNum = String(index + 1).padStart(3, '0');
+    users.push({
+      id: studentId,
+      email: `student.sdit.${studentNum}@dareliman.sch.id`,
+      password_hash: hashedPassword,
+      first_name: firstName,
+      last_name: lastName,
+      phone: `+62-812-1111-${2000 + index}`,
+      user_type: 'student',
+      role: 'user',
+      school_id: SCHOOL_IDS.SDIT,
+      student_id: `SDIT${studentNum}`,
+      date_of_birth: new Date(2010 + Math.floor(index / 5), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
+      fcm_token: generateFCMToken(studentId),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  });
+  
+  // Students SMP  
+  const smpStudentNames = [
+    'Abdullah Malik', 'Raihanah Putri', 'Usman Wijaya', 'Salamah Dewi', 'Hasan Ahmad',
+    'Jumanah Sari', 'Husain Pratama', 'Ramlah Indira', 'Ja'far Sidiq', 'Ummu Kulsum',
+    'Mu'awiyyah Fajar', 'Layla Maharani', 'Zubayr Alam', 'Asma Binti', 'Talha Rizki',
+    'Ummu Salamah', 'Abdurrahman Hakim', 'Hajar Assyifa', 'Sa'id Naufal', 'Sakinah Aulia',
+    'Miqdad Arya', 'Hindun Zahra', 'Ammar Fadhil', 'Shafiyyah Naura', 'Mu'adz Irfan',
+    'Barakah Qonita', 'Ubay Rahman', 'Thuwaybah Maira', 'Usaid Akbar', 'Ruqayyah Hani'
+  ];
+  
+  const smpStudentIds = [
+    // 7 Makkah 1
+    USER_IDS.STUDENT_SMP_7M1_1, USER_IDS.STUDENT_SMP_7M1_2, USER_IDS.STUDENT_SMP_7M1_3, USER_IDS.STUDENT_SMP_7M1_4, USER_IDS.STUDENT_SMP_7M1_5,
+    // 7 Madinah 1
+    USER_IDS.STUDENT_SMP_7MD1_1, USER_IDS.STUDENT_SMP_7MD1_2, USER_IDS.STUDENT_SMP_7MD1_3, USER_IDS.STUDENT_SMP_7MD1_4, USER_IDS.STUDENT_SMP_7MD1_5,
+    // 8 Makkah 1
+    USER_IDS.STUDENT_SMP_8M1_1, USER_IDS.STUDENT_SMP_8M1_2, USER_IDS.STUDENT_SMP_8M1_3, USER_IDS.STUDENT_SMP_8M1_4, USER_IDS.STUDENT_SMP_8M1_5,
+    // 8 Madinah 1
+    USER_IDS.STUDENT_SMP_8MD1_1, USER_IDS.STUDENT_SMP_8MD1_2, USER_IDS.STUDENT_SMP_8MD1_3, USER_IDS.STUDENT_SMP_8MD1_4, USER_IDS.STUDENT_SMP_8MD1_5,
+    // 9 Makkah 1
+    USER_IDS.STUDENT_SMP_9M1_1, USER_IDS.STUDENT_SMP_9M1_2, USER_IDS.STUDENT_SMP_9M1_3, USER_IDS.STUDENT_SMP_9M1_4, USER_IDS.STUDENT_SMP_9M1_5,
+    // 9 Madinah 2
+    USER_IDS.STUDENT_SMP_9MD2_1, USER_IDS.STUDENT_SMP_9MD2_2, USER_IDS.STUDENT_SMP_9MD2_3, USER_IDS.STUDENT_SMP_9MD2_4, USER_IDS.STUDENT_SMP_9MD2_5
+  ];
+  
+  smpStudentIds.forEach((studentId, index) => {
+    const [firstName, lastName] = smpStudentNames[index].split(' ');
+    const studentNum = String(index + 101).padStart(3, '0');
+    users.push({
+      id: studentId,
+      email: `student.smp.${studentNum}@dareliman.sch.id`,
+      password_hash: hashedPassword,
+      first_name: firstName,
+      last_name: lastName,
+      phone: `+62-812-2222-${2000 + index}`,
+      user_type: 'student',
+      role: 'user',
+      school_id: SCHOOL_IDS.SMP,
+      student_id: `SMP${studentNum}`,
+      date_of_birth: new Date(2007 + Math.floor(index / 10), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
+      fcm_token: generateFCMToken(studentId),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  });
+  
+  // Parents
+  const parentNames = [
+    'Bapak Ahmad', 'Ibu Siti', 'Bapak Muhammad', 'Ibu Fatimah', 'Bapak Abdul',
+    'Ibu Khadijah', 'Bapak Ali', 'Ibu Maryam', 'Bapak Umar', 'Ibu Aisha',
+    'Bapak Yusuf', 'Ibu Zaynab', 'Bapak Ibrahim', 'Ibu Ruqayyah', 'Bapak Ismail',
+    'Ibu Hafsah', 'Bapak Hamzah', 'Ibu Juwairiyah', 'Bapak Khalid', 'Ibu Sawda'
+  ];
+  
+  const parentIds = Object.values(USER_IDS).filter(id => id.startsWith('40000000'));
+  
+  parentIds.forEach((parentId, index) => {
+    const [title, firstName] = parentNames[index].split(' ');
+    const isSDIT = index < 15; // First 15 parents for SDIT, rest for SMP
+    users.push({
+      id: parentId,
+      email: `${firstName.toLowerCase()}.parent${String(index + 1).padStart(2, '0')}@dareliman.sch.id`,
+      password_hash: hashedPassword,
+      first_name: `${title} ${firstName}`,
+      last_name: 'Wali Murid',
+      phone: `+62-812-${isSDIT ? '1111' : '2222'}-${3000 + index}`,
+      user_type: 'parent',
+      role: 'user',
+      school_id: isSDIT ? SCHOOL_IDS.SDIT : SCHOOL_IDS.SMP,
+      fcm_token: generateFCMToken(parentId),
+      fcm_token_updated_at: new Date(),
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  });
+  
+  // Insert all users
+  await knex('users').insert(users);
+
+  console.log('✅ Users seeded successfully');
+  console.log(`   - Total users: ${users.length}`);
+  console.log(`   - Admins: 2`);
+  console.log(`   - Teachers: 8`);
+  console.log(`   - Students: 60 (30 SDIT + 30 SMP)`);
+  console.log(`   - Parents: 20`);
+  console.log(`   - All users have FCM tokens for testing`);
+};

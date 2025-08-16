@@ -28,6 +28,17 @@ import {
 
 const router = express.Router();
 
+// Initialize notification system
+const outboxRepo = new NotificationOutboxRepository(db);
+const deliveryRepo = new NotificationDeliveryRepository(db);
+const providers = [
+  new SocketChannelProvider(),
+  new EmailChannelProvider(db),
+  new FirebaseChannelProvider(db)
+];
+const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
+const classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
+
 // Configure multer for memory storage for class update attachments
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1180,6 +1191,23 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
     };
 
     res.status(201).json({ comment: formattedComment });
+
+    // Send notifications for the new comment
+    try {
+      await classUpdateNotificationService.notifyClassUpdateCommentCreated({
+        commentId: commentId,
+        updateId: updateId,
+        classId: update.class_id,
+        authorId: authReq.user.id,
+        content: content,
+        isReply: !!reply_to_id
+      });
+
+      logger.info(`🔔 Successfully sent comment notifications for comment ${commentId}`);
+    } catch (notificationError) {
+      logger.error('🔔 Failed to send comment notifications:', notificationError);
+      // Don't fail the request if notification fails
+    }
 
   } catch (error) {
     logger.error('Error creating comment:', error);
