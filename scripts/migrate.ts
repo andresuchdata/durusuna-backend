@@ -59,10 +59,9 @@ async function runSeeds() {
   }
 }
 
-async function fullReset() {
+async function softReset() {
   try {
-    console.log('🚀 Starting full database reset...');
-    console.log('📝 This will implement the new Subject entity structure\n');
+    console.log('🔄 Starting soft database reset (rollback + migrate + seed)...');
     
     // Rollback all migrations
     console.log('🔄 Rolling back all migrations...');
@@ -79,11 +78,10 @@ async function fullReset() {
     const seedFiles = await db.seed.run();
     console.log(`✅ Ran ${seedFiles[0].length} seed files`);
     
-    console.log('\n🎉 Database reset completed successfully!');
-    console.log('🏫 New structure: Classes → Subjects → Class-Subjects → Lessons');
+    console.log('\n🎉 Soft reset completed successfully!');
     
   } catch (error) {
-    console.error('❌ Full reset failed:', error);
+    console.error('❌ Soft reset failed:', error);
     process.exit(1);
   } finally {
     await db.destroy();
@@ -103,12 +101,9 @@ switch (command) {
     rollbackMigrations();
     break;
   case 'reset':
-    runMigrations().then(() => runSeeds());
-    break;
-  case 'full-reset':
-    fullReset();
+    softReset();
     break;
   default:
-    console.log('Usage: bun scripts/migrate.ts [migrate|seed|rollback|reset|full-reset]');
+    console.log('Usage: bun scripts/migrate.ts [migrate|seed|rollback|reset]');
     process.exit(1);
 } 
