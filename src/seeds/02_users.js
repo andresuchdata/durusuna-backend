@@ -132,8 +132,12 @@ exports.seed = async function(knex) {
   // Hash passwords
   const hashedPassword = await bcrypt.hash('pass123', 12);
   
-  // Generate sample FCM tokens for demo
-  const generateFCMToken = (userId) => `fcm_token_${userId.split('-')[0]}_${Date.now()}`;
+  // Generate sample FCM tokens for demo - safer version
+  const generateFCMToken = (userId) => {
+    const prefix = userId.substring(0, 8).replace(/-/g, '');
+    const timestamp = Date.now();
+    return `fcm_token_${prefix}_${timestamp}`;
+  };
   
   const users = [];
   
@@ -175,7 +179,7 @@ exports.seed = async function(knex) {
     }
   );
   
-  // Teachers SDIT
+  // Teachers SDIT - Safe character handling
   const sdItTeachers = [
     { id: USER_IDS.TEACHER_SDIT_1, name: 'Ustadz Muhammad', surname: 'Rahman', empId: 'TCH001' },
     { id: USER_IDS.TEACHER_SDIT_2, name: 'Ustadzah Siti', surname: 'Aminah', empId: 'TCH002' },
@@ -184,9 +188,13 @@ exports.seed = async function(knex) {
   ];
   
   sdItTeachers.forEach((teacher, index) => {
+    // Safe email generation - replace spaces and special chars
+    const safeName = teacher.name.toLowerCase().replace(/[^a-z]/g, '');
+    const safeSurname = teacher.surname.toLowerCase().replace(/[^a-z]/g, '');
+    
     users.push({
       id: teacher.id,
-      email: `${teacher.name.toLowerCase().replace(' ', '.')}.${teacher.surname.toLowerCase()}@sditdareliman1.sch.id`,
+      email: `${safeName}.${safeSurname}@sditdareliman1.sch.id`,
       password_hash: hashedPassword,
       first_name: teacher.name,
       last_name: teacher.surname,
@@ -212,9 +220,12 @@ exports.seed = async function(knex) {
   ];
   
   smpTeachers.forEach((teacher, index) => {
+    const safeName = teacher.name.toLowerCase().replace(/[^a-z]/g, '');
+    const safeSurname = teacher.surname.toLowerCase().replace(/[^a-z]/g, '');
+    
     users.push({
       id: teacher.id,
-      email: `${teacher.name.toLowerCase().replace(' ', '.')}.${teacher.surname.toLowerCase()}@smpitdareliman.sch.id`,
+      email: `${safeName}.${safeSurname}@smpitdareliman.sch.id`,
       password_hash: hashedPassword,
       first_name: teacher.name,
       last_name: teacher.surname,
@@ -231,14 +242,14 @@ exports.seed = async function(knex) {
     });
   });
   
-  // Students SDIT
+  // Students SDIT - Safe names without problematic characters
   const sdItStudentNames = [
     'Ahmad Zaki', 'Fatimah Azzahra', 'Muhammad Hafiz', 'Khadijah Salsabila', 'Ali Imran',
     'Maryam Suci', 'Umar Fadhil', 'Aisha Kamila', 'Yusuf Hakim', 'Zaynab Rahma',
     'Ibrahim Akmal', 'Safiyyah Nur', 'Ismail Rafi', 'Ruqayyah Hana', 'Idris Faris',
     'Ummu Salamah', 'Hamzah Dzaky', 'Juwairiyah Aulia', 'Bilal Rizky', 'Hafsah Naila',
-    'Khalid Arkan', 'Sawda Anisa', 'Zaid Azka', 'Ummu Habibah', 'Mu'adz Irfan',
-    'Maymunah Syifa', 'Sa'd Naufal', 'Zainab Qonita', 'Anas Ghazy', 'Ummu Ayman'
+    'Khalid Arkan', 'Sawda Anisa', 'Zaid Azka', 'Ummu Habibah', 'Muadz Irfan',
+    'Maymunah Syifa', 'Saad Naufal', 'Zainab Qonita', 'Anas Ghazy', 'Ummu Ayman'
   ];
   
   const sdItStudentIds = [
@@ -257,8 +268,12 @@ exports.seed = async function(knex) {
   ];
   
   sdItStudentIds.forEach((studentId, index) => {
-    const [firstName, lastName] = sdItStudentNames[index].split(' ');
+    const fullName = sdItStudentNames[index];
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || firstName; // Fallback if no last name
     const studentNum = String(index + 1).padStart(3, '0');
+    
     users.push({
       id: studentId,
       email: `student.sdit.${studentNum}@dareliman.sch.id`,
@@ -279,13 +294,13 @@ exports.seed = async function(knex) {
     });
   });
   
-  // Students SMP  
+  // Students SMP - Safe names without problematic characters
   const smpStudentNames = [
     'Abdullah Malik', 'Raihanah Putri', 'Usman Wijaya', 'Salamah Dewi', 'Hasan Ahmad',
-    'Jumanah Sari', 'Husain Pratama', 'Ramlah Indira', 'Ja'far Sidiq', 'Ummu Kulsum',
-    'Mu'awiyyah Fajar', 'Layla Maharani', 'Zubayr Alam', 'Asma Binti', 'Talha Rizki',
-    'Ummu Salamah', 'Abdurrahman Hakim', 'Hajar Assyifa', 'Sa'id Naufal', 'Sakinah Aulia',
-    'Miqdad Arya', 'Hindun Zahra', 'Ammar Fadhil', 'Shafiyyah Naura', 'Mu'adz Irfan',
+    'Jumanah Sari', 'Husain Pratama', 'Ramlah Indira', 'Jafar Sidiq', 'Ummu Kulsum',
+    'Muawiyyah Fajar', 'Layla Maharani', 'Zubayr Alam', 'Asma Binti', 'Talha Rizki',
+    'Ummu Salamah', 'Abdurrahman Hakim', 'Hajar Assyifa', 'Said Naufal', 'Sakinah Aulia',
+    'Miqdad Arya', 'Hindun Zahra', 'Ammar Fadhil', 'Shafiyyah Naura', 'Muadz Irfan',
     'Barakah Qonita', 'Ubay Rahman', 'Thuwaybah Maira', 'Usaid Akbar', 'Ruqayyah Hani'
   ];
   
@@ -305,8 +320,12 @@ exports.seed = async function(knex) {
   ];
   
   smpStudentIds.forEach((studentId, index) => {
-    const [firstName, lastName] = smpStudentNames[index].split(' ');
+    const fullName = smpStudentNames[index];
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || firstName;
     const studentNum = String(index + 101).padStart(3, '0');
+    
     users.push({
       id: studentId,
       email: `student.smp.${studentNum}@dareliman.sch.id`,
@@ -327,7 +346,7 @@ exports.seed = async function(knex) {
     });
   });
   
-  // Parents
+  // Parents - Safe names
   const parentNames = [
     'Bapak Ahmad', 'Ibu Siti', 'Bapak Muhammad', 'Ibu Fatimah', 'Bapak Abdul',
     'Ibu Khadijah', 'Bapak Ali', 'Ibu Maryam', 'Bapak Umar', 'Ibu Aisha',
@@ -338,11 +357,18 @@ exports.seed = async function(knex) {
   const parentIds = Object.values(USER_IDS).filter(id => id.startsWith('40000000'));
   
   parentIds.forEach((parentId, index) => {
-    const [title, firstName] = parentNames[index].split(' ');
+    const fullName = parentNames[index];
+    const nameParts = fullName.split(' ');
+    const title = nameParts[0]; // Bapak or Ibu
+    const firstName = nameParts[1];
     const isSDIT = index < 15; // First 15 parents for SDIT, rest for SMP
+    
+    // Safe email generation
+    const safeFirstName = firstName.toLowerCase().replace(/[^a-z]/g, '');
+    
     users.push({
       id: parentId,
-      email: `${firstName.toLowerCase()}.parent${String(index + 1).padStart(2, '0')}@dareliman.sch.id`,
+      email: `${safeFirstName}.parent${String(index + 1).padStart(2, '0')}@dareliman.sch.id`,
       password_hash: hashedPassword,
       first_name: `${title} ${firstName}`,
       last_name: 'Wali Murid',
@@ -368,4 +394,5 @@ exports.seed = async function(knex) {
   console.log(`   - Students: 60 (30 SDIT + 30 SMP)`);
   console.log(`   - Parents: 20`);
   console.log(`   - All users have FCM tokens for testing`);
+  console.log(`   - Names sanitized for JavaScript compatibility`);
 };

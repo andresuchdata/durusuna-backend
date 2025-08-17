@@ -8,6 +8,13 @@ import logger from '../shared/utils/logger';
 import { safeJsonParse, migrateReactions, safeJsonStringify, ReactionData } from '../utils/json';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';
+import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
+import { NotificationDeliveryRepository } from '../repositories/notificationDeliveryRepository';
+import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
+import { SocketChannelProvider } from '../services/notification/channels/SocketChannelProvider';
+import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
+import { FirebaseChannelProvider } from '../services/notification/channels/FirebaseChannelProvider';
+import { ClassUpdateNotificationService } from '../services/classUpdateNotificationService';
 import {
   ClassUpdate,
   ClassUpdateWithAuthor,
@@ -28,16 +35,23 @@ import {
 
 const router = express.Router();
 
-// Initialize notification system
-const outboxRepo = new NotificationOutboxRepository(db);
-const deliveryRepo = new NotificationDeliveryRepository(db);
-const providers = [
-  new SocketChannelProvider(),
-  new EmailChannelProvider(db),
-  new FirebaseChannelProvider(db)
-];
-const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
-const classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
+// Initialize notification system (lazy loaded to avoid circular dependencies)
+let classUpdateNotificationService: ClassUpdateNotificationService | null = null;
+
+function getNotificationService() {
+  if (!classUpdateNotificationService) {
+    const outboxRepo = new NotificationOutboxRepository(db);
+    const deliveryRepo = new NotificationDeliveryRepository(db);
+    const providers = [
+      new SocketChannelProvider(),
+      new EmailChannelProvider(db),
+      new FirebaseChannelProvider(db)
+    ];
+    const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
+    classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
+  }
+  return classUpdateNotificationService;
+}
 
 // Configure multer for memory storage for class update attachments
 const upload = multer({
@@ -1194,7 +1208,7 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
 
     // Send notifications for the new comment
     try {
-      await classUpdateNotificationService.notifyClassUpdateCommentCreated({
+      await getNotificationService().notifyClassUpdateCommentCreated({
         commentId: commentId,
         updateId: updateId,
         classId: update.class_id,

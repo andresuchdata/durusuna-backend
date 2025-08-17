@@ -20,13 +20,13 @@ if [ -f ".env" ]; then
 fi
 
 echo "🔄 Step 1: Rolling back all migrations..."
-bun knex migrate:rollback --all
+bun run db:rollback:all
 
 echo "🗃️ Step 2: Running all migrations..."
-bun knex migrate:latest
+bun knex migrate:latest --knexfile src/knexfile.ts
 
 echo "🌱 Step 3: Running all seeds..."
-bun knex seed:run
+bun knex seed:run --knexfile src/knexfile.ts
 
 echo "✅ Database reset and seeding completed successfully!"
 echo ""

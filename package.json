@@ -25,6 +25,10 @@
     "db:reset": "bun run db:rollback:all && bun run db:migrate && bun run db:seed",
     "db:force-reset": "bun scripts/reset.ts && bun run db:migrate && bun run db:seed",
     "start:reset": "echo '🔥 Starting with database reset...' && bun run db:force-reset && echo '✅ Database reset completed - Starting server...' && bun src/server.ts",
+    "docker:db:reset": "docker compose run --rm backend bun knex migrate:rollback --all --knexfile src/knexfile.ts && docker compose run --rm backend bun knex migrate:latest --knexfile src/knexfile.ts && docker compose run --rm backend bun knex seed:run --knexfile src/knexfile.ts",
+    "docker:seed": "docker compose run --rm backend bun knex seed:run --knexfile src/knexfile.ts",
+    "docker:migrate": "docker compose run --rm backend bun knex migrate:latest --knexfile src/knexfile.ts",
+    "docker:dev": "docker compose up postgres redis -d && bun run docker:db:reset && docker compose up backend -d",
     "test:sevalla": "bun scripts/test-sevalla-connection.ts",
     "debug:railway": "bun scripts/debug-railway-sevalla.ts"
   },

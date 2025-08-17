@@ -37,16 +37,23 @@ const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
 const classService = new ClassService(classRepository, lessonRepository, userClassRepository);
 
-// Initialize notification system
-const outboxRepo = new NotificationOutboxRepository(db);
-const deliveryRepo = new NotificationDeliveryRepository(db);
-const providers = [
-  new SocketChannelProvider(),
-  new EmailChannelProvider(db),
-  new FirebaseChannelProvider(db)
-];
-const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
-const classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
+// Initialize notification system (lazy loaded to avoid circular dependencies)
+let classUpdateNotificationService: ClassUpdateNotificationService | null = null;
+
+function getNotificationService() {
+  if (!classUpdateNotificationService) {
+    const outboxRepo = new NotificationOutboxRepository(db);
+    const deliveryRepo = new NotificationDeliveryRepository(db);
+    const providers = [
+      new SocketChannelProvider(),
+      new EmailChannelProvider(db),
+      new FirebaseChannelProvider(db)
+    ];
+    const notificationDispatcher = new NotificationDispatcher(outboxRepo, deliveryRepo, providers);
+    classUpdateNotificationService = new ClassUpdateNotificationService(db, notificationDispatcher);
+  }
+  return classUpdateNotificationService;
+}
 
 // JSON utilities now imported from utils/json.ts
 
@@ -515,7 +522,7 @@ router.post('/:classId/updates', authenticate, validate(classUpdateSchema), asyn
 
     // Send notifications to class subscribers (students, teachers, and parents)
     try {
-      await classUpdateNotificationService.notifyClassUpdateCreated({
+      await getNotificationService().notifyClassUpdateCreated({
         updateId: newUpdate.id,
         classId: classId,
         authorId: req.user.id,

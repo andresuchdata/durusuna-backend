@@ -58,12 +58,9 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.STUDENT_SDIT_1A_1,
       content: 'Assalamu\'alaikum Ahmad. Ustadz mau mengingatkan untuk mengerjakan tugas tahfidz yang kemarin. Jangan lupa bawa mushaf besok ya.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
-      reactions: JSON.stringify({ '👍': [USER_IDS.STUDENT_SDIT_1A_1] }),
-      is_read: true,
+      metadata: JSON.stringify({ attachments: [], reactions: { '👍': [USER_IDS.STUDENT_SDIT_1A_1] } }),
       read_at: new Date('2024-12-15T09:00:00Z'),
       is_deleted: false,
-      client_message_id: `client_${MESSAGE_IDS.DM_TS_1}`,
       created_at: new Date('2024-12-15T08:30:00Z'),
       updated_at: new Date('2024-12-15T08:30:00Z')
     },
@@ -74,7 +71,6 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.TEACHER_SDIT_1,
       content: 'Wa\'alaikumussalam ustadz. Insya Allah, Ahmad sudah mengerjakan tugasnya. Tapi ada beberapa ayat yang masih susah dihafalkan.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
       reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SDIT_1] }),
       is_read: true,
       read_at: new Date('2024-12-15T10:15:00Z'),
@@ -90,7 +86,7 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.STUDENT_SDIT_1A_1,
       content: 'Alhamdulillah, bagus Ahmad. Nanti besok setelah sholat Dhuha kita bisa latihan bersama-sama. Semangat terus ya!',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({}),
       is_read: false,
       read_at: null,
@@ -110,7 +106,7 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.PARENT_16,
       content: 'Assalamu\'alaikum Bapak. Saya ustadz Ali, wali kelas Abdullah. Saya ingin memberikan update tentang perkembangan belajar Abdullah di sekolah.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ '🤲': [USER_IDS.PARENT_16] }),
       is_read: true,
       read_at: new Date('2024-12-18T11:30:00Z'),
@@ -126,7 +122,7 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.TEACHER_SMP_1,
       content: 'Wa\'alaikumussalam ustadz. Alhamdulillah, jazakallahu khairan sudah mau memberikan kabar. Bagaimana perkembangan Abdullah? Ada yang perlu diperbaiki?',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ '👍': [USER_IDS.TEACHER_SMP_1] }),
       is_read: true,
       read_at: new Date('2024-12-19T08:00:00Z'),
@@ -142,7 +138,7 @@ exports.seed = async function(knex) {
       receiver_id: USER_IDS.PARENT_16,
       content: 'Alhamdulillah Abdullah menunjukkan perkembangan yang baik, terutama dalam hafalan dan akhlak. Hanya perlu sedikit lebih fokus dalam pelajaran matematika. Mohon bimbingan di rumah juga.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({}),
       is_read: false,
       read_at: null,
@@ -162,7 +158,7 @@ exports.seed = async function(knex) {
       receiver_id: null, // Group message
       content: 'Assalamu\'alaikum ayah bunda semua. Kami ingin menginformasikan jadwal kegiatan tahfidz untuk minggu depan. Mohon anak-anak diberi motivasi untuk rajin mengulang hafalan di rumah.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ 
         '👍': [USER_IDS.PARENT_1, USER_IDS.TEACHER_SDIT_2], 
         '🤲': [USER_IDS.PARENT_1] 
@@ -181,7 +177,6 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Jazakallahu khairan ustadz atas informasinya. Insya Allah kami akan dukung di rumah. Apakah ada materi khusus yang perlu difokuskan?',
       message_type: 'text',
-      attachments: JSON.stringify([]),
       reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SDIT_1] }),
       is_read: true,
       read_at: new Date('2024-12-21T08:15:00Z'),
@@ -197,7 +192,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Untuk minggu ini kita fokus pada Surah Al-Fatihah dan Al-Ikhlas. Anak-anak sudah cukup baik, tinggal mengulang-ulang agar semakin lancar.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ '👍': [USER_IDS.PARENT_1], '🤲': [USER_IDS.TEACHER_SDIT_1] }),
       is_read: true,
       read_at: new Date('2024-12-22T07:00:00Z'),
@@ -213,7 +208,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Tambahan info: besok ada kegiatan bersih-bersih kelas bersama. Mohon anak-anak membawa kain lap dan semangat gotong royong. Barakallahu fiikum.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({}),
       is_read: false,
       read_at: null,
@@ -233,7 +228,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Assalamu\'alaikum semua tim guru. Rapat koordinasi bulan ini dijadwalkan hari Jumat setelah sholat Jumat. Mohon kehadiran semua untuk membahas program semester depan.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ 
         '👍': [USER_IDS.TEACHER_SDIT_1, USER_IDS.TEACHER_SMP_1], 
         '🤲': [USER_IDS.ADMIN_SMP] 
@@ -252,7 +247,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Siap pak ustadz. Apakah ada agenda khusus yang perlu kami persiapkan sebelumnya?',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ '❤️': [USER_IDS.ADMIN_SDIT] }),
       is_read: true,
       read_at: new Date('2024-12-22T10:45:00Z'),
@@ -268,7 +263,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Kami akan bahas evaluasi pembelajaran semester ini dan rencana peningkatan kualitas untuk semester depan. Mohon disiapkan laporan perkembangan siswa masing-masing.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({ '👍': [USER_IDS.TEACHER_SDIT_1, USER_IDS.TEACHER_SMP_1] }),
       is_read: true,
       read_at: new Date('2024-12-23T08:00:00Z'),
@@ -284,7 +279,7 @@ exports.seed = async function(knex) {
       receiver_id: null,
       content: 'Barakallahu fiikum. Saya usulkan kita juga bahas program tahfidz intensif untuk liburan nanti. Banyak orang tua yang bertanya tentang program tambahan.',
       message_type: 'text',
-      attachments: JSON.stringify([]),
+
       reactions: JSON.stringify({}),
       is_read: false,
       read_at: null,
