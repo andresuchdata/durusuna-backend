@@ -145,7 +145,7 @@ exports.seed = async function(knex) {
   users.push(
     {
       id: USER_IDS.ADMIN_SDIT,
-      email: 'admin.sdit@dareliman.sch.id',
+      email: 'admin1@asdf.com',
       password_hash: hashedPassword,
       first_name: 'Ahmad',
       last_name: 'Siddiq',
@@ -162,7 +162,7 @@ exports.seed = async function(knex) {
     },
     {
       id: USER_IDS.ADMIN_SMP,
-      email: 'admin.smp@dareliman.sch.id',
+      email: 'admin2@asdf.com',
       password_hash: hashedPassword,
       first_name: 'Fatimah',
       last_name: 'Zahra',
@@ -188,13 +188,9 @@ exports.seed = async function(knex) {
   ];
   
   sdItTeachers.forEach((teacher, index) => {
-    // Safe email generation - replace spaces and special chars
-    const safeName = teacher.name.toLowerCase().replace(/[^a-z]/g, '');
-    const safeSurname = teacher.surname.toLowerCase().replace(/[^a-z]/g, '');
-    
     users.push({
       id: teacher.id,
-      email: `${safeName}.${safeSurname}@sditdareliman1.sch.id`,
+      email: `teacher${index + 1}@asdf.com`,
       password_hash: hashedPassword,
       first_name: teacher.name,
       last_name: teacher.surname,
@@ -220,12 +216,9 @@ exports.seed = async function(knex) {
   ];
   
   smpTeachers.forEach((teacher, index) => {
-    const safeName = teacher.name.toLowerCase().replace(/[^a-z]/g, '');
-    const safeSurname = teacher.surname.toLowerCase().replace(/[^a-z]/g, '');
-    
     users.push({
       id: teacher.id,
-      email: `${safeName}.${safeSurname}@smpitdareliman.sch.id`,
+      email: `teacher${index + 5}@asdf.com`, // Continue numbering from 5-8
       password_hash: hashedPassword,
       first_name: teacher.name,
       last_name: teacher.surname,
@@ -276,7 +269,7 @@ exports.seed = async function(knex) {
     
     users.push({
       id: studentId,
-      email: `student.sdit.${studentNum}@dareliman.sch.id`,
+      email: `student${index + 1}@asdf.com`,
       password_hash: hashedPassword,
       first_name: firstName,
       last_name: lastName,
@@ -328,7 +321,7 @@ exports.seed = async function(knex) {
     
     users.push({
       id: studentId,
-      email: `student.smp.${studentNum}@dareliman.sch.id`,
+      email: `student${index + 31}@asdf.com`, // Continue numbering from 31-60
       password_hash: hashedPassword,
       first_name: firstName,
       last_name: lastName,
@@ -363,12 +356,9 @@ exports.seed = async function(knex) {
     const firstName = nameParts[1];
     const isSDIT = index < 15; // First 15 parents for SDIT, rest for SMP
     
-    // Safe email generation
-    const safeFirstName = firstName.toLowerCase().replace(/[^a-z]/g, '');
-    
     users.push({
       id: parentId,
-      email: `${safeFirstName}.parent${String(index + 1).padStart(2, '0')}@dareliman.sch.id`,
+      email: `parent${index + 1}@asdf.com`,
       password_hash: hashedPassword,
       first_name: `${title} ${firstName}`,
       last_name: 'Wali Murid',
@@ -389,10 +379,10 @@ exports.seed = async function(knex) {
 
   console.log('✅ Users seeded successfully');
   console.log(`   - Total users: ${users.length}`);
-  console.log(`   - Admins: 2`);
-  console.log(`   - Teachers: 8`);
-  console.log(`   - Students: 60 (30 SDIT + 30 SMP)`);
-  console.log(`   - Parents: 20`);
+  console.log(`   - Admins: 2 (admin1@asdf.com, admin2@asdf.com)`);
+  console.log(`   - Teachers: 8 (teacher1@asdf.com - teacher8@asdf.com)`);
+  console.log(`   - Students: 60 (student1@asdf.com - student60@asdf.com)`);
+  console.log(`   - Parents: 20 (parent1@asdf.com - parent20@asdf.com)`);
+  console.log(`   - All passwords: pass123`);
   console.log(`   - All users have FCM tokens for testing`);
-  console.log(`   - Names sanitized for JavaScript compatibility`);
 };
