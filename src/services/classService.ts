@@ -276,8 +276,14 @@ export class ClassService {
       throw new Error('Access denied');
     }
 
-    // Get class subjects with their details
-    const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId);
+    // For teachers, filter subjects to show only the ones they teach
+    let teacherFilterId: string | undefined;
+    if (currentUser.user_type === 'teacher' && currentUser.role !== 'admin') {
+      teacherFilterId = currentUser.id;
+    }
+
+    // Get class subjects with their details, filtered by teacher if applicable
+    const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId, teacherFilterId);
 
     // Get lessons for each subject
     const subjects = [];

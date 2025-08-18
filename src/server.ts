@@ -30,6 +30,7 @@ import uploadRoutes from './routes/uploads';
 import classUpdatesRoutes from './routes/class_updates';
 import notificationRoutes from './routes/notifications';
 import attendanceRoutes from './routes/attendance';
+import assignmentRoutes from './routes/assignments';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
@@ -180,6 +181,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/class-updates', classUpdatesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/assignments', assignmentRoutes);
 
 /**
  * @swagger
