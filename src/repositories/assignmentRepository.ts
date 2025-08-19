@@ -35,6 +35,8 @@ export class AssignmentRepository {
   async getClassAssignments(options: GetClassAssignmentsOptions): Promise<AssignmentResult> {
     const { classId, page, limit, type, status, userId } = options;
     const offset = (page - 1) * limit;
+    
+    console.log(`🔍 [DEBUG] Repository query - classId: ${classId}, userId: ${userId}, page: ${page}, limit: ${limit}`);
 
     let query = knex('assessments as a')
       .join('class_offerings as co', 'a.class_offering_id', 'co.id')
@@ -60,6 +62,7 @@ export class AssignmentRepository {
     // If user is a teacher, show assignments they created or for subjects they teach
     // If user is a student, show only published assignments
     const user = await knex('users').where('id', userId).first();
+    console.log(`🔍 [DEBUG] User type: ${user?.user_type}, User: ${JSON.stringify(user)}`);
     
     if (user?.user_type === 'teacher') {
       query = query.where(function() {
@@ -76,12 +79,13 @@ export class AssignmentRepository {
     } else if (user?.user_type === 'student') {
       query = query.where('a.is_published', true);
       
-      // Also check if student is enrolled in the class
+      // Also check if student is enrolled in the class offering
       query = query.whereExists(function() {
         this.select('*')
           .from('enrollments as e')
-          .whereRaw('e.class_id = co.class_id')
+          .whereRaw('e.class_offering_id = co.id')
           .where('e.student_id', userId)
+          .where('e.status', 'active')
           .where('e.is_active', true);
       });
     }
@@ -310,10 +314,13 @@ export class AssignmentRepository {
 
     // Check if student is enrolled in this class
     if (user.user_type === 'student') {
-      const enrollment = await knex('enrollments')
-        .where('student_id', userId)
-        .where('class_id', classId)
-        .where('is_active', true)
+      const enrollment = await knex('enrollments as e')
+        .join('class_offerings as co', 'e.class_offering_id', 'co.id')
+        .where('e.student_id', userId)
+        .where('co.class_id', classId)
+        .where('e.status', 'active')
+        .where('e.is_active', true)
+        .where('co.is_active', true)
         .first();
       
       return !!enrollment;

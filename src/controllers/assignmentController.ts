@@ -24,6 +24,8 @@ export class AssignmentController {
       } = req.query;
 
       const userId = req.user?.id;
+      console.log(`🔍 [DEBUG] Assignment request - userId: ${userId}, classId: ${classId}, limit: ${limit}`);
+      
       if (!userId) {
         res.status(401).json({ error: 'User not authenticated' });
         return;
@@ -31,6 +33,8 @@ export class AssignmentController {
 
       // Verify user has access to this class
       const hasAccess = await this.assignmentRepository.checkClassAccess(userId, classId);
+      console.log(`🔍 [DEBUG] User access check - hasAccess: ${hasAccess}`);
+      
       if (!hasAccess) {
         res.status(403).json({ error: 'Access denied to this class' });
         return;
@@ -44,6 +48,8 @@ export class AssignmentController {
         status: status as string,
         userId
       });
+
+      console.log(`🔍 [DEBUG] Assignment query result - total: ${result.total}, assignments count: ${result.assignments.length}`);
 
       res.json({
         assignments: result.assignments,
