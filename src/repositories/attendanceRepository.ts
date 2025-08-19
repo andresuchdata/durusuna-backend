@@ -320,6 +320,12 @@ export class AttendanceRepository {
       .first();
   }
 
+  async deleteAttendanceRecord(recordId: string): Promise<void> {
+    await this.db('attendance_records')
+      .where('id', recordId)
+      .delete();
+  }
+
   async getClassAttendanceForDate(
     classId: string,
     attendanceDate: Date

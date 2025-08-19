@@ -149,6 +149,36 @@ export class AttendanceService {
     }
   }
 
+  async deleteStudentAttendance(
+    classId: string,
+    studentId: string,
+    attendanceDate: Date,
+    user: AuthenticatedUser
+  ): Promise<void> {
+    // Verify teacher has access to this class
+    await this.verifyTeacherClassAccess(classId, user);
+
+    // Verify student is in this class
+    const studentInClass = await this.userClassRepository.getUserClass(studentId, classId);
+    if (!studentInClass || studentInClass.role_in_class !== 'student') {
+      throw new Error('Student not found in this class');
+    }
+
+    // Check if attendance record exists
+    const existingRecord = await this.attendanceRepository.getAttendanceRecord(
+      classId,
+      studentId,
+      attendanceDate
+    );
+
+    if (!existingRecord) {
+      throw new Error('Attendance record not found');
+    }
+
+    // Delete the attendance record
+    await this.attendanceRepository.deleteAttendanceRecord(existingRecord.id);
+  }
+
   async bulkUpdateAttendance(
     classId: string,
     attendanceDate: Date,

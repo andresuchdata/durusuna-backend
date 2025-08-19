@@ -238,6 +238,50 @@ router.post('/mark/:classId/:studentId', authenticate, async (req: Request, res:
 });
 
 /**
+ * @route DELETE /api/attendance/:classId/:studentId
+ * @desc Delete/reset attendance for a specific student
+ * @access Private (Teachers only)
+ */
+router.delete('/:classId/:studentId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { classId, studentId } = req.params;
+    const { date } = req.query as { date: string };
+
+    if (!classId || !studentId) {
+      return res.status(400).json({ error: 'Class ID and Student ID are required' });
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    await attendanceService.deleteStudentAttendance(
+      classId,
+      studentId,
+      attendanceDate,
+      authenticatedReq.user
+    );
+
+    res.json({
+      message: 'Attendance deleted successfully'
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Access denied') || error.message.includes('not found')) {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+
+    logger.error('Error deleting attendance:', error);
+    res.status(500).json({ error: 'Failed to delete attendance' });
+  }
+});
+
+/**
  * @route POST /api/attendance/:classId/bulk-update
  * @desc Bulk update attendance for multiple students
  * @access Private (Teachers only)
