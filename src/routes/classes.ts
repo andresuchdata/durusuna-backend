@@ -756,6 +756,31 @@ router.get('/:id/subjects', authenticate, async (req: AuthenticatedRequest, res:
   }
 });
 
+/**
+ * @route GET /api/classes/:id/offerings
+ * @desc Get class offerings (subject-classes) for a class, optionally filtered by current teacher
+ * @access Private
+ */
+router.get('/:id/offerings', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    const offerings = await classService.getClassOfferings(id, req.user);
+    res.json({ offerings });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    logger.error('Error fetching class offerings:', error);
+    res.status(500).json({ error: 'Failed to fetch class offerings' });
+  }
+});
+
 
 /**
  * @route GET /api/classes/:id/lessons

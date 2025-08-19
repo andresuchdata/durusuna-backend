@@ -10,7 +10,7 @@ const { verifyAccessToken, extractToken } = require('../../utils/jwt');
  * Authentication middleware
  * Verifies JWT token and adds user to request object
  */
-export const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     const token = extractToken(authHeader);
@@ -41,7 +41,7 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
     }
 
     // Add user to request object
-    req.user = user;
+    (req as AuthenticatedRequest).user = user;
     next();
   } catch (error) {
     logger.error('Authentication error:', error);

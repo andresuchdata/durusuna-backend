@@ -136,8 +136,8 @@ export class ClassRepository {
       .offset(offset);
   }
 
-  async findClassSubjectsWithDetails(classId: string) {
-    const result = await this.db.raw(`
+  async findClassSubjectsWithDetails(classId: string, teacherId?: string) {
+    let query = `
       SELECT 
         cs.id as class_subject_id,
         cs.hours_per_week,
@@ -154,12 +154,67 @@ export class ClassRepository {
         u.avatar_url
       FROM class_subjects cs
       JOIN subjects s ON cs.subject_id = s.id
-      JOIN users u ON cs.teacher_id = u.id
+      LEFT JOIN users u ON cs.teacher_id = u.id
       WHERE cs.class_id = ? AND cs.is_active = true AND s.is_active = true
-      ORDER BY s.code
-    `, [classId]);
+    `;
 
+    const params = [classId];
+
+    // If teacherId is provided, filter to show only subjects taught by that teacher
+    if (teacherId) {
+      query += ` AND cs.teacher_id = ?`;
+      params.push(teacherId);
+    }
+
+    query += ` ORDER BY s.code`;
+
+    const result = await this.db.raw(query, params);
     return result.rows;
+  }
+
+  /**
+   * Get class offerings (newer structure) for a specific class, optionally filtered by teacher
+   */
+  async findClassOfferingsWithDetails(classId: string, teacherId?: string) {
+    let query = this.db('class_offerings as co')
+      .join('subjects as s', 'co.subject_id', 's.id')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .leftJoin('users as primary_teacher', 'co.primary_teacher_id', 'primary_teacher.id')
+      .where('co.class_id', classId)
+      .where('co.is_active', true)
+      .where('s.is_active', true)
+      .select([
+        'co.id as class_offering_id',
+        'co.hours_per_week',
+        'co.room',
+        'co.schedule',
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.description as subject_description',
+        'primary_teacher.id as teacher_id',
+        'primary_teacher.first_name',
+        'primary_teacher.last_name',
+        'primary_teacher.email',
+        'primary_teacher.avatar_url'
+      ]);
+
+    // If teacherId is provided, filter by teacher
+    if (teacherId) {
+      query = query.where(function() {
+        this.where('co.primary_teacher_id', teacherId)
+          .orWhereExists(function() {
+            this.select('*')
+              .from('class_offering_teachers as cot')
+              .whereRaw('cot.class_offering_id = co.id')
+              .where('cot.teacher_id', teacherId)
+              .where('cot.is_active', true);
+          });
+      });
+    }
+
+    const result = await query.orderBy('s.code');
+    return result;
   }
 
   private generateUUID(): string {

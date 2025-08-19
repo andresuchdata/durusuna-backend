@@ -20,8 +20,11 @@ RUN addgroup -g 1001 -S bunuser && \
 COPY package*.json bun.lock* tsconfig.json ./
 
 # Install all dependencies (including devDependencies for TypeScript)
-RUN bun install --frozen-lockfile || bun install
-RUN bun pm cache rm
+# Use bun's built-in caching and prefer frozen lockfile for reproducible builds
+RUN bun install --frozen-lockfile --prefer-offline || bun install --prefer-offline
+
+# Keep bun cache for faster rebuilds but clean up unnecessary files
+RUN bun pm cache clean
 
 # Copy application source code and configuration
 COPY src/ ./src/

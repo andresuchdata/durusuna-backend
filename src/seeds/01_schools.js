@@ -29,9 +29,9 @@ exports.seed = async function(knex) {
         grading_system: 'percentage',
         attendance_location: {
           name: 'SDIT Darel Iman 1 Campus',
-          google_maps_url: 'https://www.google.com/maps/place/SDIT+Dareliman+1+Padang/@-0.9009373,100.3035648,17635m/data=!3m1!1e3!4m6!3m5!1s0x2fd4b8a579c9cb91:0x97ccc540bd434f5b!8m2!3d-0.9009373!4d100.3756626!16s%2Fg%2F11b6c9tx3s?entry=ttu&g_ep=EgoyMDI1MDgxMy4wIKXMDSoASAFQAw%3D%3D',
-          latitude: -0.9009373,
-          longitude: 100.3756626,
+          google_maps_url: 'https://www.google.com/maps',
+          latitude: -0.900831,
+          longitude: 100.375814,
           radius_meters: 100
         }
       }),
@@ -52,8 +52,8 @@ exports.seed = async function(knex) {
         grading_system: 'percentage',
         attendance_location: {
           name: 'SMP IT Darel Iman Campus',
-          latitude: -0.8981452379675374,
-          longitude: 100.3614347974181,
+          latitude: -0.900831,
+          longitude: 100.375814,
           radius_meters: 100
         }
       }),

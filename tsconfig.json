@@ -12,7 +12,7 @@
     "types": ["bun-types"],
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,

@@ -1,0 +1,60 @@
+# Multi-stage Dockerfile for production with optimal Bun caching
+FROM oven/bun:1.2-alpine AS base
+
+# Install system dependencies
+RUN apk add --no-cache \
+    dumb-init \
+    python3 \
+    make \
+    g++ \
+    && ln -sf python3 /usr/bin/python
+
+WORKDIR /app
+
+# Install dependencies in a separate stage for better caching
+FROM base AS deps
+
+# Copy package files
+COPY package*.json bun.lock* tsconfig.json ./
+
+# Install only production dependencies first
+RUN bun install --frozen-lockfile --production --prefer-offline
+
+# Install all dependencies (including dev) in separate layer
+FROM base AS deps-dev
+COPY package*.json bun.lock* tsconfig.json ./
+RUN bun install --frozen-lockfile --prefer-offline
+
+# Build stage
+FROM deps-dev AS builder
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+
+# Production stage
+FROM base AS production
+
+# Create app user
+RUN addgroup -g 1001 -S bunuser && \
+    adduser -S bunuser -u 1001
+
+# Copy production dependencies
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package*.json ./
+
+# Copy application source
+COPY --from=builder /app/src ./src/
+COPY --from=builder /app/scripts ./scripts/
+COPY start-production.sh ./
+RUN chmod +x start-production.sh scripts/migrate.ts
+
+# Create directories and set permissions
+RUN mkdir -p uploads logs && \
+    chown -R bunuser:bunuser /app
+
+USER bunuser
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD bun -e "import('http').then(http => { http.get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }) })" || exit 1
+
+CMD ["dumb-init", "./start-production.sh"]
