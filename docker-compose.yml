@@ -60,7 +60,7 @@ services:
       DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/durusuna_dev"
       
       # Features (matching cloud)
-      RUN_SEED_ON_START: ${RUN_SEED_ON_START:-true}
+      RUN_SEED_ON_START: ${RUN_SEED_ON_START:-false}
       DB_RESET_MODE: ${DB_RESET_MODE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       LOG_TO_CONSOLE: ${LOG_TO_CONSOLE:-true}

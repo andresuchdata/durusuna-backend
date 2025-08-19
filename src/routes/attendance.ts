@@ -63,7 +63,17 @@ router.put('/settings/:schoolId', authenticate, async (req: Request, res: Respon
     const { schoolId } = req.params;
     const settings = req.body;
 
+    // Debug logging
+    logger.info('🔧 PUT /attendance/settings/:schoolId called', {
+      schoolId,
+      user: authenticatedReq.user?.email,
+      role: authenticatedReq.user?.role,
+      userSchoolId: authenticatedReq.user?.school_id,
+      requestBody: settings
+    });
+
     if (!schoolId) {
+      logger.error('❌ School ID is missing');
       return res.status(400).json({ error: 'School ID is required' });
     }
 
@@ -73,17 +83,63 @@ router.put('/settings/:schoolId', authenticate, async (req: Request, res: Respon
       authenticatedReq.user
     );
 
+    logger.info('✅ Attendance settings updated successfully', { schoolId });
     res.json({ 
       message: 'Attendance settings updated successfully',
       settings: updatedSettings 
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('Access denied')) {
+      logger.error('❌ Access denied error:', error.message);
       return res.status(403).json({ error: error.message });
     }
 
-    logger.error('Error updating attendance settings:', error);
+    logger.error('❌ Error updating attendance settings:', {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+      schoolId: req.params.schoolId,
+      user: authenticatedReq.user?.email
+    });
     res.status(500).json({ error: 'Failed to update attendance settings' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/student/status/:classId
+ * @desc Check if student has already marked attendance for today in a specific class
+ * @access Private (Students only)
+ */
+router.get('/student/status/:classId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { classId } = req.params;
+    const userId = authenticatedReq.user.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of day
+
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    const attendanceStatus = await attendanceService.getStudentAttendanceStatusForToday(
+      classId,
+      userId,
+      today
+    );
+
+    res.json({
+      classId,
+      hasAttendance: attendanceStatus !== null,
+      attendance: attendanceStatus,
+      date: today.toISOString().split('T')[0]
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error checking student attendance status:', error);
+    res.status(500).json({ error: 'Failed to check attendance status' });
   }
 });
 

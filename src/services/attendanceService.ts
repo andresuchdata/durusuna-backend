@@ -41,6 +41,14 @@ export class AttendanceService {
     return await this.attendanceRepository.updateSchoolAttendanceSettings(schoolId, settings);
   }
 
+  async getStudentAttendanceStatusForToday(
+    classId: string,
+    studentId: string,
+    date: Date
+  ): Promise<any | null> {
+    return await this.attendanceRepository.getStudentAttendanceForDate(classId, studentId, date);
+  }
+
   // Teacher attendance management
   async openAttendanceSession(
     classId: string,

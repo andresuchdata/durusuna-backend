@@ -20,13 +20,40 @@ export class AttendanceRepository {
       .where('school_id', schoolId)
       .first();
     
-    if (settings && settings.attendance_hours) {
-      if (typeof settings.attendance_hours === 'string') {
-        settings.attendance_hours = JSON.parse(settings.attendance_hours);
+    if (settings) {
+      // Ensure attendance_hours is properly parsed from JSON
+      if (settings.attendance_hours) {
+        if (typeof settings.attendance_hours === 'string') {
+          try {
+            settings.attendance_hours = JSON.parse(settings.attendance_hours);
+          } catch (e) {
+            // If parsing fails, set default
+            settings.attendance_hours = { start: '08:00', end: '15:00' };
+          }
+        }
+      } else {
+        // If attendance_hours is null/undefined, set default
+        settings.attendance_hours = { start: '08:00', end: '15:00' };
       }
+      
+      // Convert numeric strings to proper numbers (PostgreSQL decimal/integer fields)
+      if (settings.school_latitude && typeof settings.school_latitude === 'string') {
+        settings.school_latitude = parseFloat(settings.school_latitude);
+      }
+      if (settings.school_longitude && typeof settings.school_longitude === 'string') {
+        settings.school_longitude = parseFloat(settings.school_longitude);
+      }
+      if (settings.location_radius_meters && typeof settings.location_radius_meters === 'string') {
+        settings.location_radius_meters = parseInt(settings.location_radius_meters, 10);
+      }
+      if (settings.late_threshold_minutes && typeof settings.late_threshold_minutes === 'string') {
+        settings.late_threshold_minutes = parseInt(settings.late_threshold_minutes, 10);
+      }
+      
+      return settings;
     }
     
-    return settings || null;
+    return null;
   }
 
   async updateSchoolAttendanceSettings(
@@ -50,7 +77,24 @@ export class AttendanceRepository {
         .returning('*');
       
       if (updated.attendance_hours) {
-        updated.attendance_hours = JSON.parse(updated.attendance_hours);
+        // Only parse if it's a string (from database), not if it's already an object (from request)
+        if (typeof updated.attendance_hours === 'string') {
+          updated.attendance_hours = JSON.parse(updated.attendance_hours);
+        }
+      }
+      
+      // Convert numeric strings to proper numbers
+      if (updated.school_latitude && typeof updated.school_latitude === 'string') {
+        updated.school_latitude = parseFloat(updated.school_latitude);
+      }
+      if (updated.school_longitude && typeof updated.school_longitude === 'string') {
+        updated.school_longitude = parseFloat(updated.school_longitude);
+      }
+      if (updated.location_radius_meters && typeof updated.location_radius_meters === 'string') {
+        updated.location_radius_meters = parseInt(updated.location_radius_meters, 10);
+      }
+      if (updated.late_threshold_minutes && typeof updated.late_threshold_minutes === 'string') {
+        updated.late_threshold_minutes = parseInt(updated.late_threshold_minutes, 10);
       }
       
       return updated;
@@ -66,11 +110,48 @@ export class AttendanceRepository {
         .returning('*');
       
       if (created.attendance_hours) {
-        created.attendance_hours = JSON.parse(created.attendance_hours);
+        // Only parse if it's a string (from database), not if it's already an object (from request)
+        if (typeof created.attendance_hours === 'string') {
+          created.attendance_hours = JSON.parse(created.attendance_hours);
+        }
+      }
+      
+      // Convert numeric strings to proper numbers
+      if (created.school_latitude && typeof created.school_latitude === 'string') {
+        created.school_latitude = parseFloat(created.school_latitude);
+      }
+      if (created.school_longitude && typeof created.school_longitude === 'string') {
+        created.school_longitude = parseFloat(created.school_longitude);
+      }
+      if (created.location_radius_meters && typeof created.location_radius_meters === 'string') {
+        created.location_radius_meters = parseInt(created.location_radius_meters, 10);
+      }
+      if (created.late_threshold_minutes && typeof created.late_threshold_minutes === 'string') {
+        created.late_threshold_minutes = parseInt(created.late_threshold_minutes, 10);
       }
       
       return created;
     }
+  }
+
+  async getStudentAttendanceForDate(
+    classId: string,
+    studentId: string,
+    date: Date
+  ): Promise<any | null> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const attendance = await this.db('attendance_records')
+      .where('class_id', classId)
+      .where('student_id', studentId)
+      .whereBetween('created_at', [startOfDay, endOfDay])
+      .first();
+
+    return attendance || null;
   }
 
   // Attendance session methods
