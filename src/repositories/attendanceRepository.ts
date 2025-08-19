@@ -337,7 +337,7 @@ export class AttendanceRepository {
         'users.last_name as student_last_name',
         'users.email as student_email',
         'users.avatar_url as student_avatar_url',
-        'users.student_id'
+        'users.student_id as student_roll_number'
       )
       .orderBy('users.first_name', 'asc');
 
@@ -349,7 +349,7 @@ export class AttendanceRepository {
         last_name: record.student_last_name,
         email: record.student_email,
         avatar_url: record.student_avatar_url,
-        student_id: record.student_id
+        student_id: record.student_roll_number
       }
     }));
   }

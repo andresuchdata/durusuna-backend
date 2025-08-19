@@ -89,6 +89,22 @@ export class AttendanceService {
       attendance: attendanceMap.get(student.user_id) || null
     }));
 
+    // Debug log to verify mapping
+    console.log('🔍 Attendance Debug:');
+    console.log(`  Found ${existingRecords.length} attendance records`);
+    console.log(`  Found ${students.length} students`);
+    existingRecords.forEach(record => {
+      console.log(`  📋 Record: student_id=${record.student_id}, status=${record.status}`);
+    });
+    students.forEach(student => {
+      const hasAttendance = attendanceMap.has(student.user_id);
+      console.log(`  👤 Student: user_id=${student.user_id}, hasAttendance=${hasAttendance}`);
+      if (hasAttendance) {
+        const attendanceRecord = attendanceMap.get(student.user_id);
+        console.log(`     ✅ Matched with attendance: ${attendanceRecord?.status}`);
+      }
+    });
+
     return {
       session,
       students: studentsWithAttendance
@@ -384,7 +400,13 @@ export class AttendanceService {
       return;
     }
 
-    // Regular teachers need to be assigned to the class
+    // Regular teachers must be homeroom teachers for the class to mark attendance
+    const isHomeroomTeacher = await this.userClassRepository.isHomeroomTeacher(user.id, classId);
+    if (!isHomeroomTeacher) {
+      throw new Error('Access denied - only homeroom teachers can mark attendance for this class');
+    }
+
+    // Also verify they are assigned to the class
     const userClass = await this.userClassRepository.getUserClass(user.id, classId);
     if (!userClass || userClass.role_in_class !== 'teacher') {
       throw new Error('Access denied - not assigned to this class');

@@ -1,4 +1,5 @@
 /**
+ * Student enrollments in class offerings
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
@@ -8,8 +9,13 @@ exports.up = function(knex) {
     table.uuid('student_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
     table.uuid('class_offering_id').notNullable().references('id').inTable('class_offerings').onDelete('CASCADE');
     table.datetime('enrolled_at').notNullable().defaultTo(knex.fn.now());
-    table.enum('status', ['active', 'dropped', 'completed', 'transferred']).defaultTo('active');
+    table.date('withdrawn_at').nullable();
+    table.enum('status', ['active', 'dropped', 'completed', 'transferred', 'withdrawn']).defaultTo('active');
     table.datetime('status_changed_at').nullable();
+    table.text('withdrawal_reason').nullable();
+    table.uuid('enrolled_by').nullable().references('id').inTable('users').onDelete('SET NULL');
+    table.uuid('withdrawn_by').nullable().references('id').inTable('users').onDelete('SET NULL');
+    table.boolean('is_active').defaultTo(true);
     table.text('notes').nullable(); // Enrollment notes
     table.timestamps(true, true);
 
@@ -20,7 +26,9 @@ exports.up = function(knex) {
     table.index(['student_id']);
     table.index(['class_offering_id']);
     table.index(['status']);
+    table.index(['is_active']);
     table.index(['enrolled_at']);
+    table.index(['withdrawn_at']);
   });
 };
 
