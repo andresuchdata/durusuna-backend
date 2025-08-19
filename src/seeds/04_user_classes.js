@@ -112,20 +112,37 @@ exports.seed = async function(knex) {
   
   const userClasses = [];
   
-  // Teacher-Class assignments
-  const teacherAssignments = [
-    // SDIT Teachers
-    { teacherId: USER_IDS.TEACHER_SDIT_1, classIds: [CLASS_IDS.SDIT_1A, CLASS_IDS.SDIT_5A] },
-    { teacherId: USER_IDS.TEACHER_SDIT_2, classIds: [CLASS_IDS.SDIT_2C, CLASS_IDS.SDIT_6C] },
-    { teacherId: USER_IDS.TEACHER_SDIT_3, classIds: [CLASS_IDS.SDIT_3D, CLASS_IDS.SDIT_4B] },
-    { teacherId: USER_IDS.TEACHER_SDIT_4, classIds: [CLASS_IDS.SDIT_4B, CLASS_IDS.SDIT_1A] },
+  // Homeroom Teacher-Class assignments (1 teacher per class as homeroom)
+  const homeroomAssignments = [
+    // SDIT Homeroom Teachers
+    { teacherId: USER_IDS.TEACHER_SDIT_1, classIds: [CLASS_IDS.SDIT_1A, CLASS_IDS.SDIT_5A] }, // Ustadz Muhammad Rahman
+    { teacherId: USER_IDS.TEACHER_SDIT_2, classIds: [CLASS_IDS.SDIT_2C, CLASS_IDS.SDIT_6C] }, // Ustadzah Siti Aminah  
+    { teacherId: USER_IDS.TEACHER_SDIT_3, classIds: [CLASS_IDS.SDIT_3D] }, // Ustadz Abdul Hadi
+    { teacherId: USER_IDS.TEACHER_SDIT_4, classIds: [CLASS_IDS.SDIT_4B] }, // Ustadzah Maryam Saleha
     
-    // SMP Teachers
-    { teacherId: USER_IDS.TEACHER_SMP_1, classIds: [CLASS_IDS.SMP_7M1, CLASS_IDS.SMP_9M1] },
-    { teacherId: USER_IDS.TEACHER_SMP_2, classIds: [CLASS_IDS.SMP_7MD1, CLASS_IDS.SMP_9MD2] },
-    { teacherId: USER_IDS.TEACHER_SMP_3, classIds: [CLASS_IDS.SMP_8M1, CLASS_IDS.SMP_7M1] },
-    { teacherId: USER_IDS.TEACHER_SMP_4, classIds: [CLASS_IDS.SMP_8MD1, CLASS_IDS.SMP_7MD1] }
+    // SMP Homeroom Teachers
+    { teacherId: USER_IDS.TEACHER_SMP_1, classIds: [CLASS_IDS.SMP_7M1, CLASS_IDS.SMP_9M1] }, // Ustadz Ali Akbar
+    { teacherId: USER_IDS.TEACHER_SMP_2, classIds: [CLASS_IDS.SMP_7MD1, CLASS_IDS.SMP_9MD2] }, // Ustadzah Khadijah Binti
+    { teacherId: USER_IDS.TEACHER_SMP_3, classIds: [CLASS_IDS.SMP_8M1] }, // Ustadz Umar Faruq
+    { teacherId: USER_IDS.TEACHER_SMP_4, classIds: [CLASS_IDS.SMP_8MD1] } // Ustadzah Aisha Radhia
   ];
+
+  // Additional subject teachers (can teach multiple classes)
+  const subjectTeacherAssignments = [
+    // Cross-class teaching assignments for subjects where teachers specialize
+    { teacherId: USER_IDS.TEACHER_SDIT_1, classIds: [CLASS_IDS.SDIT_2C, CLASS_IDS.SDIT_3D] }, // Math/Tahfidz specialist
+    { teacherId: USER_IDS.TEACHER_SDIT_2, classIds: [CLASS_IDS.SDIT_1A, CLASS_IDS.SDIT_4B] }, // Language specialist
+    { teacherId: USER_IDS.TEACHER_SDIT_3, classIds: [CLASS_IDS.SDIT_5A, CLASS_IDS.SDIT_6C] }, // Islamic studies specialist
+    { teacherId: USER_IDS.TEACHER_SDIT_4, classIds: [CLASS_IDS.SDIT_2C, CLASS_IDS.SDIT_5A] }, // Technology specialist
+    
+    { teacherId: USER_IDS.TEACHER_SMP_1, classIds: [CLASS_IDS.SMP_8M1, CLASS_IDS.SMP_8MD1] }, // Math/Tahfidz specialist
+    { teacherId: USER_IDS.TEACHER_SMP_2, classIds: [CLASS_IDS.SMP_7M1, CLASS_IDS.SMP_8M1] }, // Language specialist
+    { teacherId: USER_IDS.TEACHER_SMP_3, classIds: [CLASS_IDS.SMP_7MD1, CLASS_IDS.SMP_9MD2] }, // Islamic studies specialist
+    { teacherId: USER_IDS.TEACHER_SMP_4, classIds: [CLASS_IDS.SMP_7M1, CLASS_IDS.SMP_9M1] } // Technology specialist
+  ];
+  
+  // Combine all teacher assignments
+  const teacherAssignments = [...homeroomAssignments, ...subjectTeacherAssignments];
   
   teacherAssignments.forEach(assignment => {
     assignment.classIds.forEach(classId => {
@@ -178,6 +195,9 @@ exports.seed = async function(knex) {
 
   console.log('✅ User-Class relationships seeded successfully');
   console.log(`   - Total relationships: ${userClasses.length}`);
-  console.log(`   - Teacher assignments: ${teacherAssignments.length * 2} (avg 2 classes per teacher)`);
+  console.log(`   - Homeroom assignments: ${homeroomAssignments.length} teachers`);
+  console.log(`   - Subject teacher assignments: ${subjectTeacherAssignments.length} cross-class assignments`);  
+  console.log(`   - Total teacher assignments: ${teacherAssignments.length} relationships`);
   console.log(`   - Student enrollments: ${studentClassMappings.length * 5} (5 students per class)`);
+  console.log(`   📚 Teachers now assigned as both homeroom and subject specialists`);
 };

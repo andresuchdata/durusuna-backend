@@ -229,6 +229,31 @@ export class UserClassRepository {
     return result || null;
   }
 
+  /**
+   * Check if a teacher is the homeroom teacher for a specific class
+   */
+  async isHomeroomTeacher(teacherId: string, classId: string): Promise<boolean> {
+    const classInfo = await this.db('classes')
+      .where('id', classId)
+      .where('is_active', true)
+      .first();
+
+    if (!classInfo || !classInfo.settings) {
+      return false;
+    }
+
+    try {
+      const settings = typeof classInfo.settings === 'string' 
+        ? JSON.parse(classInfo.settings) 
+        : classInfo.settings;
+
+      return settings.homeroom_teacher_id === teacherId && settings.has_homeroom === true;
+    } catch (error) {
+      console.error('Error parsing class settings:', error);
+      return false;
+    }
+  }
+
   private generateUUID(): string {
     // Simple UUID generation - in production, use a proper UUID library
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {

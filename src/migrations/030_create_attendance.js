@@ -28,7 +28,7 @@ exports.up = function(knex) {
       table.uuid('class_id').references('id').inTable('classes').onDelete('CASCADE').notNullable();
       table.uuid('student_id').references('id').inTable('users').onDelete('CASCADE').notNullable();
       table.date('attendance_date').notNullable();
-      table.enum('status', ['present', 'absent', 'late', 'excused']).notNullable();
+      table.enum('status', ['present', 'absent', 'late', 'excused', 'sick']).notNullable();
       table.time('check_in_time').nullable();
       table.text('notes').nullable(); // Teacher notes
       table.uuid('marked_by').references('id').inTable('users').onDelete('SET NULL').nullable(); // Teacher who marked

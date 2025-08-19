@@ -166,7 +166,7 @@ exports.seed = async function(knex) {
         class_id: classItem.id,
         subject_id: subject.id,
         academic_period_id: semester1.id,
-        primary_teacher_id: null, // Will be assigned later
+        primary_teacher_id: null, // Will be assigned by teacher assignment seed
         hours_per_week: subject.code === 'TH' ? 2 : (subject.category === 'Agama Islam' ? 3 : 4),
         room: null,
         schedule: JSON.stringify({}),
