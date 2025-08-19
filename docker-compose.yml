@@ -61,7 +61,7 @@ services:
       
       # Features (matching cloud)
       RUN_SEED_ON_START: ${RUN_SEED_ON_START:-true}
-      DB_RESET_MODE: ${DB_RESET_MODE:-true}
+      DB_RESET_MODE: ${DB_RESET_MODE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       LOG_TO_CONSOLE: ${LOG_TO_CONSOLE:-true}
       NOTIF_CHANNELS_ENABLED: ${NOTIF_CHANNELS_ENABLED:-socket}

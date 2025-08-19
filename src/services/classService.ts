@@ -311,4 +311,26 @@ export class ClassService {
 
     return subjects;
   }
+
+  async getClassOfferings(classId: string, currentUser: AuthenticatedUser) {
+    // Check class access first
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // For teachers, filter offerings to show only the ones they teach unless admin
+    let teacherFilterId: string | undefined;
+    if (currentUser.user_type === 'teacher' && currentUser.role !== 'admin') {
+      teacherFilterId = currentUser.id;
+    }
+
+    // Get class offerings with their details, filtered by teacher if applicable
+    const offerings = await this.classRepository.findClassOfferingsWithDetails(
+      classId,
+      teacherFilterId
+    );
+
+    return offerings;
+  }
 } 

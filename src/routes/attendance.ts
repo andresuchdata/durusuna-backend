@@ -28,7 +28,7 @@ const attendanceService = new AttendanceService(attendanceRepository, userClassR
 /**
  * @route GET /api/attendance/settings/:schoolId
  * @desc Get school attendance settings
- * @access Private (Admin only)
+ * @access Private (Any authenticated user belonging to the school)
  */
 router.get('/settings/:schoolId', authenticate, async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
@@ -39,9 +39,9 @@ router.get('/settings/:schoolId', authenticate, async (req: Request, res: Respon
       return res.status(400).json({ error: 'School ID is required' });
     }
 
-    // Verify user is admin of this school
-    if (authenticatedReq.user.role !== 'admin' || authenticatedReq.user.school_id !== schoolId) {
-      return res.status(403).json({ error: 'Access denied - admin access required' });
+    // Verify the user belongs to this school (admin/teacher/student)
+    if (authenticatedReq.user.school_id !== schoolId) {
+      return res.status(403).json({ error: 'Access denied - user not in this school' });
     }
 
     const settings = await attendanceService.getSchoolAttendanceSettings(schoolId);
@@ -311,8 +311,11 @@ router.post('/student/mark', authenticate, async (req: Request, res: Response) =
       if (error.message.includes('already marked')) {
         return res.status(409).json({ error: error.message });
       }
-      if (error.message.includes('Location verification failed') || 
-          error.message.includes('GPS location is required')) {
+      if (error.message.includes('Location verification failed')) {
+        // Outside geofence
+        return res.status(422).json({ error: error.message });
+      }
+      if (error.message.includes('GPS location is required')) {
         return res.status(400).json({ error: error.message });
       }
     }
