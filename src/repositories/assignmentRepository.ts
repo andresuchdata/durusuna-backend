@@ -33,6 +33,7 @@ interface GetUserAssignmentsOptions {
   type?: string;
   status?: string;
   search?: string;
+  subjectId?: string;
 }
 
 interface AssignmentResult {
@@ -550,7 +551,7 @@ export class AssignmentRepository {
    * Get assignments for the current user based on their role and enrollments
    */
   async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
-    const { userId, page, limit, type, status, search } = options;
+    const { userId, page, limit, type, status, search, subjectId } = options;
     const offset = (page - 1) * limit;
 
     // Get user information
@@ -626,10 +627,14 @@ export class AssignmentRepository {
     if (search && search.trim() !== '') {
       query = query.where(function() {
         this.whereILike('a.title', `%${search.trim()}%`)
-          .orWhereILike('a.description', `%${search.trim()}%`)
           .orWhereILike('s.name', `%${search.trim()}%`)
           .orWhereILike('c.name', `%${search.trim()}%`);
       });
+    }
+
+    // Filter by subject if specified (for independent subject filtering)
+    if (subjectId && subjectId.trim() !== '') {
+      query = query.where('co.subject_id', subjectId.trim());
     }
 
     // Get total count
