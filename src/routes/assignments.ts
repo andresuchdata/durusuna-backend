@@ -25,6 +25,15 @@ router.get('/user/assignments', authenticate, async (req: Request, res: Response
 });
 
 /**
+ * @route GET /api/assignments/:assignmentId/details
+ * @desc Get assignment details with student submissions
+ * @access Private (Teachers only)
+ */
+router.get('/:assignmentId/details', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getAssignmentDetails(req as AuthenticatedRequest, res);
+});
+
+/**
  * @route GET /api/classes/:classId/assignments
  * @desc Get all assignments for a specific class
  * @access Private

@@ -223,6 +223,12 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Make io available globally for routes BEFORE initializing handlers
+declare global {
+  var io: Server;
+}
+global.io = io;
+
 // Socket.io handlers
 socketHandler(io);
 
@@ -391,10 +397,4 @@ runSeedingIfRequested().then(() => {
 }).catch(error => {
   logger.error('❌ Failed to start server:', error);
   process.exit(1);
-});
-
-// Make io available globally for routes
-declare global {
-  var io: Server;
-}
-global.io = io; 
+}); 

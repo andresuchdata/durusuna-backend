@@ -10,6 +10,7 @@ interface GetClassAssignmentsOptions {
   limit: number;
   type?: string;
   status?: string;
+  search?: string;
   userId: string;
 }
 
@@ -52,7 +53,7 @@ export class AssignmentRepository {
    * Get assignments for a specific class
    */
   async getClassAssignments(options: GetClassAssignmentsOptions): Promise<AssignmentResult> {
-    const { classId, page, limit, type, status, userId } = options;
+    const { classId, page, limit, type, status, search, userId } = options;
     const offset = (page - 1) * limit;
     
     console.log(`🔍 [DEBUG] Repository query - classId: ${classId}, userId: ${userId}, page: ${page}, limit: ${limit}`);
@@ -75,6 +76,15 @@ export class AssignmentRepository {
       query = query.where('a.is_published', true);
     } else if (status === 'draft') {
       query = query.where('a.is_published', false);
+    }
+
+    // Filter by search query if specified
+    if (search && search.trim() !== '') {
+      console.log(`🔍 [DEBUG] getClassAssignments applying search filter: "${search.trim()}"`);
+      query = query.where(function() {
+        this.whereILike('a.title', `%${search.trim()}%`)
+          .orWhereILike('s.name', `%${search.trim()}%`);
+      });
     }
 
     // Only show assignments the user has access to
@@ -550,6 +560,178 @@ export class AssignmentRepository {
   /**
    * Get assignments for the current user based on their role and enrollments
    */
+  /**
+   * Get assignment details with student submissions for teachers
+   */
+  async getAssignmentDetails(assignmentId: string, userId: string): Promise<any> {
+    // First get the assignment details
+    const assignment = await knex('assessments as a')
+      .join('class_offerings as co', 'a.class_offering_id', 'co.id')
+      .join('subjects as s', 'co.subject_id', 's.id')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .join('users as creator', 'a.created_by', 'creator.id')
+      .where('a.id', assignmentId)
+      .select([
+        'a.*',
+        's.name as subject_name',
+        's.code as subject_code',
+        'c.name as class_name',
+        'c.id as class_id',
+        'co.id as class_offering_id',
+        'creator.first_name as creator_first_name',
+        'creator.last_name as creator_last_name'
+      ])
+      .first();
+
+    if (!assignment) {
+      throw new Error('Assignment not found');
+    }
+
+    // Check if user has access to this assignment
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // For teachers, check if they have access to this assignment
+    if (user.user_type === 'teacher') {
+      const hasAccess = assignment.created_by === userId || 
+                       await this.checkTeacherAssignmentAccess(userId, assignment.class_offering_id);
+      if (!hasAccess) {
+        throw new Error('Access denied to this assignment');
+      }
+    }
+
+    // Get assignment attachments from instructions JSON
+    const attachments = assignment.instructions?.attachments || [];
+
+    // Get all students enrolled in this class offering with their submission status
+    const studentSubmissions = await knex('enrollments as e')
+      .join('users as u', 'e.student_id', 'u.id')
+      .leftJoin('assessment_grades as ag', function() {
+        this.on('ag.student_id', 'u.id')
+            .andOn('ag.assessment_id', knex.raw('?', [assignmentId]));
+      })
+      .leftJoin('users as grader', 'ag.graded_by', 'grader.id')
+      .where('e.class_offering_id', assignment.class_offering_id)
+      .where('e.status', 'active')
+      .where('e.is_active', true)
+      .where('u.user_type', 'student')
+      .where('u.is_active', true)
+      .select([
+        'u.id as student_id',
+        'u.first_name',
+        'u.last_name',
+        'u.student_id as student_number',
+        'u.avatar_url',
+        'ag.status',
+        'ag.score',
+        'ag.adjusted_score',
+        'ag.submitted_at',
+        'ag.graded_at',
+        'ag.is_late',
+        'ag.days_late',
+        'ag.feedback',
+        'ag.attachments as submission_attachments',
+        'grader.first_name as grader_first_name',
+        'grader.last_name as grader_last_name'
+      ])
+      .orderBy('u.last_name', 'asc')
+      .orderBy('u.first_name', 'asc');
+
+    // Calculate submission stats
+    const totalStudents = studentSubmissions.length;
+    const submittedCount = studentSubmissions.filter(s => 
+      s.status && ['submitted', 'graded', 'returned'].includes(s.status)
+    ).length;
+    const gradedCount = studentSubmissions.filter(s => 
+      s.status && ['graded', 'returned'].includes(s.status)
+    ).length;
+    const averageScore = gradedCount > 0 
+      ? studentSubmissions
+          .filter(s => s.score !== null)
+          .reduce((sum, s) => sum + (s.adjusted_score || s.score || 0), 0) / gradedCount
+      : null;
+
+    // Format student submissions
+    const formattedSubmissions = studentSubmissions.map(s => ({
+      student_id: s.student_id,
+      student_name: `${s.first_name} ${s.last_name}`.trim(),
+      student_number: s.student_number,
+      avatar_url: s.avatar_url,
+      status: s.status || 'not_submitted',
+      score: s.adjusted_score || s.score,
+      max_score: assignment.max_score,
+      submitted_at: s.submitted_at,
+      graded_at: s.graded_at,
+      grader_name: s.grader_first_name && s.grader_last_name 
+        ? `${s.grader_first_name} ${s.grader_last_name}`.trim()
+        : null,
+      is_late: s.is_late || false,
+      days_late: s.days_late,
+      feedback: s.feedback,
+      submission_attachments: s.submission_attachments || []
+    }));
+
+    return {
+      assignment: {
+        id: assignment.id,
+        class_offering_id: assignment.class_offering_id,
+        type: assignment.type,
+        title: assignment.title,
+        description: assignment.description,
+        max_score: assignment.max_score,
+        weight_override: assignment.weight_override,
+        group_tag: assignment.group_tag,
+        sequence_no: assignment.sequence_no,
+        assigned_date: assignment.assigned_date,
+        due_date: assignment.due_date,
+        rubric: assignment.rubric,
+        instructions: assignment.instructions,
+        is_published: assignment.is_published,
+        allow_late_submission: assignment.allow_late_submission,
+        late_penalty_per_day: assignment.late_penalty_per_day,
+        created_by: assignment.created_by,
+        created_at: assignment.created_at,
+        updated_at: assignment.updated_at,
+        subject_name: assignment.subject_name,
+        subject_code: assignment.subject_code,
+        class_name: assignment.class_name,
+        class_id: assignment.class_id,
+        creator_name: `${assignment.creator_first_name} ${assignment.creator_last_name}`.trim()
+      },
+      attachments,
+      student_submissions: formattedSubmissions,
+      stats: {
+        total_students: totalStudents,
+        submitted_count: submittedCount,
+        graded_count: gradedCount,
+        average_score: averageScore
+      }
+    };
+  }
+
+  /**
+   * Check if teacher has access to assignment in a class offering
+   */
+  private async checkTeacherAssignmentAccess(teacherId: string, classOfferingId: string): Promise<boolean> {
+    const access = await knex('class_offerings as co')
+      .where('co.id', classOfferingId)
+      .where(function() {
+        this.where('co.primary_teacher_id', teacherId)
+          .orWhereExists(function() {
+            this.select('*')
+              .from('class_offering_teachers as cot')
+              .whereRaw('cot.class_offering_id = co.id')
+              .where('cot.teacher_id', teacherId)
+              .where('cot.is_active', true);
+          });
+      })
+      .first();
+
+    return !!access;
+  }
+
   async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
     const { userId, page, limit, type, status, search, subjectId } = options;
     const offset = (page - 1) * limit;
@@ -623,18 +805,23 @@ export class AssignmentRepository {
       query = query.where('a.type', type);
     }
 
-    // Filter by search query if specified
-    if (search && search.trim() !== '') {
-      query = query.where(function() {
-        this.whereILike('a.title', `%${search.trim()}%`)
-          .orWhereILike('s.name', `%${search.trim()}%`)
-          .orWhereILike('c.name', `%${search.trim()}%`);
-      });
-    }
-
     // Filter by subject if specified (for independent subject filtering)
     if (subjectId && subjectId.trim() !== '') {
       query = query.where('co.subject_id', subjectId.trim());
+    }
+
+    // Filter by search query if specified
+    // When subject filter is active, don't search in subject name to avoid conflicts
+    if (search && search.trim() !== '') {
+      console.log(`🔍 [DEBUG] getUserAssignments (line 815) applying search filter: "${search.trim()}"`);
+      query = query.where(function() {
+        this.whereILike('a.title', `%${search.trim()}%`);
+        
+        // Only search in subject name if no subject filter is applied
+        if (!subjectId || subjectId.trim() === '') {
+          this.orWhereILike('s.name', `%${search.trim()}%`);
+        }
+      });
     }
 
     // Get total count

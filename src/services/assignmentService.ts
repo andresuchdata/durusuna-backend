@@ -211,6 +211,10 @@ export class AssignmentService {
         return;
       }
 
+      if (search) {
+        console.log(`🔍 [DEBUG] getUserAssignments search query: "${search}"`);
+      }
+
       const result = await this.assignmentRepository.getUserAssignments({
         userId,
         page: Number(page),
@@ -230,6 +234,45 @@ export class AssignmentService {
     } catch (error) {
       console.error('Error fetching user assignments:', error);
       res.status(500).json({ error: 'Failed to fetch user assignments' });
+    }
+  }
+
+  /**
+   * Get assignment details with student submissions
+   * GET /api/assignments/:assignmentId/details
+   */
+  async getAssignmentDetails(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { assignmentId } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ error: 'User not authenticated' });
+        return;
+      }
+
+      if (!assignmentId) {
+        res.status(400).json({ error: 'Assignment ID is required' });
+        return;
+      }
+
+      const result = await this.assignmentRepository.getAssignmentDetails(assignmentId, userId);
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching assignment details:', error);
+      
+      if (error instanceof Error) {
+        if (error.message === 'Assignment not found') {
+          res.status(404).json({ error: 'Assignment not found' });
+          return;
+        }
+        if (error.message === 'Access denied to this assignment') {
+          res.status(403).json({ error: 'Access denied to this assignment' });
+          return;
+        }
+      }
+      
+      res.status(500).json({ error: 'Failed to fetch assignment details' });
     }
   }
 

@@ -24,7 +24,8 @@ export class AssignmentController {
         page = 1, 
         limit = 10, 
         type,
-        status = 'all' // 'all', 'published', 'draft'
+        status = 'all', // 'all', 'published', 'draft'
+        search
       } = req.query;
 
       const userId = req.user?.id;
@@ -49,12 +50,17 @@ export class AssignmentController {
         return;
       }
 
+      if (search) {
+        console.log(`🔍 [DEBUG] getClassAssignments search query: "${search}"`);
+      }
+
       const result = await this.assignmentRepository.getClassAssignments({
         classId,
         page: Number(page),
         limit: Number(limit),
         type: type as string,
         status: status as string,
+        search: search as string,
         userId: userId!
       });
 

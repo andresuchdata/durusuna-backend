@@ -2,6 +2,11 @@ import { Knex } from 'knex';
 import { FCMTopicManager } from './notification/FCMTopicManager';
 import { NotificationDispatcher } from './notification/NotificationDispatcher';
 import { Notification } from '../types/notification';
+import { 
+  getNotificationTypeForClassUpdate, 
+  getNotificationTypeForComment, 
+  getDefaultPriority 
+} from '../types/notificationTypes';
 import logger from '../shared/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -56,22 +61,8 @@ export class ClassUpdateNotificationService {
         return;
       }
 
-      // Create notification record
-      const notification = await this.createNotification({
-        type: 'class_update_created',
-        title: this.buildUpdateNotificationTitle(data, classInfo.name, authorInfo),
-        content: this.buildUpdateNotificationContent(data),
-        action_url: `/classes/${data.classId}/updates/${data.updateId}`,
-        action_data: {
-          class_id: data.classId,
-          update_id: data.updateId,
-          update_type: data.updateType
-        },
-        priority: data.updateType === 'homework' ? 'high' : 'normal'
-      });
-
-      // Use FCM Topics (Recommended)
-      await this.sendViaTopics(data, notification, classInfo, authorInfo);
+      // Send notifications via FCM Topics (this now creates individual notifications per user)
+      await this.sendViaTopics(data, classInfo, authorInfo);
 
       logger.info(`🔔 ClassUpdate: Successfully sent notifications for update ${data.updateId}`);
     } catch (error) {
@@ -99,23 +90,8 @@ export class ClassUpdateNotificationService {
         return;
       }
 
-      // Create notification record
-      const notification = await this.createNotification({
-        type: 'class_update_comment_created',
-        title: this.buildCommentNotificationTitle(data, classInfo.name, authorInfo),
-        content: this.buildCommentNotificationContent(data, updateInfo),
-        action_url: `/classes/${data.classId}/updates/${data.updateId}#comment-${data.commentId}`,
-        action_data: {
-          class_id: data.classId,
-          update_id: data.updateId,
-          comment_id: data.commentId,
-          is_reply: data.isReply
-        },
-        priority: 'normal'
-      });
-
-      // Send via FCM Topics
-      await this.sendCommentViaTopics(data, notification, classInfo, authorInfo);
+      // Send via FCM Topics (this now creates individual notifications per user)
+      await this.sendCommentViaTopics(data, classInfo, authorInfo, updateInfo);
 
       logger.info(`🔔 ClassUpdateComment: Successfully sent notifications for comment ${data.commentId}`);
     } catch (error) {
@@ -129,7 +105,6 @@ export class ClassUpdateNotificationService {
    */
   private async sendViaTopics(
     data: ClassUpdateNotificationData,
-    notification: Notification,
     classInfo: any,
     authorInfo: any
   ): Promise<void> {
@@ -144,24 +119,50 @@ export class ClassUpdateNotificationService {
       return;
     }
 
-    // Send via FCM Topic
-    await this.fcmTopicManager.sendToClassTopic(data.classId, 'updates', {
-      title: notification.title,
-      body: notification.content,
-      data: {
-        notification_id: notification.id,
-        update_id: data.updateId,
-        update_type: data.updateType,
-        author_name: `${authorInfo.first_name} ${authorInfo.last_name}`
-      }
-    });
+    // Create individual notification records for each subscriber
+    const notifications: Notification[] = [];
+    for (const userId of filteredSubscribers) {
+      const notificationType = getNotificationTypeForClassUpdate(data.updateType);
+      const notification = await this.createNotificationForUser({
+        userId,
+        senderId: data.authorId,
+        type: notificationType,
+        title: this.buildUpdateNotificationTitle(data, classInfo.name, authorInfo),
+        content: this.buildUpdateNotificationContent(data),
+        action_url: `/classes/${data.classId}/updates/${data.updateId}`,
+        action_data: {
+          class_id: data.classId,
+          update_id: data.updateId,
+          update_type: data.updateType
+        },
+        priority: getDefaultPriority(notificationType)
+      });
+      notifications.push(notification);
+    }
 
-    // Also enqueue individual notifications for socket/email channels
-    await this.notificationDispatcher.enqueue(
-      notification,
-      filteredSubscribers,
-      ['socket', 'email'] // FCM already sent via topic
-    );
+    // Send via FCM Topic (one message to topic for all subscribers)
+    if (notifications.length > 0 && notifications[0]) {
+      const firstNotification = notifications[0];
+      await this.fcmTopicManager.sendToClassTopic(data.classId, 'updates', {
+        title: firstNotification.title, // All notifications have same title/content
+        body: firstNotification.content,
+        data: {
+          notification_id: firstNotification.id, // Use first notification ID for reference
+          update_id: data.updateId,
+          update_type: data.updateType,
+          author_name: `${authorInfo.first_name} ${authorInfo.last_name}`
+        }
+      });
+    }
+
+    // Enqueue individual notifications for socket/email channels
+    for (const notification of notifications) {
+      await this.notificationDispatcher.enqueue(
+        notification,
+        [notification.user_id], // Single user per notification
+        ['socket', 'email'] // FCM already sent via topic
+      );
+    }
   }
 
   /**
@@ -169,9 +170,9 @@ export class ClassUpdateNotificationService {
    */
   private async sendCommentViaTopics(
     data: ClassUpdateCommentNotificationData,
-    notification: Notification,
     classInfo: any,
-    authorInfo: any
+    authorInfo: any,
+    updateInfo: any
   ): Promise<void> {
     const subscribers = await this.fcmTopicManager.getClassCommentSubscribers(data.classId);
     const filteredSubscribers = subscribers.filter(userId => userId !== data.authorId);
@@ -183,48 +184,52 @@ export class ClassUpdateNotificationService {
       return;
     }
 
-    // Send via FCM Topic
-    await this.fcmTopicManager.sendToClassTopic(data.classId, 'comments', {
-      title: notification.title,
-      body: notification.content,
-      data: {
-        notification_id: notification.id,
-        update_id: data.updateId,
-        comment_id: data.commentId,
-        author_name: `${authorInfo.first_name} ${authorInfo.last_name}`,
-        is_reply: data.isReply.toString()
-      }
-    });
-
-    // Also enqueue individual notifications for socket/email channels
-    await this.notificationDispatcher.enqueue(
-      notification,
-      filteredSubscribers,
-      ['socket', 'email'] // FCM already sent via topic
-    );
-  }
-
-  /**
-   * Fallback: Send via individual FCM tokens
-   */
-  private async sendViaIndividualTokens(
-    data: ClassUpdateNotificationData,
-    notification: Notification
-  ): Promise<void> {
-    const subscribers = await this.fcmTopicManager.getClassUpdateSubscribers(data.classId);
-    const filteredSubscribers = subscribers.filter(userId => userId !== data.authorId);
-
-    if (filteredSubscribers.length === 0) {
-      logger.info(`🔔 ClassUpdate: No subscribers to notify for class ${data.classId}`);
-      return;
+    // Create individual notification records for each subscriber
+    const notifications: Notification[] = [];
+    for (const userId of filteredSubscribers) {
+      const notificationType = getNotificationTypeForComment(data.isReply);
+      const notification = await this.createNotificationForUser({
+        userId,
+        senderId: data.authorId,
+        type: notificationType,
+        title: this.buildCommentNotificationTitle(data, classInfo.name, authorInfo),
+        content: this.buildCommentNotificationContent(data, updateInfo),
+        action_url: `/classes/${data.classId}/updates/${data.updateId}#comment-${data.commentId}`,
+        action_data: {
+          class_id: data.classId,
+          update_id: data.updateId,
+          comment_id: data.commentId,
+          is_reply: data.isReply
+        },
+        priority: getDefaultPriority(notificationType)
+      });
+      notifications.push(notification);
     }
 
-    // Enqueue individual notifications for all channels
-    await this.notificationDispatcher.enqueue(
-      notification,
-      filteredSubscribers,
-      ['socket', 'email', 'firebase']
-    );
+    // Send via FCM Topic (one message to topic for all subscribers)
+    if (notifications.length > 0 && notifications[0]) {
+      const firstNotification = notifications[0];
+      await this.fcmTopicManager.sendToClassTopic(data.classId, 'comments', {
+        title: firstNotification.title,
+        body: firstNotification.content,
+        data: {
+          notification_id: firstNotification.id,
+          update_id: data.updateId,
+          comment_id: data.commentId,
+          author_name: `${authorInfo.first_name} ${authorInfo.last_name}`,
+          is_reply: data.isReply.toString()
+        }
+      });
+    }
+
+    // Enqueue individual notifications for socket/email channels
+    for (const notification of notifications) {
+      await this.notificationDispatcher.enqueue(
+        notification,
+        [notification.user_id], // Single user per notification
+        ['socket', 'email'] // FCM already sent via topic
+      );
+    }
   }
 
   // Helper methods for building notification content
@@ -274,23 +279,25 @@ export class ClassUpdateNotificationService {
   }
 
   private getUpdateTypeLabel(type: string): string {
-    const labels = {
+    const labels: Record<string, string> = {
       announcement: 'Announcement',
       homework: 'Homework',
-      reminder: 'Reminder',
+      reminder: 'Reminder', 
       event: 'Event'
     };
-    return labels[type as keyof typeof labels] || 'Update';
+    return labels[type] || 'Class Update';
   }
 
   // Database helper methods
-  private async createNotification(data: {
+  private async createNotificationForUser(data: {
+    userId: string;
+    senderId?: string;
     type: string;
     title: string;
     content: string;
     action_url?: string;
     action_data?: Record<string, any>;
-    priority?: 'low' | 'normal' | 'high';
+    priority?: 'low' | 'normal' | 'high' | 'urgent';
   }): Promise<Notification> {
     const notificationId = uuidv4();
     
@@ -301,6 +308,8 @@ export class ClassUpdateNotificationService {
         content: data.content,
         notification_type: data.type,
         priority: data.priority || 'normal',
+        user_id: data.userId, // Required field!
+        sender_id: data.senderId,
         action_url: data.action_url,
         action_data: JSON.stringify(data.action_data || {}),
         created_at: new Date(),

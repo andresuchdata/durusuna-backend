@@ -1,4 +1,6 @@
-export type NotificationType = 'message' | 'assignment' | 'announcement' | 'event' | 'system';
+import { NotificationType as CentralizedNotificationType } from './notificationTypes';
+
+export type NotificationType = CentralizedNotificationType;
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
