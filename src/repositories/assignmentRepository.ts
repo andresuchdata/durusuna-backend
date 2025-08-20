@@ -1,5 +1,8 @@
+import { Knex } from 'knex';
 import knex from '../config/database';
 import { Assessment, AssessmentWithDetails } from '../types/assessment';
+import { UserRepository } from './userRepository';
+import { AssignmentPresenter } from '../presenters/assignmentPresenter';
 
 interface GetClassAssignmentsOptions {
   classId: string;
@@ -29,6 +32,7 @@ interface GetUserAssignmentsOptions {
   limit: number;
   type?: string;
   status?: string;
+  search?: string;
 }
 
 interface AssignmentResult {
@@ -37,6 +41,12 @@ interface AssignmentResult {
 }
 
 export class AssignmentRepository {
+  private userRepository: UserRepository;
+
+  constructor(db: Knex = knex) {
+    this.userRepository = new UserRepository(db);
+  }
+
   /**
    * Get assignments for a specific class
    */
@@ -69,7 +79,7 @@ export class AssignmentRepository {
     // Only show assignments the user has access to
     // If user is a teacher, show assignments they created or for subjects they teach
     // If user is a student, show only published assignments
-    const user = await knex('users').where('id', userId).first();
+    const user = await this.userRepository.findById(userId);
     console.log(`🔍 [DEBUG] User type: ${user?.user_type}, User: ${JSON.stringify(user)}`);
     
     if (user?.user_type === 'teacher') {
@@ -118,41 +128,7 @@ export class AssignmentRepository {
       .limit(limit)
       .offset(offset);
 
-    const formattedAssignments: AssessmentWithDetails[] = assignments.map(row => ({
-      id: row.id,
-      class_offering_id: row.class_offering_id,
-      type: row.type,
-      title: row.title,
-      description: row.description,
-      max_score: parseFloat(row.max_score),
-      weight_override: row.weight_override ? parseFloat(row.weight_override) : undefined,
-      group_tag: row.group_tag,
-      sequence_no: row.sequence_no,
-      assigned_date: row.assigned_date,
-      due_date: row.due_date,
-      rubric: row.rubric,
-      instructions: row.instructions,
-      is_published: row.is_published,
-      allow_late_submission: row.allow_late_submission,
-      late_penalty_per_day: row.late_penalty_per_day ? parseFloat(row.late_penalty_per_day) : undefined,
-      created_by: row.created_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      subject: {
-        id: row.subject_id,
-        name: row.subject_name,
-        code: row.subject_code
-      },
-      class: {
-        id: row.class_id,
-        name: row.class_name
-      },
-      creator: {
-        id: row.created_by,
-        first_name: row.creator_first_name,
-        last_name: row.creator_last_name
-      }
-    }));
+    const formattedAssignments = AssignmentPresenter.formatAssignments(assignments);
 
     return {
       assignments: formattedAssignments,
@@ -191,36 +167,7 @@ export class AssignmentRepository {
       .orderBy('a.created_at', 'desc')
       .limit(limit);
 
-    return assignments.map(row => ({
-      id: row.id,
-      class_offering_id: row.class_offering_id,
-      type: row.type,
-      title: row.title,
-      description: row.description,
-      max_score: parseFloat(row.max_score),
-      weight_override: row.weight_override ? parseFloat(row.weight_override) : undefined,
-      group_tag: row.group_tag,
-      sequence_no: row.sequence_no,
-      assigned_date: row.assigned_date,
-      due_date: row.due_date,
-      rubric: row.rubric,
-      instructions: row.instructions,
-      is_published: row.is_published,
-      allow_late_submission: row.allow_late_submission,
-      late_penalty_per_day: row.late_penalty_per_day ? parseFloat(row.late_penalty_per_day) : undefined,
-      created_by: row.created_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      subject: {
-        id: row.subject_id,
-        name: row.subject_name,
-        code: row.subject_code
-      },
-      class: {
-        id: row.class_id,
-        name: row.class_name
-      }
-    }));
+    return AssignmentPresenter.formatAssignments(assignments);
   }
 
   /**
@@ -242,10 +189,14 @@ export class AssignmentRepository {
     }
 
     let query = knex('assessments as a')
+      .join('class_offerings as co', 'a.class_offering_id', 'co.id')
+      .join('subjects as s', 'co.subject_id', 's.id')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .leftJoin('users as creator', 'a.created_by', 'creator.id')
       .where('a.class_offering_id', classOffering.id);
 
     // Apply user-specific filters
-    const user = await knex('users').where('id', userId).first();
+    const user = await this.userRepository.findById(userId);
     
     if (user?.user_type === 'student') {
       query = query.where('a.is_published', true);
@@ -258,33 +209,20 @@ export class AssignmentRepository {
 
     // Get paginated results
     const assignments = await query
-      .select('a.*')
+      .select([
+        'a.*',
+        's.name as subject_name',
+        's.code as subject_code',
+        'c.name as class_name',
+        'creator.first_name as creator_first_name',
+        'creator.last_name as creator_last_name'
+      ])
       .orderBy('a.due_date', 'asc')
       .orderBy('a.created_at', 'desc')
       .limit(limit)
       .offset(offset);
 
-    const formattedAssignments: AssessmentWithDetails[] = assignments.map(row => ({
-      id: row.id,
-      class_offering_id: row.class_offering_id,
-      type: row.type,
-      title: row.title,
-      description: row.description,
-      max_score: parseFloat(row.max_score),
-      weight_override: row.weight_override ? parseFloat(row.weight_override) : undefined,
-      group_tag: row.group_tag,
-      sequence_no: row.sequence_no,
-      assigned_date: row.assigned_date,
-      due_date: row.due_date,
-      rubric: row.rubric,
-      instructions: row.instructions,
-      is_published: row.is_published,
-      allow_late_submission: row.allow_late_submission,
-      late_penalty_per_day: row.late_penalty_per_day ? parseFloat(row.late_penalty_per_day) : undefined,
-      created_by: row.created_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at
-    }));
+    const formattedAssignments = AssignmentPresenter.formatAssignments(assignments);
 
     return {
       assignments: formattedAssignments,
@@ -296,7 +234,7 @@ export class AssignmentRepository {
    * Check if user has access to a class
    */
   async checkClassAccess(userId: string, classId: string): Promise<boolean> {
-    const user = await knex('users').where('id', userId).first();
+    const user = await this.userRepository.findById(userId);
     
     if (!user) return false;
 
@@ -343,7 +281,7 @@ export class AssignmentRepository {
    * Check if user has access to a specific subject within a class
    */
   async checkSubjectAccess(userId: string, classId: string, subjectId: string): Promise<boolean> {
-    const user = await knex('users').where('id', userId).first();
+    const user = await this.userRepository.findById(userId);
     
     if (!user) return false;
 
@@ -352,9 +290,27 @@ export class AssignmentRepository {
 
     // Check if teacher teaches this specific subject
     if (user.user_type === 'teacher') {
+      console.log(`🔍 [DEBUG] Checking teacher access - userId: ${userId}, classId: ${classId}, subjectId: ${subjectId}`);
+      
+      // First, check if the class offering exists
+      const classOffering = await knex('class_offerings')
+        .where('class_id', classId)
+        .where('subject_id', subjectId)
+        .where('is_active', true)
+        .first();
+      
+      console.log(`🔍 [DEBUG] Class offering found:`, classOffering);
+      
+      if (!classOffering) {
+        console.log(`🔍 [DEBUG] No class offering found for classId: ${classId}, subjectId: ${subjectId}`);
+        return false;
+      }
+
+      // Check if teacher has access via primary_teacher_id or class_offering_teachers
       const hasAccess = await knex('class_offerings')
         .where('class_id', classId)
         .where('subject_id', subjectId)
+        .where('is_active', true)
         .where(function() {
           this.where('primary_teacher_id', userId)
             .orWhereExists(function() {
@@ -367,20 +323,56 @@ export class AssignmentRepository {
         })
         .first();
       
+      console.log(`🔍 [DEBUG] Teacher access result:`, hasAccess);
+      
+      // If no direct access, check if teacher has access to the class (fallback)
+      if (!hasAccess) {
+        const classAccess = await knex('class_offerings')
+          .where('class_id', classId)
+          .where('is_active', true)
+          .where(function() {
+            this.where('primary_teacher_id', userId)
+              .orWhereExists(function() {
+                this.select('*')
+                  .from('class_offering_teachers as cot')
+                  .whereRaw('cot.class_offering_id = class_offerings.id')
+                  .where('cot.teacher_id', userId)
+                  .where('cot.is_active', true);
+              });
+          })
+          .first();
+        
+        console.log(`🔍 [DEBUG] Fallback class access:`, classAccess);
+        
+        // If teacher has access to any subject in this class, allow access
+        if (classAccess) {
+          console.log(`🔍 [DEBUG] Teacher has access to class, allowing subject access`);
+          return true;
+        }
+      }
+      
       return !!hasAccess;
     }
 
     // For students, check if they're enrolled and the class offering exists
     if (user.user_type === 'student') {
+      // First, find the class offering for this class and subject
+      const classOffering = await knex('class_offerings')
+        .where('class_id', classId)
+        .where('subject_id', subjectId)
+        .where('is_active', true)
+        .first();
+
+      if (!classOffering) {
+        return false;
+      }
+
+      // Then check if student is enrolled in this class offering
       const enrollment = await knex('enrollments')
-        .join('class_offerings', function() {
-          this.on('enrollments.class_id', '=', 'class_offerings.class_id')
-            .andOn('class_offerings.subject_id', '=', knex.raw('?', [subjectId]));
-        })
-        .where('enrollments.student_id', userId)
-        .where('enrollments.class_id', classId)
-        .where('enrollments.is_active', true)
-        .where('class_offerings.is_active', true)
+        .where('student_id', userId)
+        .where('class_offering_id', classOffering.id)
+        .where('is_active', true)
+        .where('status', 'active')
         .first();
       
       return !!enrollment;
@@ -390,10 +382,120 @@ export class AssignmentRepository {
   }
 
   /**
+   * Get all subjects accessible by a teacher
+   */
+  async getTeacherAccessibleSubjects(userId: string): Promise<any[]> {
+    console.log(`🔍 [DEBUG] Getting accessible subjects for teacher: ${userId}`);
+
+    // Get all class offerings where the teacher has access
+    const accessibleOfferings = await knex('class_offerings as co')
+      .join('subjects as s', 'co.subject_id', 's.id')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .leftJoin('users as teacher', 'co.primary_teacher_id', 'teacher.id')
+      .where('co.is_active', true)
+      .where(function() {
+        this.where('co.primary_teacher_id', userId)
+          .orWhereExists(function() {
+            this.select('*')
+              .from('class_offering_teachers as cot')
+              .whereRaw('cot.class_offering_id = co.id')
+              .where('cot.teacher_id', userId)
+              .where('cot.is_active', true);
+          });
+      })
+      .select([
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.description as subject_description',
+        'c.id as class_id',
+        'c.name as class_name',
+        'c.grade_level',
+        'co.id as class_offering_id',
+        'teacher.first_name as teacher_first_name',
+        'teacher.last_name as teacher_last_name'
+      ])
+      .orderBy('s.name')
+      .orderBy('c.name');
+
+    console.log(`🔍 [DEBUG] Found ${accessibleOfferings.length} accessible offerings`);
+
+    return accessibleOfferings;
+  }
+
+  /**
+   * Get unique subjects accessible by a teacher (deduplicated)
+   */
+  async getTeacherAccessibleSubjectsUnique(userId: string): Promise<any[]> {
+    const offerings = await this.getTeacherAccessibleSubjects(userId);
+    
+    // Deduplicate by subject_id
+    const uniqueSubjects = offerings.reduce((acc, offering) => {
+      const subjectId = offering.subject_id;
+      if (!acc[subjectId]) {
+        acc[subjectId] = {
+          subject_id: offering.subject_id,
+          subject_name: offering.subject_name,
+          subject_code: offering.subject_code,
+          subject_description: offering.subject_description,
+          classes: []
+        };
+      }
+      
+      // Add class information
+      acc[subjectId].classes.push({
+        class_id: offering.class_id,
+        class_name: offering.class_name,
+        grade_level: offering.grade_level,
+        class_offering_id: offering.class_offering_id
+      });
+      
+      return acc;
+    }, {});
+
+    const result = Object.values(uniqueSubjects);
+    console.log(`🔍 [DEBUG] Returning ${result.length} unique subjects`);
+    
+    return result;
+  }
+
+  /**
+   * Get unique classes accessible by a teacher
+   */
+  async getTeacherAccessibleClasses(userId: string): Promise<any[]> {
+    console.log(`🔍 [DEBUG] Getting accessible classes for teacher: ${userId}`);
+
+    // Get unique classes where teacher has access
+    const accessibleClasses = await knex('class_offerings as co')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .where('co.is_active', true)
+      .where(function() {
+        this.where('co.primary_teacher_id', userId)
+          .orWhereExists(function() {
+            this.select('*')
+              .from('class_offering_teachers as cot')
+              .whereRaw('cot.class_offering_id = co.id')
+              .where('cot.teacher_id', userId)
+              .where('cot.is_active', true);
+          });
+      })
+      .groupBy('c.id', 'c.name', 'c.grade_level')
+      .select([
+        'c.id as class_id',
+        'c.name as class_name',
+        'c.grade_level'
+      ])
+      .orderBy('c.name');
+
+    console.log(`🔍 [DEBUG] Found ${accessibleClasses.length} accessible classes`);
+    return accessibleClasses;
+  }
+
+  /**
    * Check if teacher has permission to create assignments for a subject
    */
   async checkTeacherPermission(teacherId: string, classId: string, subjectId: string): Promise<boolean> {
-    const user = await knex('users').where('id', teacherId).first();
+    const user = await this.userRepository.findById(teacherId);
     
     if (!user || user.user_type !== 'teacher') return false;
 
@@ -448,11 +550,11 @@ export class AssignmentRepository {
    * Get assignments for the current user based on their role and enrollments
    */
   async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
-    const { userId, page, limit, type, status } = options;
+    const { userId, page, limit, type, status, search } = options;
     const offset = (page - 1) * limit;
 
     // Get user information
-    const user = await knex('users').where('id', userId).first();
+    const user = await this.userRepository.findById(userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -518,6 +620,16 @@ export class AssignmentRepository {
     // Filter by assignment type if specified
     if (type && type !== 'all') {
       query = query.where('a.type', type);
+    }
+
+    // Filter by search query if specified
+    if (search && search.trim() !== '') {
+      query = query.where(function() {
+        this.whereILike('a.title', `%${search.trim()}%`)
+          .orWhereILike('a.description', `%${search.trim()}%`)
+          .orWhereILike('s.name', `%${search.trim()}%`)
+          .orWhereILike('c.name', `%${search.trim()}%`);
+      });
     }
 
     // Get total count

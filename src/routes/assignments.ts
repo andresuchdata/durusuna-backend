@@ -1,18 +1,18 @@
-import express, { Response } from 'express';
-import { AssignmentController } from '../controllers/assignmentController';
+import express, { Request, Response } from 'express';
+import { AssignmentService } from '../services/assignmentService';
 import { authenticate } from '../shared/middleware/auth';
 import { AuthenticatedRequest } from '../types/auth';
 
 const router = express.Router();
-const assignmentController = new AssignmentController();
+const assignmentService = new AssignmentService();
 
 /**
  * @route GET /api/assignments/recent
  * @desc Get recent assignments for the current teacher
  * @access Private (Teachers only)
  */
-router.get('/recent', authenticate, async (req: AuthenticatedRequest, res: Response) => {
-  await assignmentController.getRecentAssignments(req, res);
+router.get('/recent', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getRecentAssignments(req as AuthenticatedRequest, res);
 });
 
 /**
@@ -20,8 +20,8 @@ router.get('/recent', authenticate, async (req: AuthenticatedRequest, res: Respo
  * @desc Get assignments for the current user based on their role and enrollments
  * @access Private
  */
-router.get('/user/assignments', authenticate, async (req: AuthenticatedRequest, res: Response) => {
-  await assignmentController.getUserAssignments(req, res);
+router.get('/user/assignments', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getUserAssignments(req as AuthenticatedRequest, res);
 });
 
 /**
@@ -29,8 +29,8 @@ router.get('/user/assignments', authenticate, async (req: AuthenticatedRequest, 
  * @desc Get all assignments for a specific class
  * @access Private
  */
-router.get('/classes/:classId/assignments', authenticate, async (req: AuthenticatedRequest, res: Response) => {
-  await assignmentController.getClassAssignments(req, res);
+router.get('/classes/:classId/assignments', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getClassAssignments(req as AuthenticatedRequest, res);
 });
 
 /**
@@ -38,8 +38,8 @@ router.get('/classes/:classId/assignments', authenticate, async (req: Authentica
  * @desc Get assignments for a specific subject within a class
  * @access Private
  */
-router.get('/classes/:classId/subjects/:subjectId/assignments', authenticate, async (req: AuthenticatedRequest, res: Response) => {
-  await assignmentController.getSubjectAssignments(req, res);
+router.get('/classes/:classId/subjects/:subjectId/assignments', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getSubjectAssignments(req as AuthenticatedRequest, res);
 });
 
 /**
@@ -47,8 +47,26 @@ router.get('/classes/:classId/subjects/:subjectId/assignments', authenticate, as
  * @desc Create a new assignment for a specific subject
  * @access Private (Teachers only)
  */
-router.post('/classes/:classId/subjects/:subjectId/assignments', authenticate, async (req: AuthenticatedRequest, res: Response) => {
-  await assignmentController.createAssignment(req, res);
+router.post('/classes/:classId/subjects/:subjectId/assignments', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.createAssignment(req as AuthenticatedRequest, res);
+});
+
+/**
+ * @route GET /api/assignments/teacher/accessible-subjects
+ * @desc Get subjects accessible by the current teacher
+ * @access Private (Teachers only)
+ */
+router.get('/teacher/accessible-subjects', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getTeacherAccessibleSubjects(req as AuthenticatedRequest, res);
+});
+
+/**
+ * @route GET /api/assignments/teacher/accessible-classes
+ * @desc Get classes accessible by the current teacher
+ * @access Private (Teachers only)
+ */
+router.get('/teacher/accessible-classes', authenticate, async (req: Request, res: Response) => {
+  await assignmentService.getTeacherAccessibleClasses(req as AuthenticatedRequest, res);
 });
 
 export default router;

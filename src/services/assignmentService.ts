@@ -2,9 +2,10 @@ import { Request, Response } from 'express';
 import { AssignmentRepository } from '../repositories/assignmentRepository';
 import { UserRepository } from '../repositories/userRepository';
 import { AuthenticatedRequest } from '../types/auth';
+import { AssignmentPresenter } from '../presenters/assignmentPresenter';
 import knex from '../shared/database/connection';
 
-export class AssignmentController {
+export class AssignmentService {
   private assignmentRepository: AssignmentRepository;
   private userRepository: UserRepository;
 
@@ -60,15 +61,12 @@ export class AssignmentController {
 
       console.log(`🔍 [DEBUG] Assignment query result - total: ${result.total}, assignments count: ${result.assignments.length}`);
 
-      res.json({
+      res.json(AssignmentPresenter.formatAssignmentListResponse({
         assignments: result.assignments,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total: result.total,
-          totalPages: Math.ceil(result.total / Number(limit))
-        }
-      });
+        total: result.total,
+        page: Number(page),
+        limit: Number(limit),
+      }));
     } catch (error) {
       console.error('Error fetching class assignments:', error);
       res.status(500).json({ error: 'Failed to fetch class assignments' });
@@ -94,7 +92,9 @@ export class AssignmentController {
         limit: Number(limit)
       });
 
-      res.json({ assignments });
+      res.json({ 
+        assignments: AssignmentPresenter.formatAssignments(assignments) 
+      });
     } catch (error) {
       console.error('Error fetching recent assignments:', error);
       res.status(500).json({ error: 'Failed to fetch recent assignments' });
@@ -136,15 +136,12 @@ export class AssignmentController {
         userId: userId!
       });
 
-      res.json({
+      res.json(AssignmentPresenter.formatAssignmentListResponse({
         assignments: result.assignments,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total: result.total,
-          totalPages: Math.ceil(result.total / Number(limit))
-        }
-      });
+        total: result.total,
+        page: Number(page),
+        limit: Number(limit),
+      }));
     } catch (error) {
       console.error('Error fetching subject assignments:', error);
       res.status(500).json({ error: 'Failed to fetch subject assignments' });
@@ -184,7 +181,9 @@ export class AssignmentController {
 
       const assignment = await this.assignmentRepository.createAssignment(classId!, subjectId!, assignmentData);
 
-      res.status(201).json({ assignment });
+      res.status(201).json({ 
+        assignment: AssignmentPresenter.formatCreatedAssignment(assignment) 
+      });
     } catch (error) {
       console.error('Error creating assignment:', error);
       res.status(500).json({ error: 'Failed to create assignment' });
@@ -201,7 +200,8 @@ export class AssignmentController {
         page = 1, 
         limit = 50, 
         type,
-        status = 'published' // Default to published for students/parents
+        status = 'published', // Default to published for students/parents
+        search
       } = req.query;
 
       const userId = req.user?.id;
@@ -216,17 +216,15 @@ export class AssignmentController {
         limit: Number(limit),
         type: type as string,
         status: status as string,
+        search: search as string,
       });
 
-      res.json({
+      res.json(AssignmentPresenter.formatAssignmentListResponse({
         assignments: result.assignments,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total: result.total,
-          totalPages: Math.ceil(result.total / Number(limit))
-        }
-      });
+        total: result.total,
+        page: Number(page),
+        limit: Number(limit),
+      }));
     } catch (error) {
       console.error('Error fetching user assignments:', error);
       res.status(500).json({ error: 'Failed to fetch user assignments' });
@@ -256,7 +254,7 @@ export class AssignmentController {
       const subjects = await this.assignmentRepository.getTeacherAccessibleSubjectsUnique(userId!);
 
       res.json({
-        subjects,
+        subjects: AssignmentPresenter.formatTeacherAccessibleSubjects(subjects),
         total: subjects.length
       });
     } catch (error) {
@@ -289,7 +287,7 @@ export class AssignmentController {
       const accessibleClasses = await this.assignmentRepository.getTeacherAccessibleClasses(userId!);
 
       res.json({
-        classes: accessibleClasses,
+        classes: AssignmentPresenter.formatTeacherAccessibleClasses(accessibleClasses),
         total: accessibleClasses.length
       });
     } catch (error) {
