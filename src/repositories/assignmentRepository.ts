@@ -23,6 +23,14 @@ interface GetSubjectAssignmentsOptions {
   userId: string;
 }
 
+interface GetUserAssignmentsOptions {
+  userId: string;
+  page: number;
+  limit: number;
+  type?: string;
+  status?: string;
+}
+
 interface AssignmentResult {
   assignments: AssessmentWithDetails[];
   total: number;
@@ -92,7 +100,8 @@ export class AssignmentRepository {
 
     // Get total count
     const countQuery = query.clone().count('a.id as total').first();
-    const { total } = await countQuery;
+    const countResult = await countQuery;
+    const total = countResult?.total || 0;
 
     // Get paginated results
     const assignments = await query
@@ -244,7 +253,8 @@ export class AssignmentRepository {
 
     // Get total count
     const countQuery = query.clone().count('a.id as total').first();
-    const { total } = await countQuery;
+    const countResult = await countQuery;
+    const total = countResult?.total || 0;
 
     // Get paginated results
     const assignments = await query
@@ -432,5 +442,134 @@ export class AssignmentRepository {
       .returning('*');
 
     return assignment;
+  }
+
+  /**
+   * Get assignments for the current user based on their role and enrollments
+   */
+  async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
+    const { userId, page, limit, type, status } = options;
+    const offset = (page - 1) * limit;
+
+    // Get user information
+    const user = await knex('users').where('id', userId).first();
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    let query = knex('assessments as a')
+      .join('class_offerings as co', 'a.class_offering_id', 'co.id')
+      .join('subjects as s', 'co.subject_id', 's.id')
+      .join('classes as c', 'co.class_id', 'c.id')
+      .leftJoin('users as creator', 'a.created_by', 'creator.id')
+      .where('co.is_active', true)
+      .where('a.is_published', true); // Default to published assignments
+
+    // Apply role-based filtering
+    if (user.user_type === 'student') {
+      // Students see assignments from their enrolled class offerings
+      query = query.whereExists(function() {
+        this.select('*')
+          .from('enrollments as e')
+          .whereRaw('e.class_offering_id = co.id')
+          .where('e.student_id', userId)
+          .where('e.status', 'active')
+          .where('e.is_active', true);
+      });
+    } else if (user.user_type === 'parent') {
+      // Parents see assignments from their children's enrolled class offerings
+      query = query.whereExists(function() {
+        this.select('*')
+          .from('enrollments as e')
+          .join('students as st', 'e.student_id', 'st.user_id')
+          .whereRaw('e.class_offering_id = co.id')
+          .where('st.parent_id', userId)
+          .where('e.status', 'active')
+          .where('e.is_active', true);
+      });
+    } else if (user.user_type === 'teacher') {
+      // Teachers see assignments they created or for subjects they teach
+      if (status !== 'published') {
+        query = query.where(function() {
+          this.where('a.is_published', status === 'draft' ? false : true);
+        });
+      }
+      
+      query = query.where(function() {
+        this.where('a.created_by', userId)
+          .orWhere('co.primary_teacher_id', userId)
+          .orWhereExists(function() {
+            this.select('*')
+              .from('class_offering_teachers as cot')
+              .whereRaw('cot.class_offering_id = co.id')
+              .where('cot.teacher_id', userId)
+              .where('cot.is_active', true);
+          });
+      });
+    } else {
+      // Admins can see all assignments, respect status filter
+      if (status === 'published') {
+        query = query.where('a.is_published', true);
+      } else if (status === 'draft') {
+        query = query.where('a.is_published', false);
+      }
+    }
+
+    // Filter by assignment type if specified
+    if (type && type !== 'all') {
+      query = query.where('a.type', type);
+    }
+
+    // Get total count
+    const countQuery = query.clone().count('a.id as total').first();
+    const countResult = await countQuery;
+    const total = countResult?.total || 0;
+
+    // Get paginated results
+    const assignments = await query
+      .select([
+        'a.*',
+        's.name as subject_name',
+        's.code as subject_code',
+        'c.name as class_name',
+        'creator.first_name as creator_first_name',
+        'creator.last_name as creator_last_name'
+      ])
+      .orderBy('a.due_date', 'asc')
+      .orderBy('a.created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    const formattedAssignments: AssessmentWithDetails[] = assignments.map((row: any) => ({
+      id: row.id,
+      class_offering_id: row.class_offering_id,
+      type: row.type,
+      title: row.title,
+      description: row.description,
+      max_score: row.max_score,
+      weight_override: row.weight_override,
+      group_tag: row.group_tag,
+      sequence_no: row.sequence_no,
+      assigned_date: row.assigned_date,
+      due_date: row.due_date,
+      rubric: row.rubric,
+      instructions: row.instructions,
+      is_published: row.is_published,
+      allow_late_submission: row.allow_late_submission,
+      late_penalty_per_day: row.late_penalty_per_day,
+      created_by: row.created_by,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      subject_name: row.subject_name,
+      subject_code: row.subject_code,
+      class_name: row.class_name,
+      creator_first_name: row.creator_first_name,
+      creator_last_name: row.creator_last_name,
+    }));
+
+    return {
+      assignments: formattedAssignments,
+      total: Number(total)
+    };
   }
 }

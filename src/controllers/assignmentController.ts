@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AssignmentRepository } from '../repositories/assignmentRepository';
-import { CustomRequest } from '../types/request';
+import { AuthenticatedRequest } from '../types/auth';
 
 export class AssignmentController {
   private assignmentRepository: AssignmentRepository;
@@ -13,7 +13,7 @@ export class AssignmentController {
    * Get assignments for a specific class
    * GET /api/classes/:classId/assignments
    */
-  async getClassAssignments(req: CustomRequest, res: Response): Promise<void> {
+  async getClassAssignments(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { classId } = req.params;
       const { 
@@ -70,7 +70,7 @@ export class AssignmentController {
    * Get recent assignments across all classes for a teacher
    * GET /api/assignments/recent
    */
-  async getRecentAssignments(req: CustomRequest, res: Response): Promise<void> {
+  async getRecentAssignments(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { limit = 5 } = req.query;
       const userId = req.user?.id;
@@ -96,7 +96,7 @@ export class AssignmentController {
    * Get assignments for a specific subject within a class
    * GET /api/classes/:classId/subjects/:subjectId/assignments
    */
-  async getSubjectAssignments(req: CustomRequest, res: Response): Promise<void> {
+  async getSubjectAssignments(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { classId, subjectId } = req.params;
       const { page = 1, limit = 10 } = req.query;
@@ -141,7 +141,7 @@ export class AssignmentController {
    * Create a new assignment
    * POST /api/classes/:classId/subjects/:subjectId/assignments
    */
-  async createAssignment(req: CustomRequest, res: Response): Promise<void> {
+  async createAssignment(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { classId, subjectId } = req.params;
       const userId = req.user?.id;
@@ -169,6 +169,48 @@ export class AssignmentController {
     } catch (error) {
       console.error('Error creating assignment:', error);
       res.status(500).json({ error: 'Failed to create assignment' });
+    }
+  }
+
+  /**
+   * Get assignments for the current user based on their role and enrollments
+   * GET /api/assignments/user/assignments
+   */
+  async getUserAssignments(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { 
+        page = 1, 
+        limit = 50, 
+        type,
+        status = 'published' // Default to published for students/parents
+      } = req.query;
+
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'User not authenticated' });
+        return;
+      }
+
+      const result = await this.assignmentRepository.getUserAssignments({
+        userId,
+        page: Number(page),
+        limit: Number(limit),
+        type: type as string,
+        status: status as string,
+      });
+
+      res.json({
+        assignments: result.assignments,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: result.total,
+          totalPages: Math.ceil(result.total / Number(limit))
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching user assignments:', error);
+      res.status(500).json({ error: 'Failed to fetch user assignments' });
     }
   }
 }
