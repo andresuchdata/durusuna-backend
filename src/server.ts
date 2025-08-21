@@ -41,6 +41,7 @@ import { NotificationDispatcher } from './services/notification/NotificationDisp
 import { SocketChannelProvider } from './services/notification/channels/SocketChannelProvider';
 import { EmailChannelProvider } from './services/notification/channels/EmailChannelProvider';
 import { FirebaseChannelProvider } from './services/notification/channels/FirebaseChannelProvider';
+import { FirebaseManager } from './config/firebase';
 
 // Debug: Log that all imports completed
 logger.info('🎯 All route and service imports completed');
@@ -376,8 +377,29 @@ async function runSeedingIfRequested() {
 
 const PORT = process.env.PORT || 3001;
 
+// Initialize Firebase before starting the server
+async function initializeFirebase() {
+  try {
+    logger.info('🔥 Initializing Firebase...');
+    const firebaseManager = FirebaseManager.getInstance();
+    const initialized = await firebaseManager.initialize();
+    
+    if (initialized) {
+      logger.info('🔥 Firebase initialized successfully');
+    } else {
+      logger.warn('🔥 Firebase initialization skipped (configuration missing or module unavailable)');
+    }
+  } catch (error) {
+    logger.error('🔥 Firebase initialization failed:', error);
+    // Don't fail server startup if Firebase fails
+  }
+}
+
 // Check if we should run seeding before starting the server
-runSeedingIfRequested().then(() => {
+runSeedingIfRequested().then(async () => {
+  // Initialize Firebase before starting notification system
+  await initializeFirebase();
+  
   logger.info('🎯 About to start server listening...');
   server.listen(PORT, () => {
     logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
