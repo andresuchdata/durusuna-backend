@@ -58,9 +58,10 @@ function getNotificationService() {
  * @desc Get classes for current user
  * @access Private
  */
-router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const classes = await classService.getAllClasses(req.user);
+    const classes = await classService.getAllClasses(authenticatedReq.user);
     res.json(classes);
   } catch (error) {
     logger.error('Error fetching classes:', error);
@@ -73,9 +74,10 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
  * @desc Get classes for current user (enrolled classes)
  * @access Private
  */
-router.get('/my-classes', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/my-classes', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const classes = await classService.getUserClasses(req.user);
+    const classes = await classService.getUserClasses(authenticatedReq.user);
     res.json({ classes });
   } catch (error) {
     logger.error('Error fetching user classes:', error);
@@ -88,13 +90,14 @@ router.get('/my-classes', authenticate, async (req: AuthenticatedRequest, res: R
  * @desc Get class by ID
  * @access Private
  */
-router.get('/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const classItem = await classService.getClassById(id, req.user);
+    const classItem = await classService.getClassById(id, authenticatedReq.user);
     res.json(classItem);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -342,15 +345,16 @@ router.post('/:classId/updates', authenticate, validate(classUpdateSchema), asyn
  * @desc Create new class
  * @access Private (teachers and admins)
  */
-router.post('/', authenticate, authorize([], ['teacher']), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticate, authorize([], ['teacher']), async (req: Request, res: Response, next: NextFunction) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     // Set school_id from user's school
     const classData = {
       ...req.body,
-      school_id: req.user.school_id
+      school_id: authenticatedReq.user.school_id
     };
     
-    const classItem = await classService.createClass(classData, req.user);
+    const classItem = await classService.createClass(classData, authenticatedReq.user);
     res.status(201).json({
       message: 'Class created successfully',
       class: classItem
@@ -380,13 +384,14 @@ router.post('/', authenticate, authorize([], ['teacher']), async (req: Authentic
  * @desc Update class
  * @access Private (teachers and admins)
  */
-router.put('/:id', authenticate, authorize([], ['teacher']), async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', authenticate, authorize([], ['teacher']), async (req: Request, res: Response, next: NextFunction) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const classItem = await classService.updateClass(id, req.body, req.user);
+    const classItem = await classService.updateClass(id, req.body, authenticatedReq.user);
     res.json({
       message: 'Class updated successfully',
       class: classItem
@@ -423,7 +428,8 @@ router.put('/:id', authenticate, authorize([], ['teacher']), async (req: Authent
  * @query limit: number (default: 20, max: 100)
  * @query search: string (optional search term)
  */
-router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/students', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     const { page = '1', limit = '20', search } = req.query as { page?: string; limit?: string; search?: string };
@@ -439,7 +445,7 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Page and limit must be positive numbers' });
     }
     
-    const response = await classService.getClassStudents(id, req.user, pageNum, limitNum, search);
+    const response = await classService.getClassStudents(id, authenticatedReq.user, pageNum, limitNum, search);
     res.json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -462,7 +468,8 @@ router.get('/:id/students', authenticate, async (req: AuthenticatedRequest, res:
  * @query page: number (default: 1)
  * @query limit: number (default: 20, max: 100)
  */
-router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/teachers', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     const { page = '1', limit = '20' } = req.query as { page?: string; limit?: string };
@@ -478,7 +485,7 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'Page and limit must be positive numbers' });
     }
     
-    const response = await classService.getClassTeachers(id, req.user, pageNum, limitNum);
+    const response = await classService.getClassTeachers(id, authenticatedReq.user, pageNum, limitNum);
     res.json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -499,7 +506,8 @@ router.get('/:id/teachers', authenticate, async (req: AuthenticatedRequest, res:
  * @desc Get student and teacher counts for a class
  * @access Private
  */
-router.get('/:id/counts', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/counts', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     
@@ -507,7 +515,7 @@ router.get('/:id/counts', authenticate, async (req: AuthenticatedRequest, res: R
       return res.status(400).json({ error: 'Class ID is required' });
     }
     
-    const counts = await classService.getClassCounts(id, req.user);
+    const counts = await classService.getClassCounts(id, authenticatedReq.user);
     res.json(counts);
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -528,13 +536,14 @@ router.get('/:id/counts', authenticate, async (req: AuthenticatedRequest, res: R
  * @desc Get subjects for a class with their lessons
  * @access Private
  */
-router.get('/:id/subjects', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/subjects', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const subjects = await classService.getClassSubjects(id, req.user);
+    const subjects = await classService.getClassSubjects(id, authenticatedReq.user);
     res.json({ subjects });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -555,13 +564,14 @@ router.get('/:id/subjects', authenticate, async (req: AuthenticatedRequest, res:
  * @desc Get class offerings (subject-classes) for a class, optionally filtered by current teacher
  * @access Private
  */
-router.get('/:id/offerings', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/offerings', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const offerings = await classService.getClassOfferings(id, req.user);
+    const offerings = await classService.getClassOfferings(id, authenticatedReq.user);
     res.json({ offerings });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -581,13 +591,14 @@ router.get('/:id/offerings', authenticate, async (req: AuthenticatedRequest, res
  * @desc Get lessons for a class
  * @access Private
  */
-router.get('/:id/lessons', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/lessons', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const lessons = await classService.getClassLessons(id, req.user);
+    const lessons = await classService.getClassLessons(id, authenticatedReq.user);
     res.json({ lessons });
   } catch (error) {
     if (error instanceof Error && error.message === 'Access denied') {

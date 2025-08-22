@@ -1,9 +1,12 @@
 import { Knex } from 'knex';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   ClassUpdate, 
   ClassUpdateWithAuthor, 
   CreateClassUpdateRequest,
-  ClassUpdateQueryParams 
+  ClassUpdateQueryParams,
+  ClassUpdateCommentWithAuthor,
+  CreateCommentRequest
 } from '../types/classUpdate';
 import { safeJsonParse, migrateReactions, safeJsonStringify } from '../utils/json';
 
@@ -238,5 +241,233 @@ export class ClassUpdatesRepository {
       .where('id', classId)
       .where('school_id', schoolId)
       .first();
+  }
+
+  // Additional methods for service layer support
+
+  async getUpdateById(updateId: string): Promise<any> {
+    return await this.db('class_updates')
+      .where('id', updateId)
+      .where('is_deleted', false)
+      .first();
+  }
+
+  async getCommentsByUpdateId(updateId: string): Promise<ClassUpdateCommentWithAuthor[]> {
+    const comments = await this.db('class_update_comments')
+      .join('users', 'class_update_comments.author_id', 'users.id')
+      .where('class_update_comments.class_update_id', updateId)
+      .where('class_update_comments.is_deleted', false)
+      .select(
+        'class_update_comments.*',
+        'users.first_name as author_first_name',
+        'users.last_name as author_last_name',
+        'users.email as author_email',
+        'users.avatar_url as author_avatar',
+        'users.user_type as author_user_type'
+      )
+      .orderBy('class_update_comments.created_at', 'asc');
+
+    return comments.map(comment => ({
+      id: comment.id,
+      class_update_id: comment.class_update_id,
+      author_id: comment.author_id,
+      content: comment.content,
+      reply_to_id: comment.reply_to_id,
+      reactions: safeJsonParse(comment.reactions, {}),
+      is_edited: comment.is_edited || false,
+      edited_at: comment.edited_at,
+      is_deleted: comment.is_deleted,
+      deleted_at: comment.deleted_at,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      author: {
+        id: comment.author_id,
+        first_name: comment.author_first_name,
+        last_name: comment.author_last_name,
+        email: comment.author_email,
+        avatar_url: comment.author_avatar || "",
+        user_type: comment.author_user_type
+      }
+    }));
+  }
+
+  async getCommentsByUpdateIdPaginated(updateId: string, page: number, limit: number): Promise<{ comments: ClassUpdateCommentWithAuthor[]; total: number }> {
+    const offset = (page - 1) * limit;
+
+    const comments = await this.db('class_update_comments')
+      .join('users', 'class_update_comments.author_id', 'users.id')
+      .where('class_update_comments.class_update_id', updateId)
+      .where('class_update_comments.is_deleted', false)
+      .select(
+        'class_update_comments.*',
+        'users.first_name as author_first_name',
+        'users.last_name as author_last_name',
+        'users.email as author_email',
+        'users.avatar_url as author_avatar',
+        'users.user_type as author_user_type'
+      )
+      .orderByRaw(`
+        CASE WHEN class_update_comments.reply_to_id IS NULL THEN class_update_comments.created_at END DESC,
+        COALESCE(class_update_comments.reply_to_id, class_update_comments.id),
+        class_update_comments.created_at ASC
+      `)
+      .limit(limit)
+      .offset(offset);
+
+    const totalResult = await this.db('class_update_comments')
+      .where('class_update_id', updateId)
+      .where('is_deleted', false)
+      .count('* as count')
+      .first();
+
+    const total = parseInt(totalResult?.count as string) || 0;
+
+    const formattedComments = comments.map(comment => ({
+      id: comment.id,
+      class_update_id: comment.class_update_id,
+      author_id: comment.author_id,
+      content: comment.content,
+      reply_to_id: comment.reply_to_id,
+      reactions: safeJsonParse(comment.reactions, {}),
+      is_edited: comment.is_edited || false,
+      edited_at: comment.edited_at,
+      is_deleted: comment.is_deleted,
+      deleted_at: comment.deleted_at,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      author: {
+        id: comment.author_id,
+        first_name: comment.author_first_name,
+        last_name: comment.author_last_name,
+        email: comment.author_email,
+        avatar_url: comment.author_avatar || "",
+        user_type: comment.author_user_type
+      }
+    }));
+
+    return { comments: formattedComments, total };
+  }
+
+  async commentExists(commentId: string, updateId: string): Promise<boolean> {
+    const comment = await this.db('class_update_comments')
+      .where('id', commentId)
+      .where('class_update_id', updateId)
+      .where('is_deleted', false)
+      .first();
+    return !!comment;
+  }
+
+  async createComment(updateId: string, authorId: string, data: CreateCommentRequest): Promise<ClassUpdateCommentWithAuthor> {
+    const commentId = uuidv4();
+    
+    await this.db('class_update_comments').insert({
+      id: commentId,
+      class_update_id: updateId,
+      author_id: authorId,
+      content: data.content,
+      reply_to_id: data.reply_to_id,
+      is_deleted: false,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    const commentWithAuthor = await this.db('class_update_comments')
+      .join('users', 'class_update_comments.author_id', 'users.id')
+      .where('class_update_comments.id', commentId)
+      .select(
+        'class_update_comments.*',
+        'users.first_name as author_first_name',
+        'users.last_name as author_last_name',
+        'users.email as author_email',
+        'users.avatar_url as author_avatar',
+        'users.user_type as author_user_type'
+      )
+      .first();
+
+    return {
+      id: commentWithAuthor.id,
+      class_update_id: commentWithAuthor.class_update_id,
+      author_id: commentWithAuthor.author_id,
+      content: commentWithAuthor.content,
+      reply_to_id: commentWithAuthor.reply_to_id,
+      reactions: safeJsonParse(commentWithAuthor.reactions, {}),
+      is_edited: commentWithAuthor.is_edited || false,
+      edited_at: commentWithAuthor.edited_at,
+      is_deleted: commentWithAuthor.is_deleted,
+      deleted_at: commentWithAuthor.deleted_at,
+      created_at: commentWithAuthor.created_at,
+      updated_at: commentWithAuthor.updated_at,
+      author: {
+        id: commentWithAuthor.author_id,
+        first_name: commentWithAuthor.author_first_name,
+        last_name: commentWithAuthor.author_last_name,
+        email: commentWithAuthor.author_email,
+        avatar_url: commentWithAuthor.author_avatar || "",
+        user_type: commentWithAuthor.author_user_type
+      }
+    };
+  }
+
+  async updateReactions(updateId: string, reactions: Record<string, any>): Promise<void> {
+    await this.db('class_updates')
+      .where('id', updateId)
+      .update({
+        reactions: safeJsonStringify(reactions),
+        updated_at: new Date()
+      });
+  }
+
+  async getCommentWithClassInfo(commentId: string): Promise<any> {
+    return await this.db('class_update_comments')
+      .join('class_updates', 'class_update_comments.class_update_id', 'class_updates.id')
+      .where('class_update_comments.id', commentId)
+      .where('class_update_comments.is_deleted', false)
+      .where('class_updates.is_deleted', false)
+      .select(
+        'class_update_comments.*',
+        'class_updates.class_id'
+      )
+      .first();
+  }
+
+  async updateCommentReactions(commentId: string, reactions: Record<string, any>): Promise<void> {
+    await this.db('class_update_comments')
+      .where('id', commentId)
+      .update({
+        reactions: safeJsonStringify(reactions),
+        updated_at: new Date()
+      });
+  }
+
+  async updateById(updateId: string, updateData: any): Promise<ClassUpdateWithAuthor | null> {
+    const update: any = { updated_at: new Date() };
+    if (updateData.title !== undefined) update.title = updateData.title;
+    if (updateData.content !== undefined) update.content = updateData.content;
+    if (updateData.update_type !== undefined) update.update_type = updateData.update_type;
+    if (updateData.attachments !== undefined) update.attachments = safeJsonStringify(updateData.attachments);
+
+    await this.db('class_updates')
+      .where('id', updateId)
+      .update(update);
+
+    return this.findByIdWithAuthor(updateId);
+  }
+
+  async softDelete(updateId: string): Promise<void> {
+    await this.db('class_updates')
+      .where('id', updateId)
+      .update({
+        is_deleted: true,
+        updated_at: new Date()
+      });
+  }
+
+  async updatePinStatus(updateId: string, isPinned: boolean): Promise<void> {
+    await this.db('class_updates')
+      .where('id', updateId)
+      .update({
+        is_pinned: isPinned,
+        updated_at: new Date()
+      });
   }
 }

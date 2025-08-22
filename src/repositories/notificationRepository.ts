@@ -95,7 +95,8 @@ export class NotificationRepository {
 
     // Get total count for pagination
     const countQuery = query.clone().clearSelect().count('* as total');
-    const [{ total }] = await countQuery;
+    const countResult = await countQuery;
+    const total = countResult[0]?.total || 0;
 
     // Apply sorting and pagination
     query = query
@@ -125,12 +126,12 @@ export class NotificationRepository {
    * Get unread count for a user - highly optimized query
    */
   async getUnreadCount(userId: string): Promise<number> {
-    const [result] = await this.db('notifications')
+    const result = await this.db('notifications')
       .where('user_id', userId)
       .where('is_read', false)
       .count('* as count');
 
-    return parseInt(result.count as string);
+    return parseInt((result[0]?.count as string) || '0');
   }
 
   /**

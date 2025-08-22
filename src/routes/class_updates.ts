@@ -8,6 +8,8 @@ import logger from '../shared/utils/logger';
 import { safeJsonParse, migrateReactions, safeJsonStringify, ReactionData } from '../utils/json';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';
+import { ClassUpdatesService } from '../services/classUpdatesService';
+import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from '../repositories/notificationDeliveryRepository';
 import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
@@ -34,6 +36,10 @@ import {
 } from '../types/classUpdate';
 
 const router = express.Router();
+
+// Initialize service layer
+const classUpdatesRepository = new ClassUpdatesRepository(db);
+const classUpdatesService = new ClassUpdatesService(classUpdatesRepository);
 
 // Initialize notification system (lazy loaded to avoid circular dependencies)
 let classUpdateNotificationService: ClassUpdateNotificationService | null = null;
@@ -75,7 +81,7 @@ interface UserAccess {
  * @desc Upload attachments for class updates
  * @access Private (Teachers only)
  */
-router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
@@ -88,39 +94,8 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
       return res.status(400).json({ error: 'Class ID is required' });
     }
 
-    // Verify user has permission to upload to this class
-    const currentUser: UserAccess | undefined = await db('users')
-      .where('id', authReq.user.id)
-      .select('user_type', 'role', 'school_id')
-      .first();
-
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check access permissions
-    let hasAccess = false;
-    if (currentUser.role === 'admin' && currentUser.user_type === 'teacher') {
-      const targetClass = await db('classes')
-        .where('id', class_id)
-        .where('school_id', currentUser.school_id)
-        .first();
-      hasAccess = !!targetClass;
-    } else {
-      const userClass = await db('user_classes')
-        .join('users', 'user_classes.user_id', 'users.id')
-        .where({
-          'user_classes.user_id': authReq.user.id,
-          'user_classes.class_id': class_id
-        })
-        .select('users.user_type', 'user_classes.role_in_class')
-        .first();
-      hasAccess = userClass && (userClass.user_type === 'teacher' || userClass.role_in_class === 'teacher');
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
+    // Verify user has permission to upload to this class using service
+    await classUpdatesService.validateUploadPermissions(authReq.user, class_id);
 
     // Validate all files first
     const validationErrors: Array<{ file: string; index: number; errors: string[] }> = [];
@@ -235,7 +210,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
  * @desc Delete a class update attachment
  * @access Private (Author or Teacher)
  */
-router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { key } = req.params;
@@ -244,16 +219,8 @@ router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Re
       return res.status(400).json({ error: 'Attachment key is required' });
     }
 
-    // Extract class ID from key if possible (depends on your key structure)
-    // For now, we'll allow deletion if user has teacher permissions
-    const currentUser: UserAccess | undefined = await db('users')
-      .where('id', authReq.user.id)
-      .select('user_type', 'role')
-      .first();
-
-    if (!currentUser || (currentUser.user_type !== 'teacher' && currentUser.role !== 'admin')) {
-      return res.status(403).json({ error: 'Only teachers can delete attachments' });
-    }
+    // Validate delete permissions using service
+    await classUpdatesService.validateDeleteAttachmentPermissions(authReq.user);
 
     await storageService.deleteFile(key);
 
@@ -328,127 +295,25 @@ router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Re
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:updateId/comments', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:updateId/comments', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { page = '1', limit = '20' } = req.query;
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    // Verify the update exists
-    const update = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!update) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user has access to the class
-    let hasAccess = false;
+    // Use service to get comments with pagination
+    const result = await classUpdatesService.getClassUpdateComments(
+      updateId,
+      authReq.user,
+      parseInt(page as string),
+      parseInt(limit as string)
+    );
 
-    const currentUser: UserAccess | undefined = await db('users')
-      .where('id', authReq.user.id)
-      .select('user_type', 'role', 'school_id')
-      .first();
-
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check if user is an admin teacher - they can view comments for any class in their school
-    if (currentUser.role === 'admin' && currentUser.user_type === 'teacher') {
-      // Verify the class exists and belongs to their school
-      const targetClass = await db('classes')
-        .where('id', update.class_id)
-        .where('school_id', currentUser.school_id)
-        .first();
-
-      hasAccess = !!targetClass;
-    } else {
-      // For non-admin users, check if they're enrolled in the specific class
-      const userClass = await db('user_classes')
-        .where({
-          user_id: authReq.user.id,
-          class_id: update.class_id
-        })
-        .first();
-
-      hasAccess = !!userClass;
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Get comments with smart sorting:
-    // - Top-level comments (reply_to_id IS NULL): newest first (DESC)  
-    // - Replies (reply_to_id IS NOT NULL): oldest first within thread (ASC)
-    const comments = await db('class_update_comments')
-      .join('users', 'class_update_comments.author_id', 'users.id')
-      .where('class_update_comments.class_update_id', updateId)
-      .where('class_update_comments.is_deleted', false)
-      .select(
-        'class_update_comments.*',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type'
-      )
-      .orderByRaw(`
-        CASE WHEN class_update_comments.reply_to_id IS NULL THEN class_update_comments.created_at END DESC,
-        COALESCE(class_update_comments.reply_to_id, class_update_comments.id),
-        class_update_comments.created_at ASC
-      `)
-      .limit(parseInt(limit as string))
-      .offset(offset);
-
-    // Get total count for pagination
-    const totalResult = await db('class_update_comments')
-      .where('class_update_id', updateId)
-      .where('is_deleted', false)
-      .count('* as count')
-      .first();
-
-    const total = parseInt(totalResult?.count as string) || 0;
-
-    // Format comments
-    const formattedComments: ClassUpdateCommentWithAuthor[] = comments.map(comment => ({
-      id: comment.id,
-      class_update_id: comment.class_update_id,
-      author_id: comment.author_id,
-      content: comment.content,
-      reply_to_id: comment.reply_to_id,
-      reactions: safeJsonParse(comment.reactions, {}),
-      is_edited: comment.is_edited || false,
-      edited_at: comment.edited_at,
-      is_deleted: comment.is_deleted,
-      deleted_at: comment.deleted_at,
-      created_at: comment.created_at,
-      updated_at: comment.updated_at,
-      author: {
-        id: comment.author_id,
-        first_name: comment.author_first_name,
-        last_name: comment.author_last_name,
-        email: comment.author_email,
-        avatar_url: comment.author_avatar || "",
-        user_type: comment.author_user_type
-      }
-    }));
-
-    const response = {
-      comments: formattedComments,
-      pagination: {
-        page: parseInt(page as string),
-        limit: parseInt(limit as string),
-        total,
-        hasMore: offset + comments.length < total
-      }
-    };
-
-    res.json(response);
+    res.json(result);
 
   } catch (error) {
     logger.error('Error fetching comments:', error);
@@ -532,93 +397,24 @@ router.get('/:updateId/comments', authenticate, async (req: Request, res: Respon
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:updateId/reactions', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:updateId/reactions', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { emoji }: AddReactionRequest = req.body;
 
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
+    }
+
     if (!emoji || typeof emoji !== 'string') {
       return res.status(400).json({ error: 'Emoji is required' });
     }
 
-    // Get the existing update
-    const existingUpdate = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!existingUpdate) {
-      return res.status(404).json({ error: 'Class update not found' });
-    }
-
-    // Check if user has access to the class
-    let hasAccess = false;
-
-    if (authReq.user.user_type === 'teacher' && authReq.user.role === 'admin') {
-      // Admin teachers can react to updates in any class in their school
-      const classInfo = await db('classes')
-        .where('id', existingUpdate.class_id)
-        .where('school_id', authReq.user.school_id)
-        .first();
-      
-      hasAccess = !!classInfo;
-    } else {
-      // Regular users need to be enrolled in the class
-      const userClass = await db('user_classes')
-        .where({
-          user_id: authReq.user.id,
-          class_id: existingUpdate.class_id
-        })
-        .first();
-      
-      hasAccess = !!userClass;
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Parse existing reactions
-    const reactions = migrateReactions(safeJsonParse(existingUpdate.reactions, {}));
+    // Use service to toggle reaction
+    const result = await classUpdatesService.toggleUpdateReaction(updateId, authReq.user, emoji);
     
-    // Initialize emoji reaction if it doesn't exist
-    if (!reactions[emoji]) {
-      reactions[emoji] = { count: 0, users: [] };
-    }
-
-    // Check if user has already reacted with this emoji
-    const userIndex = reactions[emoji].users.indexOf(authReq.user.id);
-    
-    if (userIndex > -1) {
-      // User has already reacted, remove the reaction
-      reactions[emoji].users.splice(userIndex, 1);
-      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
-      
-      // Remove emoji entirely if no reactions left
-      if (reactions[emoji].users.length === 0) {
-        delete reactions[emoji];
-      }
-    } else {
-      // User hasn't reacted, add the reaction
-      reactions[emoji].users.push(authReq.user.id);
-      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
-    }
-
-    // Update the class update with new reactions
-    await db('class_updates')
-      .where('id', updateId)
-      .update({
-        reactions: safeJsonStringify(reactions),
-        updated_at: new Date()
-      });
-
-    const response: ReactionResponse = {
-      message: userIndex > -1 ? 'Reaction removed successfully' : 'Reaction added successfully',
-      reactions
-    };
-
-    res.json(response);
+    res.json(result);
 
   } catch (error) {
     logger.error('Error toggling reaction:', error);
@@ -774,115 +570,19 @@ router.post('/:updateId/reactions', authenticate, async (req: Request, res: Resp
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:updateId', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
 
-    // Get the update with author information
-    const update = await db('class_updates')
-      .join('users', 'class_updates.author_id', 'users.id')
-      .where('class_updates.id', updateId)
-      .where('class_updates.is_deleted', false)
-      .select(
-        'class_updates.*',
-        'users.id as author_user_id',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type',
-        'users.role as author_role'
-      )
-      .first();
-
-    if (!update) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user has access to the class
-    const userClass = await db('user_classes')
-      .where({
-        user_id: authReq.user.id,
-        class_id: update.class_id
-      })
-      .first();
-
-    if (!userClass) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Get comments for this update
-    const comments = await db('class_update_comments')
-      .join('users', 'class_update_comments.author_id', 'users.id')
-      .where('class_update_comments.class_update_id', updateId)
-      .where('class_update_comments.is_deleted', false)
-      .select(
-        'class_update_comments.*',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type'
-      )
-      .orderBy('class_update_comments.created_at', 'asc');
-
-    // Format the update
-    const formattedUpdate: ClassUpdateWithAuthor = {
-      id: update.id,
-      class_id: update.class_id,
-      author_id: update.author_id,
-      title: update.title,
-      content: update.content,
-      update_type: update.update_type,
-      is_pinned: update.is_pinned,
-      is_deleted: update.is_deleted,
-      attachments: safeJsonParse(update.attachments, []),
-      reactions: migrateReactions(safeJsonParse(update.reactions, {})),
-      comment_count: comments.length,
-      created_at: update.created_at,
-      updated_at: update.updated_at,
-      author: {
-        id: update.author_user_id,
-        first_name: update.author_first_name,
-        last_name: update.author_last_name,
-        email: update.author_email,
-        avatar_url: update.author_avatar || "",
-        user_type: update.author_user_type,
-        role: update.author_role
-      }
-    };
-
-    // Format comments
-    const formattedComments: ClassUpdateCommentWithAuthor[] = comments.map(comment => ({
-      id: comment.id,
-      class_update_id: comment.class_update_id,
-      author_id: comment.author_id,
-      content: comment.content,
-      reply_to_id: comment.reply_to_id,
-      reactions: safeJsonParse(comment.reactions, {}),
-      is_edited: comment.is_edited || false,
-      edited_at: comment.edited_at,
-      is_deleted: comment.is_deleted,
-      deleted_at: comment.deleted_at,
-      created_at: comment.created_at,
-      updated_at: comment.updated_at,
-      author: {
-        id: comment.author_id,
-        first_name: comment.author_first_name,
-        last_name: comment.author_last_name,
-        email: comment.author_email,
-        avatar_url: comment.author_avatar || "",
-        user_type: comment.author_user_type
-      }
-    }));
-
-    const response: ClassUpdateResponse = {
-      update: formattedUpdate,
-      comments: formattedComments
-    };
-
-    res.json(response);
+    // Use service to get update with comments
+    const result = await classUpdatesService.getClassUpdateWithComments(updateId, authReq.user);
+    
+    res.json(result);
 
   } catch (error) {
     logger.error('Error fetching class update:', error);
@@ -891,101 +591,24 @@ router.get('/:updateId', authenticate, async (req: Request, res: Response, next:
 });
 
 // PUT /api/class-updates/:updateId - Update a class update
-router.put('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:updateId', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { title, content, update_type, attachments } = req.body;
 
-    // Get the existing update
-    const existingUpdate = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!existingUpdate) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user is the author or has permission
-    if (existingUpdate.author_id !== authReq.user.id) {
-      // Check if user is an admin teacher
-      const currentUser = await db('users')
-        .where('id', authReq.user.id)
-        .select('user_type', 'role', 'school_id')
-        .first();
+    // Use service to update class update
+    const updatedUpdate = await classUpdatesService.updateClassUpdate(
+      updateId, 
+      authReq.user, 
+      { title, content, update_type, attachments }
+    );
 
-      if (!(currentUser?.role === 'admin' && currentUser?.user_type === 'teacher')) {
-        return res.status(403).json({ error: 'Access denied. Only the author or admin can update this.' });
-      }
-
-      // Verify class belongs to admin's school
-      const targetClass = await db('classes')
-        .where('id', existingUpdate.class_id)
-        .where('school_id', currentUser.school_id)
-        .first();
-
-      if (!targetClass) {
-        return res.status(403).json({ error: 'Access denied to this class' });
-      }
-    }
-
-    // Update the class update
-    const updateData: any = {
-      updated_at: new Date()
-    };
-
-    if (title !== undefined) updateData.title = title;
-    if (content !== undefined) updateData.content = content;
-    if (update_type !== undefined) updateData.update_type = update_type;
-    if (attachments !== undefined) updateData.attachments = safeJsonStringify(attachments);
-
-    await db('class_updates')
-      .where('id', updateId)
-      .update(updateData);
-
-    // Get the updated record with author information
-    const updatedUpdate = await db('class_updates')
-      .join('users', 'class_updates.author_id', 'users.id')
-      .where('class_updates.id', updateId)
-      .select(
-        'class_updates.*',
-        'users.id as author_user_id',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type',
-        'users.role as author_role'
-      )
-      .first();
-
-    const formattedUpdate: ClassUpdateWithAuthor = {
-      id: updatedUpdate.id,
-      class_id: updatedUpdate.class_id,
-      author_id: updatedUpdate.author_id,
-      title: updatedUpdate.title,
-      content: updatedUpdate.content,
-      update_type: updatedUpdate.update_type,
-      is_pinned: updatedUpdate.is_pinned,
-      is_deleted: updatedUpdate.is_deleted,
-      attachments: safeJsonParse(updatedUpdate.attachments, []),
-      reactions: migrateReactions(safeJsonParse(updatedUpdate.reactions, {})),
-      comment_count: 0, // Could be calculated if needed
-      created_at: updatedUpdate.created_at,
-      updated_at: updatedUpdate.updated_at,
-      author: {
-        id: updatedUpdate.author_user_id,
-        first_name: updatedUpdate.author_first_name,
-        last_name: updatedUpdate.author_last_name,
-        email: updatedUpdate.author_email,
-        avatar_url: updatedUpdate.author_avatar || "",
-        user_type: updatedUpdate.author_user_type,
-        role: updatedUpdate.author_role
-      }
-    };
-
-    res.json({ update: formattedUpdate });
+    res.json({ update: updatedUpdate });
 
   } catch (error) {
     logger.error('Error updating class update:', error);
@@ -994,51 +617,17 @@ router.put('/:updateId', authenticate, async (req: Request, res: Response, next:
 });
 
 // DELETE /api/class-updates/:updateId - Delete a class update
-router.delete('/:updateId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:updateId', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
 
-    // Get the existing update
-    const existingUpdate = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!existingUpdate) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user is the author or has permission
-    if (existingUpdate.author_id !== authReq.user.id) {
-      // Check if user is an admin teacher
-      const currentUser = await db('users')
-        .where('id', authReq.user.id)
-        .select('user_type', 'role', 'school_id')
-        .first();
-
-      if (!(currentUser?.role === 'admin' && currentUser?.user_type === 'teacher')) {
-        return res.status(403).json({ error: 'Access denied. Only the author or admin can delete this.' });
-      }
-
-      // Verify class belongs to admin's school
-      const targetClass = await db('classes')
-        .where('id', existingUpdate.class_id)
-        .where('school_id', currentUser.school_id)
-        .first();
-
-      if (!targetClass) {
-        return res.status(403).json({ error: 'Access denied to this class' });
-      }
-    }
-
-    // Soft delete the class update
-    await db('class_updates')
-      .where('id', updateId)
-      .update({
-        is_deleted: true,
-        updated_at: new Date()
-      });
+    // Use service to delete class update
+    await classUpdatesService.deleteClassUpdate(updateId, authReq.user);
 
     res.json({ message: 'Class update deleted successfully' });
 
@@ -1111,113 +700,33 @@ router.delete('/:updateId', authenticate, async (req: Request, res: Response, ne
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:updateId/comments', authenticate, validate(commentSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:updateId/comments', authenticate, validate(commentSchema), async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { content, reply_to_id }: CreateCommentRequest = req.body;
 
-    // Verify the update exists
-    const update = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!update) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user has access to the class
-    const userClass = await db('user_classes')
-      .where({
-        user_id: authReq.user.id,
-        class_id: update.class_id
-      })
-      .first();
+    // Use service to create comment
+    const result = await classUpdatesService.createComment(updateId, authReq.user, { content, reply_to_id });
 
-    if (!userClass) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Verify reply-to comment exists if provided
-    if (reply_to_id) {
-      const replyComment = await db('class_update_comments')
-        .where('id', reply_to_id)
-        .where('class_update_id', updateId)
-        .where('is_deleted', false)
-        .first();
-
-      if (!replyComment) {
-        return res.status(400).json({ error: 'Invalid reply-to comment' });
-      }
-    }
-
-    // Create the comment
-    const commentId = uuidv4();
-    const [newComment] = await db('class_update_comments')
-      .insert({
-        id: commentId,
-        class_update_id: updateId,
-        author_id: authReq.user.id,
-        content,
-        reply_to_id,
-        is_deleted: false,
-        created_at: new Date(),
-        updated_at: new Date()
-      })
-      .returning('*');
-
-    // Get the comment with author information
-    const commentWithAuthor = await db('class_update_comments')
-      .join('users', 'class_update_comments.author_id', 'users.id')
-      .where('class_update_comments.id', commentId)
-      .select(
-        'class_update_comments.*',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type'
-      )
-      .first();
-
-    const formattedComment: ClassUpdateCommentWithAuthor = {
-      id: commentWithAuthor.id,
-      class_update_id: commentWithAuthor.class_update_id,
-      author_id: commentWithAuthor.author_id,
-      content: commentWithAuthor.content,
-      reply_to_id: commentWithAuthor.reply_to_id,
-      reactions: safeJsonParse(commentWithAuthor.reactions, {}),
-      is_edited: commentWithAuthor.is_edited || false,
-      edited_at: commentWithAuthor.edited_at,
-      is_deleted: commentWithAuthor.is_deleted,
-      deleted_at: commentWithAuthor.deleted_at,
-      created_at: commentWithAuthor.created_at,
-      updated_at: commentWithAuthor.updated_at,
-      author: {
-        id: commentWithAuthor.author_id,
-        first_name: commentWithAuthor.author_first_name,
-        last_name: commentWithAuthor.author_last_name,
-        email: commentWithAuthor.author_email,
-        avatar_url: commentWithAuthor.author_avatar || "",
-        user_type: commentWithAuthor.author_user_type
-      }
-    };
-
-    res.status(201).json({ comment: formattedComment });
+    res.status(201).json({ comment: result.comment });
 
     // Send notifications for the new comment
     try {
       await getNotificationService().notifyClassUpdateCommentCreated({
-        commentId: commentId,
+        commentId: result.comment.id,
         updateId: updateId as string,
-        classId: update.class_id,
+        classId: result.classId,
         authorId: authReq.user.id,
         content: content,
         isReply: !!reply_to_id
       });
 
-      logger.info(`🔔 Successfully sent comment notifications for comment ${commentId}`);
+      logger.info(`🔔 Successfully sent comment notifications for comment ${result.comment.id}`);
     } catch (notificationError) {
       logger.error('🔔 Failed to send comment notifications:', notificationError);
       // Don't fail the request if notification fails
@@ -1234,45 +743,18 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
  * @desc Pin or unpin a class update
  * @access Private (Teachers only)
  */
-router.put('/:updateId/pin', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:updateId/pin', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { updateId } = req.params;
     const { is_pinned } = req.body;
 
-    // Get the update
-    const update = await db('class_updates')
-      .where('id', updateId)
-      .where('is_deleted', false)
-      .first();
-
-    if (!update) {
-      return res.status(404).json({ error: 'Class update not found' });
+    if (!updateId) {
+      return res.status(400).json({ error: 'Update ID is required' });
     }
 
-    // Check if user is a teacher and has access to this class
-    if (authReq.user.user_type !== 'teacher') {
-      return res.status(403).json({ error: 'Only teachers can pin/unpin updates' });
-    }
-
-    const userClass = await db('user_classes')
-      .where({
-        user_id: authReq.user.id,
-        class_id: update.class_id
-      })
-      .first();
-
-    if (!userClass) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Update pin status
-    await db('class_updates')
-      .where('id', updateId)
-      .update({
-        is_pinned: Boolean(is_pinned),
-        updated_at: new Date()
-      });
+    // Use service to update pin status
+    await classUpdatesService.updatePinStatus(updateId, authReq.user, Boolean(is_pinned));
 
     res.json({
       message: is_pinned ? 'Update pinned successfully' : 'Update unpinned successfully',
@@ -1358,99 +840,24 @@ router.put('/:updateId/pin', authenticate, async (req: Request, res: Response, n
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/comments/:commentId/reactions', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/comments/:commentId/reactions', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { commentId } = req.params;
     const { emoji }: AddReactionRequest = req.body;
 
+    if (!commentId) {
+      return res.status(400).json({ error: 'Comment ID is required' });
+    }
+
     if (!emoji || typeof emoji !== 'string') {
       return res.status(400).json({ error: 'Emoji is required' });
     }
 
-    // Get the existing comment with update info
-    const existingComment = await db('class_update_comments')
-      .join('class_updates', 'class_update_comments.class_update_id', 'class_updates.id')
-      .where('class_update_comments.id', commentId)
-      .where('class_update_comments.is_deleted', false)
-      .where('class_updates.is_deleted', false)
-      .select(
-        'class_update_comments.*',
-        'class_updates.class_id'
-      )
-      .first();
-
-    if (!existingComment) {
-      return res.status(404).json({ error: 'Comment not found' });
-    }
-
-    // Check if user has access to the class
-    let hasAccess = false;
-
-    if (authReq.user.user_type === 'teacher' && authReq.user.role === 'admin') {
-      // Admin teachers can react to comments in any class in their school
-      const classInfo = await db('classes')
-        .where('id', existingComment.class_id)
-        .where('school_id', authReq.user.school_id)
-        .first();
-      
-      hasAccess = !!classInfo;
-    } else {
-      // Regular users need to be enrolled in the class
-      const userClass = await db('user_classes')
-        .where({
-          user_id: authReq.user.id,
-          class_id: existingComment.class_id
-        })
-        .first();
-      
-      hasAccess = !!userClass;
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    // Parse existing reactions
-    const reactions = migrateReactions(safeJsonParse(existingComment.reactions, {}));
+    // Use service to toggle comment reaction
+    const result = await classUpdatesService.toggleCommentReaction(commentId, authReq.user, emoji);
     
-    // Initialize emoji reaction if it doesn't exist
-    if (!reactions[emoji]) {
-      reactions[emoji] = { count: 0, users: [] };
-    }
-
-    // Check if user has already reacted with this emoji
-    const userIndex = reactions[emoji].users.indexOf(authReq.user.id);
-    
-    if (userIndex > -1) {
-      // User has already reacted, remove the reaction
-      reactions[emoji].users.splice(userIndex, 1);
-      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
-      
-      // Remove emoji entirely if no reactions left
-      if (reactions[emoji].users.length === 0) {
-        delete reactions[emoji];
-      }
-    } else {
-      // User hasn't reacted, add the reaction
-      reactions[emoji].users.push(authReq.user.id);
-      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
-    }
-
-    // Update the comment with new reactions
-    await db('class_update_comments')
-      .where('id', commentId)
-      .update({
-        reactions: safeJsonStringify(reactions),
-        updated_at: new Date()
-      });
-
-    const response: ReactionResponse = {
-      message: userIndex > -1 ? 'Reaction removed successfully' : 'Reaction added successfully',
-      reactions
-    };
-
-    res.json(response);
+    res.json(result);
 
   } catch (error) {
     logger.error('Error toggling comment reaction:', error);
