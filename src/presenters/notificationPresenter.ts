@@ -5,7 +5,42 @@ import { NotificationTypes } from '../types/notificationTypes';
  * Mobile-compatible notification types that match the mobile app's enum
  * These are the only types the mobile app supports
  */
-export type MobileNotificationType = 'message' | 'assignment' | 'announcement' | 'event' | 'system';
+export type MobileNotificationType = 
+  // Class Update Related
+  | 'class_update_announcement'
+  | 'class_update_homework' 
+  | 'class_update_reminder'
+  | 'class_update_event'
+  | 'class_update_comment'
+  | 'class_update_reply'
+  // Assignment Related
+  | 'assignment_created'
+  | 'assignment_updated'
+  | 'assignment_due_soon'
+  | 'assignment_submitted'
+  | 'assignment_graded'
+  // Attendance Related
+  | 'attendance_marked'
+  | 'attendance_late'
+  | 'attendance_absent'
+  // Grade Related
+  | 'grade_posted'
+  | 'grade_updated'
+  // Message Related
+  | 'message_received'
+  | 'conversation_created'
+  // System Related
+  | 'system_announcement'
+  | 'system_maintenance'
+  | 'system_update'
+  // General
+  | 'announcement'
+  | 'event'
+  | 'reminder'
+  // Legacy types (for backward compatibility)
+  | 'message'
+  | 'assignment'
+  | 'system';
 
 /**
  * Notification data formatted for mobile app consumption
@@ -38,45 +73,49 @@ export interface MobileNotification {
 
 /**
  * Maps backend notification types to mobile-compatible types
+ * 
+ * IMPORTANT: Class update comments (class_update_comment, class_update_reply) 
+ * are now passed through as-is so the mobile app can navigate to class updates
+ * instead of incorrectly routing to the message module.
  */
 function mapNotificationTypeToMobile(backendType: string): MobileNotificationType {
-  // Class update types
-  if (backendType === NotificationTypes.CLASS_UPDATE_ANNOUNCEMENT) return 'announcement';
-  if (backendType === NotificationTypes.CLASS_UPDATE_HOMEWORK) return 'assignment';
-  if (backendType === NotificationTypes.CLASS_UPDATE_REMINDER) return 'announcement';
-  if (backendType === NotificationTypes.CLASS_UPDATE_EVENT) return 'event';
-  if (backendType === NotificationTypes.CLASS_UPDATE_COMMENT) return 'message';
-  if (backendType === NotificationTypes.CLASS_UPDATE_REPLY) return 'message';
+  // Class update types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.CLASS_UPDATE_ANNOUNCEMENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CLASS_UPDATE_HOMEWORK) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CLASS_UPDATE_REMINDER) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CLASS_UPDATE_EVENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CLASS_UPDATE_COMMENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CLASS_UPDATE_REPLY) return backendType as MobileNotificationType;
 
-  // Assignment types
-  if (backendType === NotificationTypes.ASSIGNMENT_CREATED) return 'assignment';
-  if (backendType === NotificationTypes.ASSIGNMENT_UPDATED) return 'assignment';
-  if (backendType === NotificationTypes.ASSIGNMENT_DUE_SOON) return 'assignment';
-  if (backendType === NotificationTypes.ASSIGNMENT_SUBMITTED) return 'assignment';
-  if (backendType === NotificationTypes.ASSIGNMENT_GRADED) return 'assignment';
+  // Assignment types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.ASSIGNMENT_CREATED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ASSIGNMENT_UPDATED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ASSIGNMENT_DUE_SOON) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ASSIGNMENT_SUBMITTED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ASSIGNMENT_GRADED) return backendType as MobileNotificationType;
 
-  // Attendance types
-  if (backendType === NotificationTypes.ATTENDANCE_MARKED) return 'system';
-  if (backendType === NotificationTypes.ATTENDANCE_LATE) return 'system';
-  if (backendType === NotificationTypes.ATTENDANCE_ABSENT) return 'system';
+  // Attendance types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.ATTENDANCE_MARKED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ATTENDANCE_LATE) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.ATTENDANCE_ABSENT) return backendType as MobileNotificationType;
 
-  // Grade types
-  if (backendType === NotificationTypes.GRADE_POSTED) return 'assignment';
-  if (backendType === NotificationTypes.GRADE_UPDATED) return 'assignment';
+  // Grade types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.GRADE_POSTED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.GRADE_UPDATED) return backendType as MobileNotificationType;
 
-  // Message types
-  if (backendType === NotificationTypes.MESSAGE_RECEIVED) return 'message';
-  if (backendType === NotificationTypes.CONVERSATION_CREATED) return 'message';
+  // Message types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.MESSAGE_RECEIVED) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.CONVERSATION_CREATED) return backendType as MobileNotificationType;
 
-  // System types
-  if (backendType === NotificationTypes.SYSTEM_ANNOUNCEMENT) return 'system';
-  if (backendType === NotificationTypes.SYSTEM_MAINTENANCE) return 'system';
-  if (backendType === NotificationTypes.SYSTEM_UPDATE) return 'system';
+  // System types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.SYSTEM_ANNOUNCEMENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.SYSTEM_MAINTENANCE) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.SYSTEM_UPDATE) return backendType as MobileNotificationType;
 
-  // General types
-  if (backendType === NotificationTypes.ANNOUNCEMENT) return 'announcement';
-  if (backendType === NotificationTypes.EVENT) return 'event';
-  if (backendType === NotificationTypes.REMINDER) return 'announcement';
+  // General types - pass through as-is for proper mobile handling
+  if (backendType === NotificationTypes.ANNOUNCEMENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.EVENT) return backendType as MobileNotificationType;
+  if (backendType === NotificationTypes.REMINDER) return backendType as MobileNotificationType;
 
   // Legacy types (already compatible)
   if (backendType === 'message') return 'message';

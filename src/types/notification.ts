@@ -56,6 +56,7 @@ export interface UpdateNotificationRequest {
 export interface NotificationQueryParams {
   read_status?: 'read' | 'unread' | '';
   notification_type?: NotificationType;
+  class_id?: string;  // ✅ Add class filtering support
   page?: number;
   limit?: number;
   sort_by?: 'created_at' | 'priority';

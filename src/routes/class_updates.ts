@@ -593,16 +593,16 @@ router.post('/:updateId/reactions', authenticate, async (req: Request, res: Resp
     if (userIndex > -1) {
       // User has already reacted, remove the reaction
       reactions[emoji].users.splice(userIndex, 1);
-      reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
+      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
       
       // Remove emoji entirely if no reactions left
-      if (reactions[emoji].count === 0) {
+      if (reactions[emoji].users.length === 0) {
         delete reactions[emoji];
       }
     } else {
       // User hasn't reacted, add the reaction
       reactions[emoji].users.push(authReq.user.id);
-      reactions[emoji].count += 1;
+      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
     }
 
     // Update the class update with new reactions
@@ -1210,7 +1210,7 @@ router.post('/:updateId/comments', authenticate, validate(commentSchema), async 
     try {
       await getNotificationService().notifyClassUpdateCommentCreated({
         commentId: commentId,
-        updateId: updateId,
+        updateId: updateId as string,
         classId: update.class_id,
         authorId: authReq.user.id,
         content: content,
@@ -1425,16 +1425,16 @@ router.post('/comments/:commentId/reactions', authenticate, async (req: Request,
     if (userIndex > -1) {
       // User has already reacted, remove the reaction
       reactions[emoji].users.splice(userIndex, 1);
-      reactions[emoji].count = Math.max(0, reactions[emoji].count - 1);
+      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
       
       // Remove emoji entirely if no reactions left
-      if (reactions[emoji].count === 0) {
+      if (reactions[emoji].users.length === 0) {
         delete reactions[emoji];
       }
     } else {
       // User hasn't reacted, add the reaction
       reactions[emoji].users.push(authReq.user.id);
-      reactions[emoji].count += 1;
+      reactions[emoji].count = reactions[emoji].users.length; // ✅ Fix: Sync count with users array
     }
 
     // Update the comment with new reactions

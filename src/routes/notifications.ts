@@ -42,6 +42,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const params: NotificationQueryParams = {
       read_status: req.query.read_status as 'read' | 'unread' | '' || '',
       notification_type: req.query.notification_type as any,
+      class_id: req.query.class_id as string, // ✅ Add class filtering support
       page: parseInt(req.query.page as string) || 1,
       limit: Math.min(parseInt(req.query.limit as string) || 20, 50),
       sort_by: req.query.sort_by as 'created_at' | 'priority' || 'created_at',

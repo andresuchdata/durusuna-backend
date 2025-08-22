@@ -301,20 +301,30 @@ export class ClassUpdateNotificationService {
   }): Promise<Notification> {
     const notificationId = uuidv4();
     
+    // Extract indexed fields from action_data for better query performance
+    const actionData = data.action_data || {};
+    const insertData = {
+      id: notificationId,
+      title: data.title,
+      content: data.content,
+      notification_type: data.type,
+      priority: data.priority || 'normal',
+      user_id: data.userId, // Required field!
+      sender_id: data.senderId,
+      action_url: data.action_url,
+      action_data: JSON.stringify(actionData),
+      created_at: new Date(),
+      updated_at: new Date(),
+      // ✅ Populate indexed columns for fast filtering
+      class_id: actionData.class_id || null,
+      update_id: actionData.update_id || null,
+      assignment_id: actionData.assignment_id || null,
+      conversation_id: actionData.conversation_id || null,
+      message_id: actionData.message_id || null,
+    };
+    
     const [notification] = await this.db('notifications')
-      .insert({
-        id: notificationId,
-        title: data.title,
-        content: data.content,
-        notification_type: data.type,
-        priority: data.priority || 'normal',
-        user_id: data.userId, // Required field!
-        sender_id: data.senderId,
-        action_url: data.action_url,
-        action_data: JSON.stringify(data.action_data || {}),
-        created_at: new Date(),
-        updated_at: new Date()
-      })
+      .insert(insertData)
       .returning('*');
 
     return notification;

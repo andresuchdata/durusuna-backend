@@ -51,8 +51,14 @@ export const migrateReactions = (reactions: any): Record<string, ReactionData> =
         users: [] // We can't recover the user data from old format
       };
     } else if (value && typeof value === 'object' && typeof (value as any).count === 'number') {
-      // Already new format
-      migratedReactions[emoji] = value as ReactionData;
+      // Already new format - but ensure count matches users array length
+      const reactionData = value as ReactionData;
+      const users = Array.isArray(reactionData.users) ? reactionData.users : [];
+      
+      migratedReactions[emoji] = {
+        count: users.length, // ✅ Fix: Always sync count with actual users array length
+        users: users
+      };
     }
   }
   

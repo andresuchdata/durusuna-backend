@@ -15,6 +15,9 @@ export class NotificationRepository {
    * Create a new notification
    */
   async create(data: CreateNotificationRequest): Promise<Notification> {
+    // Extract indexed fields from action_data for better query performance
+    const actionData = data.action_data || {};
+    
     const [notification] = await this.db('notifications')
       .insert({
         title: data.title,
@@ -27,7 +30,13 @@ export class NotificationRepository {
         action_data: data.action_data ? JSON.stringify(data.action_data) : '{}',
         image_url: data.image_url,
         is_read: false,
-        read_at: null
+        read_at: null,
+        // ✅ Populate indexed columns for fast filtering
+        class_id: actionData.class_id || null,
+        update_id: actionData.update_id || null,
+        assignment_id: actionData.assignment_id || null,
+        conversation_id: actionData.conversation_id || null,
+        message_id: actionData.message_id || null,
       })
       .returning('*');
 
@@ -77,6 +86,11 @@ export class NotificationRepository {
 
     if (notification_type) {
       query = query.where('notifications.notification_type', notification_type);
+    }
+
+    // ✅ Filter by class ID using indexed column (much faster than JSON extraction)
+    if (params.class_id) {
+      query = query.where('notifications.class_id', params.class_id);
     }
 
     // Get total count for pagination
