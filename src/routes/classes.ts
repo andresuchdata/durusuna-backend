@@ -1,31 +1,25 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
 import { ClassService } from '../services/classService';
+import { ClassUpdatesService } from '../services/classUpdatesService';
 import { ClassRepository } from '../repositories/classRepository';
+import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import { authenticate, authorize } from '../shared/middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
 import { validate, classUpdateSchema } from '../utils/validation';
-import { safeJsonParse, migrateReactions, safeJsonStringify } from '../utils/json';
 import { AuthenticatedRequest } from '../types/auth';
-import { NotificationRepository } from '../repositories/notificationRepository';
-import { NotificationService as AppNotificationService } from '../services/notificationService';
 import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from '../repositories/notificationDeliveryRepository';
 import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
 import { SocketChannelProvider } from '../services/notification/channels/SocketChannelProvider';
 import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
 import { FirebaseChannelProvider } from '../services/notification/channels/FirebaseChannelProvider';
-import { buildClassUpdateFCMContent } from '../services/notification/fcm/FCMContentUtils';
 import { ClassUpdateNotificationService } from '../services/classUpdateNotificationService';
 import { Class, ClassWithDetails } from '../types/class';
 import {
-  ClassUpdateWithAuthor,
-  CreateClassUpdateRequest,
-  ClassUpdatesResponse,
   ClassUpdateQueryParams,
 } from '../types/classUpdate';
 
@@ -33,9 +27,11 @@ const router = express.Router();
 
 // Initialize service layer with all dependencies
 const classRepository = new ClassRepository(db);
+const classUpdatesRepository = new ClassUpdatesRepository(db);
 const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
 const classService = new ClassService(classRepository, lessonRepository, userClassRepository);
+const classUpdatesService = new ClassUpdatesService(classUpdatesRepository);
 
 // Initialize notification system (lazy loaded to avoid circular dependencies)
 let classUpdateNotificationService: ClassUpdateNotificationService | null = null;
@@ -55,14 +51,7 @@ function getNotificationService() {
   return classUpdateNotificationService;
 }
 
-// JSON utilities now imported from utils/json.ts
-
-interface UserAccess {
-  user_type: 'student' | 'teacher' | 'parent' | 'admin';
-  role: 'user' | 'admin';
-  school_id: string;
-  role_in_class?: string;
-}
+// Clean architecture: Routes -> Services -> Repositories -> Database
 
 /**
  * @route GET /api/classes
@@ -183,146 +172,31 @@ router.get('/:id', authenticate, async (req: AuthenticatedRequest, res: Response
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:classId/updates', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:classId/updates', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
-    const { page = '1', limit = '20', type } = req.query as ClassUpdateQueryParams & { page?: string; limit?: string };
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
     
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Get current user details
-    const currentUser: UserAccess | undefined = await db('users')
-      .where('id', req.user.id)
-      .select('user_type', 'role', 'school_id')
-      .first();
-
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check if user is an admin teacher - they can view updates for any class in their school
-    if (currentUser.role === 'admin' && currentUser.user_type === 'teacher') {
-      // Verify the class exists and belongs to their school
-      const targetClass = await db('classes')
-        .where('id', classId)
-        .where('school_id', currentUser.school_id)
-        .first();
-
-      if (!targetClass) {
-        return res.status(404).json({ error: 'Class not found or access denied' });
-      }
-    } else {
-      // For non-admin users, check if they're enrolled in the specific class
-      const userClass = await db('user_classes')
-        .where({
-          user_id: req.user.id,
-          class_id: classId
-        })
-        .first();
-
-      if (!userClass) {
-        return res.status(403).json({ error: 'Access denied to this class' });
-      }
-    }
-
-    // Build query for class updates
-    let query = db('class_updates')
-      .join('users', 'class_updates.author_id', 'users.id')
-      .where('class_updates.class_id', classId)
-      .where('class_updates.is_deleted', false)
-      .select(
-        'class_updates.*',
-        'users.id as author_user_id',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.phone as author_phone',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type',
-        'users.role as author_role',
-        'users.school_id as author_school_id',
-        'users.is_active as author_is_active',
-        'users.last_login_at as author_last_active_at',
-        'users.created_at as author_created_at',
-        'users.updated_at as author_updated_at'
-      );
-
-    // Filter by type if specified
-    if (type) {
-      query = query.where('class_updates.update_type', type);
-    }
-
-    const updates = await query
-      .orderBy([
-        { column: 'class_updates.is_pinned', order: 'desc' },
-        { column: 'class_updates.updated_at', order: 'desc' },
-        { column: 'class_updates.created_at', order: 'desc' }
-      ])
-      .limit(parseInt(limit))
-      .offset(offset);
-
-    // Get comments count for each update
-    const updateIds = updates.map(update => update.id);
-    let commentCounts: Array<{ class_update_id: string; count: string }> = [];
-    
-    if (updateIds.length > 0) {
-      commentCounts = await db('class_update_comments')
-        .whereIn('class_update_id', updateIds)
-        .where('is_deleted', false)
-        .groupBy('class_update_id')
-        .select('class_update_id')
-        .count('* as count');
-    }
-
-    // Create a map for quick lookup of comment counts
-    const commentCountMap: Record<string, number> = {};
-    commentCounts.forEach(item => {
-      commentCountMap[item.class_update_id] = parseInt(item.count);
-    });
-
-    // Format response with comment counts
-    const formattedUpdates: ClassUpdateWithAuthor[] = updates.map(update => {
-      const attachments = safeJsonParse(update.attachments, []);
-      
-      return {
-        id: update.id,
-        class_id: update.class_id,
-        author_id: update.author_id,
-        title: update.title,
-        content: update.content,
-        update_type: update.update_type,
-        is_pinned: update.is_pinned,
-        is_deleted: update.is_deleted,
-        attachments: attachments,
-        reactions: migrateReactions(safeJsonParse(update.reactions, {})),
-        comment_count: commentCountMap[update.id] || 0,
-        created_at: update.created_at,
-        updated_at: update.updated_at,
-        author: {
-          id: update.author_user_id,
-          first_name: update.author_first_name,
-          last_name: update.author_last_name,
-          email: update.author_email,
-          avatar_url: update.author_avatar || "",
-          user_type: update.author_user_type,
-          role: update.author_role
-        }
-      };
-    });
-
-    const response: ClassUpdatesResponse = {
-      updates: formattedUpdates,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: formattedUpdates.length, // This should be the actual total from a count query
-        hasMore: updates.length === parseInt(limit)
-      }
-    };
-
+    const queryParams = req.query as ClassUpdateQueryParams & { page?: string; limit?: string };
+    const response = await classUpdatesService.getClassUpdates(classId, queryParams, authenticatedReq.user);
     res.json(response);
 
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'User not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Class not found or access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied to this class') {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+    
     logger.error('Error fetching class updates:', error);
     res.status(500).json({ error: 'Failed to fetch class updates' });
   }
@@ -406,138 +280,58 @@ router.get('/:classId/updates', authenticate, async (req: AuthenticatedRequest, 
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:classId/updates', authenticate, validate(classUpdateSchema), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:classId/updates', authenticate, validate(classUpdateSchema), async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
-    const {
-      title,
-      content,
-      update_type = 'announcement',
-      is_pinned = false,
-      attachments = []
-    } = req.body;
-
-    // Get current user details
-    const currentUser: UserAccess | undefined = await db('users')
-      .where('id', req.user.id)
-      .select('user_type', 'role', 'school_id')
-      .first();
-
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!classId) {
+      return res.status(400).json({ error: 'Class ID is required' });
     }
-
-    // Check if user is an admin teacher - they can create updates for any class in their school
-    if (currentUser.role === 'admin' && currentUser.user_type === 'teacher') {
-      // Verify the class exists and belongs to their school
-      const targetClass = await db('classes')
-        .where('id', classId)
-        .where('school_id', currentUser.school_id)
-        .first();
-
-      if (!targetClass) {
-        return res.status(404).json({ error: 'Class not found or access denied' });
-      }
-    } else {
-      // For non-admin users, check if they're enrolled in the specific class
-      const userClass = await db('user_classes')
-        .join('users', 'user_classes.user_id', 'users.id')
-        .where({
-          'user_classes.user_id': req.user.id,
-          'user_classes.class_id': classId
-        })
-        .select('users.user_type', 'user_classes.role_in_class')
-        .first();
-
-      if (!userClass) {
-        return res.status(403).json({ error: 'Access denied to this class' });
-      }
-
-      if (userClass.user_type !== 'teacher' && userClass.role_in_class !== 'teacher') {
-        return res.status(403).json({ error: 'Only teachers can create class updates' });
-      }
-    }
-
-    // Create the class update
-    const updateId = uuidv4();
-    const [newUpdate] = await db('class_updates')
-      .insert({
-        id: updateId,
-        class_id: classId,
-        author_id: req.user.id,
-        title,
-        content,
-        update_type,
-        attachments: safeJsonStringify(attachments),
-        reactions: safeJsonStringify({}),
-        is_pinned,
-        is_deleted: false,
-        created_at: new Date(),
-        updated_at: new Date()
-      })
-      .returning('*');
-
-    // Get the created update with author information
-    const createdUpdate = await db('class_updates')
-      .join('users', 'class_updates.author_id', 'users.id')
-      .where('class_updates.id', updateId)
-      .select(
-        'class_updates.*',
-        'users.id as author_user_id',
-        'users.first_name as author_first_name',
-        'users.last_name as author_last_name',
-        'users.email as author_email',
-        'users.avatar_url as author_avatar',
-        'users.user_type as author_user_type',
-        'users.role as author_role'
-      )
-      .first();
-
-    const formattedUpdate: ClassUpdateWithAuthor = {
-      id: createdUpdate.id,
-      class_id: createdUpdate.class_id,
-      author_id: createdUpdate.author_id,
-      title: createdUpdate.title,
-      content: createdUpdate.content,
-      update_type: createdUpdate.update_type,
-      is_pinned: createdUpdate.is_pinned,
-      is_deleted: createdUpdate.is_deleted,
-      attachments: safeJsonParse(createdUpdate.attachments, []),
-      reactions: migrateReactions(safeJsonParse(createdUpdate.reactions, {})),
-      comment_count: 0,
-      created_at: createdUpdate.created_at,
-      updated_at: createdUpdate.updated_at,
-      author: {
-        id: createdUpdate.author_user_id,
-        first_name: createdUpdate.author_first_name,
-        last_name: createdUpdate.author_last_name,
-        email: createdUpdate.author_email,
-        avatar_url: createdUpdate.author_avatar || "",
-        user_type: createdUpdate.author_user_type,
-        role: createdUpdate.author_role
-      }
+    
+    const createData = {
+      title: req.body.title,
+      content: req.body.content,
+      update_type: req.body.update_type || 'announcement',
+      is_pinned: req.body.is_pinned || false,
+      attachments: req.body.attachments || []
     };
 
-    res.status(201).json({ update: formattedUpdate });
+    const createdUpdate = await classUpdatesService.createClassUpdate(classId, createData, authenticatedReq.user);
+    res.status(201).json({ update: createdUpdate });
 
     // Send notifications to class subscribers (students, teachers, and parents)
     try {
       await getNotificationService().notifyClassUpdateCreated({
-        updateId: newUpdate.id,
+        updateId: createdUpdate.id,
         classId: classId,
-        authorId: req.user.id,
-        title: newUpdate.title,
-        content: newUpdate.content,
-        updateType: newUpdate.update_type
+        authorId: authenticatedReq.user.id,
+        title: createdUpdate.title,
+        content: createdUpdate.content,
+        updateType: createdUpdate.update_type
       });
 
-      logger.info(`🔔 Successfully sent class update notifications for update ${newUpdate.id}`);
+      logger.info(`🔔 Successfully sent class update notifications for update ${createdUpdate.id}`);
     } catch (notificationError) {
       logger.error('🔔 Failed to send class update notifications:', notificationError);
       // Don't fail the request if notification fails
     }
 
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'User not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Class not found or access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied to this class') {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.message === 'Only teachers can create class updates') {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+    
     logger.error('Error creating class update:', error);
     res.status(500).json({ error: 'Failed to create class update' });
   }

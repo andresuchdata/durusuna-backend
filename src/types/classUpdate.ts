@@ -103,6 +103,8 @@ export interface ClassUpdateQueryParams {
   from_date?: string;
   to_date?: string;
   is_pinned?: boolean;
+  exclude_pinned?: string;
+  subject_offering_id?: string;
 }
 
 export interface ClassUpdatesResponse {
