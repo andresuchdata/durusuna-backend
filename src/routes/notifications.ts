@@ -6,6 +6,7 @@ import { NotificationDeliveryRepository } from '../repositories/notificationDeli
 import { NotificationDispatcher } from '../services/notification/NotificationDispatcher';
 import { SocketChannelProvider } from '../services/notification/channels/SocketChannelProvider';
 import { EmailChannelProvider } from '../services/notification/channels/EmailChannelProvider';
+import { NotificationPresenter } from '../presenters/notificationPresenter';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import logger from '../shared/utils/logger';
@@ -49,7 +50,13 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 
     const response = await notificationService.getNotifications(authenticatedReq.user.id, params);
 
-    res.json(response);
+    // Convert notifications to mobile-compatible format
+    const mobileResponse = {
+      ...response,
+      notifications: NotificationPresenter.toMobileList(response.notifications)
+    };
+
+    res.json(mobileResponse);
 
   } catch (error) {
     logger.error('Error fetching notifications:', error);
@@ -91,7 +98,10 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
 
     const notification = await notificationService.getNotificationById(id, authenticatedReq.user);
 
-    res.json(notification);
+    // Convert notification to mobile-compatible format
+    const mobileNotification = NotificationPresenter.toMobile(notification);
+
+    res.json(mobileNotification);
 
   } catch (error) {
     if (error instanceof Error && error.message === 'Notification not found') {
