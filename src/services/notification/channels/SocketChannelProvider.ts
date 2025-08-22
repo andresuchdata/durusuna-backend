@@ -1,5 +1,6 @@
 import { ChannelProvider, NotificationChannel } from '../NotificationDispatcher';
 import { Notification } from '../../../types/notification';
+import { NotificationPresenter } from '../../../presenters/notificationPresenter';
 import logger from '../../../shared/utils/logger';
 
 export class SocketChannelProvider implements ChannelProvider {
@@ -28,18 +29,11 @@ export class SocketChannelProvider implements ChannelProvider {
         // ignore
       }
 
+      // Convert notification to mobile-compatible format using presenter
+      const mobileNotification = NotificationPresenter.toMobile(input.notification as any);
+      
       const payload = {
-        notification: {
-          id: input.notification.id,
-          title: input.notification.title,
-          content: input.notification.content,
-          notification_type: input.notification.notification_type,
-          priority: input.notification.priority,
-          action_url: input.notification.action_url,
-          action_data: input.notification.action_data,
-          image_url: input.notification.image_url,
-          created_at: input.notification.created_at,
-        },
+        notification: mobileNotification,
         action: 'created',
         timestamp: new Date().toISOString(),
       };
