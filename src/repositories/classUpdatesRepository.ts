@@ -201,12 +201,30 @@ export class ClassUpdatesRepository {
   }
 
   async getSubjectTeachers(subjectOfferingId: string, classId: string): Promise<string[]> {
-    const subjectTeachers = await this.db('class_offerings')
+    // Get all teachers for this class offering
+    const teachers = await this.db('class_offering_teachers')
+      .join('class_offerings', 'class_offering_teachers.class_offering_id', 'class_offerings.id')
+      .where('class_offerings.id', subjectOfferingId)
+      .where('class_offerings.class_id', classId)
+      .where('class_offering_teachers.is_active', true)
+      .select('class_offering_teachers.teacher_id');
+    
+    // Also get the primary teacher from class_offerings table
+    const primaryTeacher = await this.db('class_offerings')
       .where('id', subjectOfferingId)
       .where('class_id', classId)
-      .select('teacher_id');
+      .whereNotNull('primary_teacher_id')
+      .select('primary_teacher_id as teacher_id')
+      .first();
     
-    return subjectTeachers.map(t => t.teacher_id);
+    // Combine both lists and remove duplicates
+    const allTeachers = teachers.map(t => t.teacher_id);
+    if (primaryTeacher && primaryTeacher.teacher_id) {
+      allTeachers.push(primaryTeacher.teacher_id);
+    }
+    
+    // Return unique teacher IDs
+    return [...new Set(allTeachers)];
   }
 
   async getUserById(userId: string): Promise<any> {
