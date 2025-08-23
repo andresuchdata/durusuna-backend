@@ -2,11 +2,12 @@ import express, { Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
 import { UserService } from '../services/userService';
 import { validateRequest } from '../middleware/validateRequest';
-import { body } from 'express-validator';
+import { body, query } from 'express-validator';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
 import { UserRepository } from '../repositories/userRepository';
 import { AuthenticatedRequest } from '../types/auth';
+import { getContactsSchema, type GetContactsInput } from '../schemas/userSchemas';
 
 const router = express.Router();
 const userService = new UserService(new UserRepository(db));
@@ -84,6 +85,70 @@ router.delete(
       res.status(500).json({ 
         success: false, 
         message: 'Failed to clear FCM token',
+        error: error.message 
+      });
+    }
+  }
+);
+
+// Get contacts for chat/messaging
+router.get(
+  '/contacts',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  [
+    query('page')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Page must be a positive integer'),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage('Limit must be between 1 and 100'),
+    query('search')
+      .optional()
+      .isString()
+      .withMessage('Search must be a string'),
+    query('userType')
+      .optional()
+      .isIn(['all', 'teacher', 'student', 'parent'])
+      .withMessage('User type must be one of: all, teacher, student, parent'),
+  ],
+  validateRequest,
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      
+      if (!currentUser) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'User not authenticated' 
+        });
+      }
+
+      // Parse and validate query parameters
+      const contactsParams: GetContactsInput = {
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+        search: req.query.search as string | undefined,
+        userType: req.query.userType as 'all' | 'teacher' | 'student' | 'parent' | undefined,
+      };
+
+      const result = await userService.getContacts(
+        currentUser,
+        contactsParams.page,
+        contactsParams.limit,
+        contactsParams.search,
+        contactsParams.userType
+      );
+
+      logger.info(`📞 Retrieved ${result.contacts.length} contacts for user ${currentUser.id}`);
+      
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Failed to get contacts:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to get contacts',
         error: error.message 
       });
     }

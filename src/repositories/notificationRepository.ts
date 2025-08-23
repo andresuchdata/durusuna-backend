@@ -45,6 +45,7 @@ export class NotificationRepository {
 
   /**
    * Find notifications for a user with pagination and filtering
+   * Automatically filters notifications to only include those from classes the user is associated with
    */
   async findByUserId(
     userId: string,
@@ -62,7 +63,8 @@ export class NotificationRepository {
     const pageLimit = Math.min(Math.max(limit, 1), 50); // Limit between 1-50
     const offset = (Math.max(page, 1) - 1) * pageLimit;
 
-    // Build the base query
+    // Build the base query with class association filtering
+    const db = this.db; // Capture for use in callback
     let query = this.db('notifications')
       .select(
         'notifications.*',
@@ -75,7 +77,18 @@ export class NotificationRepository {
         'sender.role as sender_role'
       )
       .leftJoin('users as sender', 'notifications.sender_id', 'sender.id')
-      .where('notifications.user_id', userId);
+      .where('notifications.user_id', userId)
+      .where(function() {
+        // Allow notifications without class_id (system/general notifications)
+        this.whereNull('notifications.class_id')
+        // OR notifications from classes the user is associated with
+        .orWhereIn('notifications.class_id', 
+          db('user_classes')
+            .select('class_id')
+            .where('user_id', userId)
+            .where('is_active', true)
+        );
+      });
 
     // Apply filters
     if (read_status === 'read') {
@@ -88,7 +101,7 @@ export class NotificationRepository {
       query = query.where('notifications.notification_type', notification_type);
     }
 
-    // ✅ Filter by class ID using indexed column (much faster than JSON extraction)
+    // Filter by specific class ID if provided (overrides automatic filtering)
     if (params.class_id) {
       query = query.where('notifications.class_id', params.class_id);
     }
@@ -123,12 +136,24 @@ export class NotificationRepository {
   }
 
   /**
-   * Get unread count for a user - highly optimized query
+   * Get unread count for a user - highly optimized query with class association filtering
    */
   async getUnreadCount(userId: string): Promise<number> {
+    const db = this.db; // Capture for use in callback
     const result = await this.db('notifications')
       .where('user_id', userId)
       .where('is_read', false)
+      .where(function() {
+        // Allow notifications without class_id (system/general notifications)
+        this.whereNull('class_id')
+        // OR notifications from classes the user is associated with
+        .orWhereIn('class_id', 
+          db('user_classes')
+            .select('class_id')
+            .where('user_id', userId)
+            .where('is_active', true)
+        );
+      })
       .count('* as count');
 
     return parseInt((result[0]?.count as string) || '0');
@@ -209,12 +234,24 @@ export class NotificationRepository {
   }
 
   /**
-   * Mark all notifications as read for a user
+   * Mark all notifications as read for a user (only for associated classes)
    */
   async markAllAsRead(userId: string): Promise<number> {
+    const db = this.db; // Capture for use in callback
     const updated = await this.db('notifications')
       .where('user_id', userId)
       .where('is_read', false)
+      .where(function() {
+        // Allow notifications without class_id (system/general notifications)
+        this.whereNull('class_id')
+        // OR notifications from classes the user is associated with
+        .orWhereIn('class_id', 
+          db('user_classes')
+            .select('class_id')
+            .where('user_id', userId)
+            .where('is_active', true)
+        );
+      })
       .update({
         is_read: true,
         read_at: this.db.fn.now(),

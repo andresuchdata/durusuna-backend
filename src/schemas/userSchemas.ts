@@ -23,7 +23,15 @@ export const searchUsersSchema = z.object({
   userType: z.enum(['all', 'teacher', 'student', 'parent']).optional()
 });
 
+export const getContactsSchema = z.object({
+  page: z.string().transform(val => parseInt(val)).pipe(z.number().min(1)).optional(),
+  limit: z.string().transform(val => parseInt(val)).pipe(z.number().min(1).max(100)).optional(),
+  search: z.string().optional(),
+  userType: z.enum(['all', 'teacher', 'student', 'parent']).optional()
+});
+
 // Export types from schemas
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
-export type SearchUsersInput = z.infer<typeof searchUsersSchema>; 
+export type SearchUsersInput = z.infer<typeof searchUsersSchema>;
+export type GetContactsInput = z.infer<typeof getContactsSchema>;

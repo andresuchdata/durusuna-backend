@@ -1,6 +1,7 @@
 import { NotificationRepository } from '../repositories/notificationRepository';
 import { AuthenticatedUser } from '../types/user';
 import logger from '../shared/utils/logger';
+import { NotificationTypes } from '../types/notificationTypes';
 import {
   Notification,
   NotificationWithSender,
@@ -28,10 +29,10 @@ export class NotificationService {
         throw new Error('Missing required fields: title, content, notification_type, and user_id are required');
       }
 
-      // Validate notification type
-      const validTypes = ['message', 'assignment', 'announcement', 'event', 'system'];
-      if (!validTypes.includes(data.notification_type)) {
-        throw new Error('Invalid notification type');
+      // Validate notification type using centralized types
+      const validTypes = Object.values(NotificationTypes);
+      if (!validTypes.includes(data.notification_type as any)) {
+        throw new Error(`Invalid notification type: ${data.notification_type}. Supported types: ${validTypes.join(', ')}`);
       }
 
       // Validate priority if provided
@@ -143,9 +144,9 @@ export class NotificationService {
     try {
       // Validate notification type if provided
       if (data.notification_type) {
-        const validTypes = ['message', 'class_update', 'assignment', 'announcement', 'event', 'system'];
-        if (!validTypes.includes(data.notification_type)) {
-          throw new Error('Invalid notification type');
+        const validTypes = Object.values(NotificationTypes);
+        if (!validTypes.includes(data.notification_type as any)) {
+          throw new Error(`Invalid notification type: ${data.notification_type}. Supported types: ${validTypes.join(', ')}`);
         }
       }
 
@@ -258,10 +259,10 @@ export class NotificationService {
         throw new Error('At least one user ID is required');
       }
 
-      // Validate notification type
-      const validTypes = ['message', 'class_update', 'assignment', 'announcement', 'event', 'system'];
-      if (!validTypes.includes(notificationData.notification_type)) {
-        throw new Error('Invalid notification type');
+      // Validate notification type using centralized types
+      const validTypes = Object.values(NotificationTypes);
+      if (!validTypes.includes(notificationData.notification_type as any)) {
+        throw new Error(`Invalid notification type: ${notificationData.notification_type}. Supported types: ${validTypes.join(', ')}`);
       }
 
       const notifications = userIds.map(userId => ({
