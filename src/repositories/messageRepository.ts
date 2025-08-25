@@ -55,8 +55,8 @@ export class MessageRepository {
       .andWhere('is_deleted', false)
       .update({
         is_deleted: true,
-        deleted_at: new Date(),
-        updated_at: new Date()
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       });
 
     return result > 0;
@@ -81,8 +81,8 @@ export class MessageRepository {
       .whereIn('id', validMessageIds)
       .update({
         is_deleted: true,
-        deleted_at: new Date(),
-        updated_at: new Date()
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       });
 
     return { deletedCount, failedIds };
@@ -203,8 +203,8 @@ export class MessageRepository {
       .insert({
         ...data,
         is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .returning('id');
 
@@ -215,7 +215,7 @@ export class MessageRepository {
     const participants = userIds.map(userId => ({
       conversation_id: conversationId,
       user_id: userId,
-      joined_at: new Date(),
+      joined_at: new Date().toISOString(),
       is_active: true,
       role: 'member'
     }));
@@ -228,7 +228,7 @@ export class MessageRepository {
       .where('id', conversationId)
       .update({
         ...data,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       });
   }
 
@@ -355,8 +355,8 @@ export class MessageRepository {
         is_read: false,
         is_edited: false,
         is_deleted: false,
-        created_at: new Date(),
-        updated_at: new Date()
+        created_at: new Date().toISOString(), // ✅ Use UTC ISO string
+        updated_at: new Date().toISOString()  // ✅ Use UTC ISO string
       })
       .returning('*');
 
@@ -405,7 +405,7 @@ export class MessageRepository {
   async updateMessageReactions(messageId: string, reactionsJson: string): Promise<void> {
     await this.db('messages')
       .where('id', messageId)
-      .update({ reactions: reactionsJson, updated_at: new Date() });
+      .update({ reactions: reactionsJson, updated_at: new Date().toISOString() });
   }
 
   async getMessagesWithReactions(conversationId: string, messageIds: string[]): Promise<any[]> {
@@ -477,7 +477,7 @@ export class MessageRepository {
       .where('user_id', userId)
       .update({
         unread_count: 0,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       });
   }
 
@@ -489,9 +489,9 @@ export class MessageRepository {
       .where('is_deleted', false)
       .update({
         is_read: true,
-        read_at: new Date(),
+        read_at: new Date().toISOString(),
         read_status: 'read',
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       });
   }
 

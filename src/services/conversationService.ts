@@ -110,8 +110,8 @@ export class ConversationService {
           user_type: otherUser.user_type,
           role: 'user' as const,
           is_active: true,
-          created_at: new Date(),
-          updated_at: new Date()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         } : undefined,
         last_message: conv.last_message_content ? {
           content: conv.last_message_content,
