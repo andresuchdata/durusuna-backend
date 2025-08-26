@@ -116,11 +116,11 @@ export class ConversationService {
         last_message: conv.last_message_content ? {
           content: conv.last_message_content,
           message_type: conv.last_message_type,
-          created_at: conv.last_message_created_at,
+          created_at: conv.last_message_created_at.toISOString(),
           is_from_me: conv.last_message_sender_id === currentUser.id
         } : undefined,
         unread_count: parseInt(conv.unread_count) || 0,
-        last_activity: conv.last_message_at
+        last_activity: conv.last_message_at ? conv.last_message_at.toISOString() : undefined
       };
     });
 
@@ -269,8 +269,8 @@ export class ConversationService {
         user_type: p.user_type,
         role: p.role,
         is_active: Boolean(p.is_active),
-        created_at: p.created_at,
-        updated_at: p.updated_at
+        created_at: p.created_at.toISOString(),
+        updated_at: p.updated_at?.toISOString()
       })),
       other_user: otherUser ? {
         id: otherUser.id,
@@ -281,8 +281,8 @@ export class ConversationService {
         user_type: otherUser.user_type,
         role: otherUser.role,
         is_active: Boolean(otherUser.is_active),
-        created_at: otherUser.created_at,
-        updated_at: otherUser.updated_at
+        created_at: otherUser.created_at.toISOString(),
+        updated_at: otherUser.updated_at?.toISOString()
       } : undefined,
       pagination,
       meta: {
@@ -465,7 +465,7 @@ export class ConversationService {
       reactions: safeJsonParse(completeMessage.reactions, {}),
       created_at: completeMessage.created_at,
       updated_at: completeMessage.updated_at,
-      sent_at: completeMessage.sent_at,
+      sent_at: completeMessage.sent_at || new Date().toISOString(),
       sender: {
         id: completeMessage.sender_id,
         first_name: completeMessage.sender_first_name,
@@ -481,7 +481,26 @@ export class ConversationService {
 
     // Update cache with new message
     try {
-      messageCache.addMessage(conversationId, formattedMessage);
+      // Create cache message object that matches MessageData interface
+      const cacheMessage = {
+        id: formattedMessage.id,
+        conversation_id: formattedMessage.conversation_id,
+        sender_id: formattedMessage.sender_id,
+        content: formattedMessage.content,
+        message_type: formattedMessage.message_type,
+        reply_to_id: formattedMessage.reply_to_id,
+        sent_at: formattedMessage.sent_at || new Date().toISOString(),
+        edited_at: formattedMessage.edited_at,
+        deleted_at: formattedMessage.deleted_at,
+        sender: {
+          id: formattedMessage.sender.id,
+          first_name: formattedMessage.sender.first_name,
+          last_name: formattedMessage.sender.last_name,
+          avatar_url: formattedMessage.sender.avatar_url
+        }
+      };
+      
+      messageCache.addMessage(conversationId, cacheMessage);
       // Invalidate conversation lists for participants since last message changed
       const participantUserIds = await this.messageRepository.findParticipantUserIds(conversationId);
       

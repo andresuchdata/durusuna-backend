@@ -39,9 +39,9 @@ interface MessageData {
   reply_to_id?: string;
   attachments?: AttachmentData[];
   metadata?: Record<string, any>;
-  sent_at: Date;
-  edited_at?: Date;
-  deleted_at?: Date;
+  sent_at: string;
+  edited_at?: string;
+  deleted_at?: string;
   sender?: {
     id: string;
     first_name: string;

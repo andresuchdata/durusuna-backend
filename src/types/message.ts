@@ -12,14 +12,14 @@ export interface Message {
   is_read: boolean;
   is_edited: boolean;
   is_deleted: boolean;
-  edited_at?: Date;
-  deleted_at?: Date;
-  delivered_at?: Date;
-  read_at?: Date;
+  edited_at?: string;
+  deleted_at?: string;
+  delivered_at?: string;
+  read_at?: string;
   read_status: 'sent' | 'delivered' | 'read';
   reactions?: Record<string, ReactionData>;
-  created_at: Date;
-  updated_at?: Date;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface MessageAttachment {
@@ -69,10 +69,10 @@ export interface Conversation {
   avatar_url?: string;
   created_by: string;
   last_message_id?: string;
-  last_message_at?: Date;
+  last_message_at?: string;
   is_active: boolean;
-  created_at: Date;
-  updated_at?: Date;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface ConversationParticipant {
@@ -80,13 +80,13 @@ export interface ConversationParticipant {
   conversation_id: string;
   user_id: string;
   role: 'member' | 'admin';
-  joined_at: Date;
-  left_at?: Date;
-  last_read_at?: Date;
+  joined_at: string;
+  left_at?: string;
+  last_read_at?: string;
   unread_count: number;
   is_active: boolean;
-  created_at: Date;
-  updated_at?: Date;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface ConversationWithDetails extends Conversation {
@@ -109,17 +109,17 @@ export interface ConversationWithDetails extends Conversation {
     user_type: 'student' | 'teacher' | 'parent' | 'admin';
     role: 'user' | 'admin';
     is_active: boolean;
-    created_at: Date;
-    updated_at?: Date;
+    created_at: string;
+    updated_at?: string;
   };
   last_message?: {
     content?: string;
     message_type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
-    created_at: Date;
+    created_at: string;
     is_from_me: boolean;
   };
   unread_count: number;
-  last_activity?: Date;
+  last_activity?: string;
   user_role?: 'member' | 'admin';
 }
 
@@ -160,8 +160,8 @@ export interface TypingIndicator {
   conversation_id: string;
   user_id: string;
   is_typing: boolean;
-  created_at: Date;
-  updated_at: Date;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TypingUser {
@@ -169,7 +169,7 @@ export interface TypingUser {
   first_name: string;
   last_name: string;
   avatar_url?: string;
-  lastTyping: Date;
+  lastTyping: string;
 }
 
 export interface ConversationResponse {
@@ -194,8 +194,8 @@ export interface ConversationMessagesResponse {
     user_type: 'student' | 'teacher' | 'parent' | 'admin';
     role: 'user' | 'admin';
     is_active: boolean;
-    created_at: Date;
-    updated_at?: Date;
+    created_at: string;
+    updated_at?: string;
   }>;
   other_user?: {
     id: string;
@@ -206,8 +206,8 @@ export interface ConversationMessagesResponse {
     user_type: 'student' | 'teacher' | 'parent' | 'admin';
     role: 'user' | 'admin';
     is_active: boolean;
-    created_at: Date;
-    updated_at?: Date;
+    created_at: string;
+    updated_at?: string;
   };
   pagination: MessagePaginationResponse;
   meta: {
