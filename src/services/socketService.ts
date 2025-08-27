@@ -198,16 +198,48 @@ const handleConnection = (socket: Socket) => {
   // === MESSAGE STATUS ===
   
   socket.on('message:delivered', (data: MessageStatusData) => {
-    const { messageIds, deliveredAt } = data;
-    // Broadcast to conversation participants
-    messageIds.forEach((messageId: string) => {
-      socket.broadcast.emit('message:delivered', {
-        messageIds: [messageId],
-        status: 'delivered',
-        userId: userId,
-        timestamp: deliveredAt || new Date().toISOString(),
+    const { messageIds, deliveredAt, conversationId } = data;
+    
+    if (!messageIds || messageIds.length === 0) {
+      logger.error('❌ Missing messageIds in message:delivered event');
+      return;
+    }
+    
+    if (!conversationId) {
+      logger.error('❌ Missing conversationId in message:delivered event');
+      return;
+    }
+    
+    // Create message repository instance
+    const messageRepository = new MessageRepository(db);
+    
+    // Update database first (mark messages as delivered)
+    messageRepository.markMessagesAsDelivered(messageIds, userId)
+      .then((updatedCount) => {
+        logger.info(`✅ Database updated for delivered status: ${updatedCount} messages out of ${messageIds.length} requested`);
+        
+        // Only broadcast if messages were actually updated
+        if (updatedCount > 0) {
+          if (globalIo) {
+            const roomName = `conversation_${conversationId}`;
+            globalIo.to(roomName).emit('message:delivered', {
+              messageIds: messageIds,
+              status: 'delivered',
+              userId: userId,
+              conversationId: conversationId,
+              timestamp: deliveredAt || new Date().toISOString(),
+            });
+            logger.info(`📦 Delivered status broadcasted for ${updatedCount} messages in conversation ${conversationId}`);
+          } else {
+            logger.error('❌ globalIo is null, cannot broadcast message:delivered');
+          }
+        } else {
+          logger.info(`📦 No messages updated to delivered status (likely already read), skipping broadcast`);
+        }
+      })
+      .catch((error) => {
+        logger.error(`❌ Failed to update database for delivered status: ${error}`);
       });
-    });
   });
 
   socket.on('message:read', (data: MessageStatusData) => {
