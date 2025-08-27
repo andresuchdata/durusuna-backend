@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import logger from '../shared/utils/logger';
+import { MessageRepository } from '../repositories/messageRepository';
+import db from '../shared/database/connection';
+
 
 // Types for socket events
 interface SocketUser extends Socket {
@@ -132,7 +135,8 @@ const handleConnection = (socket: Socket) => {
   // Join conversation room
   socket.on('conversation:join', (data: ConversationJoinData) => {
     const { conversationId } = data;
-    socket.join(`conversation_${conversationId}`);
+    const roomName = `conversation_${conversationId}`;
+    socket.join(roomName);
     
     // Track conversation membership
     if (!conversationRooms.has(conversationId)) {
@@ -140,7 +144,17 @@ const handleConnection = (socket: Socket) => {
     }
     conversationRooms.get(conversationId)!.add(userId);
     
-    logger.info(`User ${userId} joined conversation ${conversationId}`);
+    logger.info(`User ${userId} joined conversation ${conversationId} (room: ${roomName})`);
+    
+    // DEBUG: Log room information
+    if (globalIo) {
+      const room = globalIo.sockets.adapter.rooms.get(roomName);
+      if (room) {
+        logger.info(`🔍 [DEBUG] Room ${roomName} has ${room.size} clients: ${Array.from(room).join(', ')}`);
+      } else {
+        logger.info(`🔍 [DEBUG] Room ${roomName} not found in adapter`);
+      }
+    }
   });
 
   // Leave conversation room
@@ -198,13 +212,51 @@ const handleConnection = (socket: Socket) => {
 
   socket.on('message:read', (data: MessageStatusData) => {
     const { messageIds, conversationId, readAt } = data;
-    // Broadcast to conversation participants
-    socket.to(`conversation_${conversationId}`).emit('message:read', {
-      messageIds: messageIds,
-      status: 'read',
-      userId: userId,
-      conversationId: conversationId,
-      timestamp: readAt || new Date().toISOString(),
+    
+    if (!conversationId) {
+      logger.error('❌ Missing conversationId in message:read event');
+      return;
+    }
+    
+    // Create message repository instance
+    const messageRepository = new MessageRepository(db);
+    
+    // Update database first (mark messages as read)
+    Promise.all([
+      // Update conversation participant unread count
+      messageRepository.markConversationAsRead(conversationId, userId),
+      // Update individual message read status
+      messageRepository.markMessagesAsRead(conversationId, userId)
+    ]).then(() => {
+      logger.info(`✅ Database updated for read receipts: ${messageIds.length} messages in conversation ${conversationId}`);
+      
+      // Then broadcast to conversation participants
+      // TEMPORARY: Using io.to() instead of socket.to() for debugging
+      if (globalIo) {
+        const roomName = `conversation_${conversationId}`;
+        const room = globalIo.sockets.adapter.rooms.get(roomName);
+        logger.info(`🔍 [DEBUG] Broadcasting to room: ${roomName}`);
+        if (room) {
+          logger.info(`🔍 [DEBUG] Room ${roomName} has ${room.size} clients: ${Array.from(room).join(', ')}`);
+        } else {
+          logger.info(`🔍 [DEBUG] Room ${roomName} not found in adapter`);
+        }
+        
+        globalIo.to(roomName).emit('message:read', {
+          messageIds: messageIds,
+          status: 'read',
+          userId: userId,
+          conversationId: conversationId,
+          timestamp: readAt || new Date().toISOString(),
+        });
+        logger.info(`🔍 [DEBUG] Using io.to() to broadcast to room: conversation_${conversationId}`);
+      } else {
+        logger.error('❌ globalIo is null, cannot broadcast message:read');
+      }
+      
+      logger.info(`📖 Read receipts broadcasted for ${messageIds.length} messages in conversation ${conversationId}`);
+    }).catch((error) => {
+      logger.error(`❌ Failed to update database for read receipts: ${error}`);
     });
   });
 

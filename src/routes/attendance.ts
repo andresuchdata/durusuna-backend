@@ -543,4 +543,190 @@ router.get('/student/:studentId/history', authenticate, async (req: Request, res
   }
 });
 
+/**
+ * @route GET /api/attendance/teacher/classes
+ * @desc Get all classes where the teacher can manage attendance
+ * @access Private (Teachers only)
+ */
+router.get('/teacher/classes', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is a teacher
+    if (authenticatedReq.user.user_type !== 'teacher') {
+      return res.status(403).json({ error: 'Access denied - teacher access required' });
+    }
+
+    const classes = await attendanceService.getTeacherClasses(authenticatedReq.user.id);
+    res.json({ classes });
+  } catch (error) {
+    logger.error('Error fetching teacher classes:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher classes' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/teacher/overview
+ * @desc Get attendance overview for all classes taught by the teacher
+ * @access Private (Teachers only)
+ */
+router.get('/teacher/overview', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is a teacher
+    if (authenticatedReq.user.user_type !== 'teacher') {
+      return res.status(403).json({ error: 'Access denied - teacher access required' });
+    }
+
+    const { date } = req.query;
+    const overviewDate = date ? new Date(date as string) : new Date();
+    overviewDate.setHours(0, 0, 0, 0);
+
+    const overview = await attendanceService.getTeacherAttendanceOverview(
+      authenticatedReq.user.id,
+      overviewDate
+    );
+    res.json({ overview });
+  } catch (error) {
+    logger.error('Error fetching teacher attendance overview:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance overview' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/teacher/status
+ * @desc Get teacher's own attendance status for a specific date
+ * @access Private (Teachers only)
+ */
+router.get('/teacher/status', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is a teacher
+    if (authenticatedReq.user.user_type !== 'teacher') {
+      return res.status(403).json({ error: 'Access denied - teacher access required' });
+    }
+
+    const { date } = req.query;
+    const attendanceDate = date ? new Date(date as string) : new Date();
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const attendance = await attendanceService.getTeacherAttendanceForDate(
+      authenticatedReq.user.id,
+      attendanceDate
+    );
+    
+    res.json({ 
+      attendance: attendance ? presentAttendanceRecord(attendance) : null,
+      date: attendanceDate.toISOString().split('T')[0]
+    });
+  } catch (error) {
+    logger.error('Error fetching teacher attendance status:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher attendance status' });
+  }
+});
+
+/**
+ * @route POST /api/attendance/teacher/submit
+ * @desc Teacher submits their own attendance for the day
+ * @access Private (Teachers only)
+ */
+router.post('/teacher/submit', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is a teacher
+    if (authenticatedReq.user.user_type !== 'teacher') {
+      return res.status(403).json({ error: 'Access denied - teacher access required' });
+    }
+
+    const { date, status, notes } = req.body;
+    const attendanceDate = date ? new Date(date) : new Date();
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const record = await attendanceService.submitTeacherAttendance(
+      authenticatedReq.user.id,
+      attendanceDate,
+      { status, notes }
+    );
+
+    res.json({
+      message: 'Teacher attendance submitted successfully',
+      record: presentAttendanceRecord(record)
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('already submitted')) {
+        return res.status(409).json({ error: error.message });
+      }
+    }
+    logger.error('Error submitting teacher attendance:', error);
+    res.status(500).json({ error: 'Failed to submit teacher attendance' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/admin/teachers
+ * @desc Get attendance status of all teachers in the school (Admin only)
+ * @access Private (Admin only)
+ */
+router.get('/admin/teachers', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is an admin
+    if (authenticatedReq.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied - admin access required' });
+    }
+
+    const { date } = req.query;
+    const attendanceDate = date ? new Date(date as string) : new Date();
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const teachersAttendance = await attendanceService.getSchoolTeachersAttendance(
+      authenticatedReq.user.school_id,
+      attendanceDate
+    );
+
+    res.json({ teachers: teachersAttendance });
+  } catch (error) {
+    logger.error('Error fetching teachers attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch teachers attendance' });
+  }
+});
+
+/**
+ * @route GET /api/attendance/admin/teachers/report
+ * @desc Get attendance report for all teachers in date range (Admin only)
+ * @access Private (Admin only)
+ */
+router.get('/admin/teachers/report', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    // Verify user is an admin
+    if (authenticatedReq.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied - admin access required' });
+    }
+
+    const { start_date, end_date } = req.query;
+
+    if (!start_date || !end_date || typeof start_date !== 'string' || typeof end_date !== 'string') {
+      return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
+    }
+
+    const startDate = new Date(start_date);
+    const endDate = new Date(end_date);
+    
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    const report = await attendanceService.getSchoolTeachersAttendanceReport(
+      authenticatedReq.user.school_id,
+      startDate,
+      endDate
+    );
+
+    res.json({ report });
+  } catch (error) {
+    logger.error('Error generating teachers attendance report:', error);
+    res.status(500).json({ error: 'Failed to generate teachers attendance report' });
+  }
+});
+
 export default router;

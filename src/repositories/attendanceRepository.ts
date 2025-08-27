@@ -511,6 +511,74 @@ export class AttendanceRepository {
       });
   }
 
+  // Teacher attendance methods
+  async getTeacherAttendanceForDate(
+    teacherId: string,
+    date: Date
+  ): Promise<AttendanceRecord | null> {
+    const record = await this.db('teacher_attendance_records')
+      .where({
+        teacher_id: teacherId,
+        attendance_date: date
+      })
+      .first();
+    
+    return record || null;
+  }
+
+  async createTeacherAttendanceRecord(
+    teacherId: string,
+    date: Date,
+    data: { status: string; notes?: string }
+  ): Promise<AttendanceRecord> {
+    const [record] = await this.db('teacher_attendance_records')
+      .insert({
+        id: uuidv4(),
+        teacher_id: teacherId,
+        attendance_date: date,
+        status: data.status,
+        notes: data.notes,
+        marked_via: 'manual',
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    return record;
+  }
+
+  async getTeacherAttendanceRecords(
+    teacherId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<AttendanceRecord[]> {
+    return await this.db('teacher_attendance_records')
+      .where('teacher_id', teacherId)
+      .whereBetween('attendance_date', [startDate, endDate])
+      .orderBy('attendance_date', 'desc');
+  }
+
+  async updateTeacherAttendanceRecord(
+    recordId: string,
+    data: Partial<AttendanceRecord>
+  ): Promise<AttendanceRecord> {
+    const [updated] = await this.db('teacher_attendance_records')
+      .where('id', recordId)
+      .update({
+        ...data,
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    return updated;
+  }
+
+  async deleteTeacherAttendanceRecord(recordId: string): Promise<void> {
+    await this.db('teacher_attendance_records')
+      .where('id', recordId)
+      .del();
+  }
+
   // Utility method to verify location
   verifyLocation(
     studentLat: number,
