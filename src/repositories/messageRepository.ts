@@ -495,6 +495,21 @@ export class MessageRepository {
       });
   }
 
+  async markMessagesAsDelivered(messageIds: string[], userId: string): Promise<number> {
+    const result = await this.db('messages')
+      .whereIn('id', messageIds)
+      .where('receiver_id', userId)
+      .where('read_status', 'sent') // Only update if still in 'sent' status
+      .where('is_deleted', false)
+      .update({
+        delivered_at: new Date().toISOString(),
+        read_status: 'delivered',
+        updated_at: new Date().toISOString()
+      });
+    
+    return result;
+  }
+
   // User methods
   async findUserById(userId: string): Promise<any | null> {
     return await this.db('users')

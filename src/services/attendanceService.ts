@@ -10,6 +10,10 @@ import {
   AttendanceStatsResponse,
   AttendanceReportResponse,
   StudentAttendanceSummary,
+  TeacherAttendanceOverview,
+  TeacherAttendanceRequest,
+  TeacherAttendanceRecord,
+  SchoolTeachersAttendanceReport,
 } from '../types/attendance';
 import { AuthenticatedRequest } from '../types/auth';
 
@@ -413,6 +417,262 @@ export class AttendanceService {
     }
 
     return await this.attendanceRepository.getStudentAttendanceRecords(studentId, classId);
+  }
+
+  // Teacher attendance management methods
+  async getTeacherClasses(teacherId: string): Promise<any[]> {
+    // Get all classes where the teacher is assigned
+    const classes = await this.userClassRepository.getUserClasses(teacherId, 'teacher');
+    
+    // For each class, get basic attendance info
+    const classesWithAttendance = await Promise.all(
+      classes.map(async (classInfo: any) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const session = await this.attendanceRepository.getAttendanceSession(
+          classInfo.class_id,
+          today
+        );
+        
+        const studentCount = await this.userClassRepository.getClassMemberCount(
+          classInfo.class_id,
+          'student'
+        );
+
+        return {
+          ...classInfo,
+          has_attendance_session: !!session,
+          is_finalized: session?.is_finalized || false,
+          student_count: studentCount
+        };
+      })
+    );
+
+    return classesWithAttendance;
+  }
+
+  async getTeacherAttendanceOverview(
+    teacherId: string,
+    date: Date
+  ): Promise<TeacherAttendanceOverview> {
+    const classes = await this.getTeacherClasses(teacherId);
+    
+    let classesWithAttendance = 0;
+    let classesWithoutAttendance = 0;
+    const classesDetail = [];
+
+    for (const classInfo of classes) {
+      const session = await this.attendanceRepository.getAttendanceSession(
+        classInfo.class_id,
+        date
+      );
+
+      const hasAttendanceSession = !!session;
+      if (hasAttendanceSession) {
+        classesWithAttendance++;
+      } else {
+        classesWithoutAttendance++;
+      }
+
+      // Get attendance stats if session exists
+      let stats = {
+        present_count: 0,
+        absent_count: 0,
+        late_count: 0,
+        excused_count: 0
+      };
+
+      if (session) {
+        const attendanceRecords = await this.attendanceRepository.getClassAttendanceForDate(
+          classInfo.class_id,
+          date
+        );
+
+        stats = attendanceRecords.reduce((acc, record) => {
+          acc[`${record.status}_count`]++;
+          return acc;
+        }, { present_count: 0, absent_count: 0, late_count: 0, excused_count: 0 });
+      }
+
+      classesDetail.push({
+        class_id: classInfo.class_id,
+        class_name: classInfo.class_name,
+        has_attendance_session: hasAttendanceSession,
+        is_finalized: session?.is_finalized || false,
+        student_count: classInfo.student_count,
+        ...stats
+      });
+    }
+
+    // Get teacher info
+    const teacher = await this.userClassRepository.getUserById(teacherId);
+
+    return {
+      teacher_id: teacherId,
+      teacher_name: `${teacher.first_name} ${teacher.last_name}`,
+      total_classes: classes.length,
+      classes_with_attendance: classesWithAttendance,
+      classes_without_attendance: classesWithoutAttendance,
+      classes: classesDetail
+    };
+  }
+
+  async submitTeacherAttendance(
+    teacherId: string,
+    date: Date,
+    data: TeacherAttendanceRequest
+  ): Promise<TeacherAttendanceRecord> {
+    // Check if teacher already submitted attendance for this date
+    const existingRecord = await this.attendanceRepository.getTeacherAttendanceForDate(
+      teacherId,
+      date
+    );
+
+    if (existingRecord) {
+      throw new Error('Attendance already submitted for this date');
+    }
+
+    // Create teacher attendance record
+    const record = await this.attendanceRepository.createTeacherAttendanceRecord(
+      teacherId,
+      date,
+      data
+    );
+
+    // Get teacher info for the response
+    const teacher = await this.userClassRepository.getUserById(teacherId);
+    
+    return {
+      ...record,
+      teacher: {
+        id: teacher.id,
+        first_name: teacher.first_name,
+        last_name: teacher.last_name,
+        email: teacher.email,
+        avatar_url: teacher.avatar_url
+      }
+    };
+  }
+
+  async getSchoolTeachersAttendance(
+    schoolId: string,
+    date: Date
+  ): Promise<any[]> {
+    // Get all teachers in the school
+    const teachers = await this.userClassRepository.getSchoolTeachers(schoolId);
+    
+    const teachersAttendance = await Promise.all(
+      teachers.map(async (teacher: any) => {
+        const attendanceRecord = await this.attendanceRepository.getTeacherAttendanceForDate(
+          teacher.id,
+          date
+        );
+
+        return {
+          teacher: {
+            id: teacher.id,
+            first_name: teacher.first_name,
+            last_name: teacher.last_name,
+            email: teacher.email,
+            avatar_url: teacher.avatar_url
+          },
+          attendance: attendanceRecord || null
+        };
+      })
+    );
+
+    return teachersAttendance;
+  }
+
+  async getSchoolTeachersAttendanceReport(
+    schoolId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<SchoolTeachersAttendanceReport> {
+    // Get all teachers in the school
+    const teachers = await this.userClassRepository.getSchoolTeachers(schoolId);
+    
+    const teachersReport = await Promise.all(
+      teachers.map(async (teacher: any) => {
+        const attendanceRecords = await this.attendanceRepository.getTeacherAttendanceRecords(
+          teacher.id,
+          startDate,
+          endDate
+        );
+
+        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const presentDays = attendanceRecords.filter(r => r.status === 'present').length;
+        const absentDays = attendanceRecords.filter(r => r.status === 'absent').length;
+        const lateDays = attendanceRecords.filter(r => r.status === 'late').length;
+        const excusedDays = attendanceRecords.filter(r => r.status === 'excused').length;
+        
+        const attendanceRate = totalDays > 0 
+          ? Math.round(((presentDays + lateDays + excusedDays) / totalDays) * 10000) / 100
+          : 0;
+
+        return {
+          teacher_id: teacher.id,
+          teacher_name: `${teacher.first_name} ${teacher.last_name}`,
+          total_days: totalDays,
+          present_days: presentDays,
+          absent_days: absentDays,
+          late_days: lateDays,
+          excused_days: excusedDays,
+          attendance_rate: attendanceRate,
+          attendance_records: attendanceRecords.map(record => ({
+            ...record,
+            teacher: {
+              id: teacher.id,
+              first_name: teacher.first_name,
+              last_name: teacher.last_name,
+              email: teacher.email,
+              avatar_url: teacher.avatar_url
+            }
+          }))
+        };
+      })
+    );
+
+    // Calculate summary
+    const totalTeachers = teachersReport.length;
+    const totalPresentDays = teachersReport.reduce((sum, t) => sum + t.present_days, 0);
+    const totalAbsentDays = teachersReport.reduce((sum, t) => sum + t.absent_days, 0);
+    const totalLateDays = teachersReport.reduce((sum, t) => sum + t.late_days, 0);
+    const totalExcusedDays = teachersReport.reduce((sum, t) => sum + t.excused_days, 0);
+    const totalDays = teachersReport.reduce((sum, t) => sum + t.total_days, 0);
+    
+    const averageAttendanceRate = totalDays > 0 
+      ? Math.round(((totalPresentDays + totalLateDays + totalExcusedDays) / totalDays) * 10000) / 100
+      : 0;
+
+    // Get school info
+    const school = await this.userClassRepository.getSchoolById(schoolId);
+
+    return {
+      school_id: schoolId,
+      school_name: school.name,
+      date_range: {
+        start_date: startDate.toISOString().split('T')[0] || '',
+        end_date: endDate.toISOString().split('T')[0] || ''
+      },
+      summary: {
+        total_teachers: totalTeachers,
+        present_days: totalPresentDays,
+        absent_days: totalAbsentDays,
+        late_days: totalLateDays,
+        excused_days: totalExcusedDays,
+        average_attendance_rate: averageAttendanceRate
+      },
+      teachers: teachersReport
+    };
+  }
+
+  async getTeacherAttendanceForDate(
+    teacherId: string,
+    date: Date
+  ): Promise<AttendanceRecord | null> {
+    return await this.attendanceRepository.getTeacherAttendanceForDate(teacherId, date);
   }
 
   // Helper methods

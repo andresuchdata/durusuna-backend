@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import logger from '../shared/utils/logger';
+import { MessageRepository } from '../repositories/messageRepository';
+import db from '../shared/database/connection';
+
 
 // Types for socket events
 interface SocketUser extends Socket {
@@ -132,7 +135,8 @@ const handleConnection = (socket: Socket) => {
   // Join conversation room
   socket.on('conversation:join', (data: ConversationJoinData) => {
     const { conversationId } = data;
-    socket.join(`conversation_${conversationId}`);
+    const roomName = `conversation_${conversationId}`;
+    socket.join(roomName);
     
     // Track conversation membership
     if (!conversationRooms.has(conversationId)) {
@@ -140,7 +144,17 @@ const handleConnection = (socket: Socket) => {
     }
     conversationRooms.get(conversationId)!.add(userId);
     
-    logger.info(`User ${userId} joined conversation ${conversationId}`);
+    logger.info(`User ${userId} joined conversation ${conversationId} (room: ${roomName})`);
+    
+    // DEBUG: Log room information
+    if (globalIo) {
+      const room = globalIo.sockets.adapter.rooms.get(roomName);
+      if (room) {
+        logger.info(`🔍 [DEBUG] Room ${roomName} has ${room.size} clients: ${Array.from(room).join(', ')}`);
+      } else {
+        logger.info(`🔍 [DEBUG] Room ${roomName} not found in adapter`);
+      }
+    }
   });
 
   // Leave conversation room
@@ -184,27 +198,97 @@ const handleConnection = (socket: Socket) => {
   // === MESSAGE STATUS ===
   
   socket.on('message:delivered', (data: MessageStatusData) => {
-    const { messageIds, deliveredAt } = data;
-    // Broadcast to conversation participants
-    messageIds.forEach((messageId: string) => {
-      socket.broadcast.emit('message:delivered', {
-        messageIds: [messageId],
-        status: 'delivered',
-        userId: userId,
-        timestamp: deliveredAt || new Date().toISOString(),
+    const { messageIds, deliveredAt, conversationId } = data;
+    
+    if (!messageIds || messageIds.length === 0) {
+      logger.error('❌ Missing messageIds in message:delivered event');
+      return;
+    }
+    
+    if (!conversationId) {
+      logger.error('❌ Missing conversationId in message:delivered event');
+      return;
+    }
+    
+    // Create message repository instance
+    const messageRepository = new MessageRepository(db);
+    
+    // Update database first (mark messages as delivered)
+    messageRepository.markMessagesAsDelivered(messageIds, userId)
+      .then((updatedCount) => {
+        logger.info(`✅ Database updated for delivered status: ${updatedCount} messages out of ${messageIds.length} requested`);
+        
+        // Only broadcast if messages were actually updated
+        if (updatedCount > 0) {
+          if (globalIo) {
+            const roomName = `conversation_${conversationId}`;
+            globalIo.to(roomName).emit('message:delivered', {
+              messageIds: messageIds,
+              status: 'delivered',
+              userId: userId,
+              conversationId: conversationId,
+              timestamp: deliveredAt || new Date().toISOString(),
+            });
+            logger.info(`📦 Delivered status broadcasted for ${updatedCount} messages in conversation ${conversationId}`);
+          } else {
+            logger.error('❌ globalIo is null, cannot broadcast message:delivered');
+          }
+        } else {
+          logger.info(`📦 No messages updated to delivered status (likely already read), skipping broadcast`);
+        }
+      })
+      .catch((error) => {
+        logger.error(`❌ Failed to update database for delivered status: ${error}`);
       });
-    });
   });
 
   socket.on('message:read', (data: MessageStatusData) => {
     const { messageIds, conversationId, readAt } = data;
-    // Broadcast to conversation participants
-    socket.to(`conversation_${conversationId}`).emit('message:read', {
-      messageIds: messageIds,
-      status: 'read',
-      userId: userId,
-      conversationId: conversationId,
-      timestamp: readAt || new Date().toISOString(),
+    
+    if (!conversationId) {
+      logger.error('❌ Missing conversationId in message:read event');
+      return;
+    }
+    
+    // Create message repository instance
+    const messageRepository = new MessageRepository(db);
+    
+    // Update database first (mark messages as read)
+    Promise.all([
+      // Update conversation participant unread count
+      messageRepository.markConversationAsRead(conversationId, userId),
+      // Update individual message read status
+      messageRepository.markMessagesAsRead(conversationId, userId)
+    ]).then(() => {
+      logger.info(`✅ Database updated for read receipts: ${messageIds.length} messages in conversation ${conversationId}`);
+      
+      // Then broadcast to conversation participants
+      // TEMPORARY: Using io.to() instead of socket.to() for debugging
+      if (globalIo) {
+        const roomName = `conversation_${conversationId}`;
+        const room = globalIo.sockets.adapter.rooms.get(roomName);
+        logger.info(`🔍 [DEBUG] Broadcasting to room: ${roomName}`);
+        if (room) {
+          logger.info(`🔍 [DEBUG] Room ${roomName} has ${room.size} clients: ${Array.from(room).join(', ')}`);
+        } else {
+          logger.info(`🔍 [DEBUG] Room ${roomName} not found in adapter`);
+        }
+        
+        globalIo.to(roomName).emit('message:read', {
+          messageIds: messageIds,
+          status: 'read',
+          userId: userId,
+          conversationId: conversationId,
+          timestamp: readAt || new Date().toISOString(),
+        });
+        logger.info(`🔍 [DEBUG] Using io.to() to broadcast to room: conversation_${conversationId}`);
+      } else {
+        logger.error('❌ globalIo is null, cannot broadcast message:read');
+      }
+      
+      logger.info(`📖 Read receipts broadcasted for ${messageIds.length} messages in conversation ${conversationId}`);
+    }).catch((error) => {
+      logger.error(`❌ Failed to update database for read receipts: ${error}`);
     });
   });
 

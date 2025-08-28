@@ -124,3 +124,65 @@ export interface LocationVerificationResult {
   distance_meters?: number;
   error?: string;
 }
+
+export interface TeacherAttendanceRequest {
+  status: 'present' | 'absent' | 'late' | 'excused';
+  notes?: string;
+}
+
+export interface TeacherAttendanceOverview {
+  teacher_id: string;
+  teacher_name: string;
+  total_classes: number;
+  classes_with_attendance: number;
+  classes_without_attendance: number;
+  classes: Array<{
+    class_id: string;
+    class_name: string;
+    has_attendance_session: boolean;
+    is_finalized: boolean;
+    student_count: number;
+    present_count: number;
+    absent_count: number;
+    late_count: number;
+    excused_count: number;
+  }>;
+}
+
+export interface TeacherAttendanceRecord extends AttendanceRecord {
+  teacher: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    avatar_url?: string;
+  };
+}
+
+export interface SchoolTeachersAttendanceReport {
+  school_id: string;
+  school_name: string;
+  date_range: {
+    start_date: string;
+    end_date: string;
+  };
+  summary: {
+    total_teachers: number;
+    present_days: number;
+    absent_days: number;
+    late_days: number;
+    excused_days: number;
+    average_attendance_rate: number;
+  };
+  teachers: Array<{
+    teacher_id: string;
+    teacher_name: string;
+    total_days: number;
+    present_days: number;
+    absent_days: number;
+    late_days: number;
+    excused_days: number;
+    attendance_rate: number;
+    attendance_records: TeacherAttendanceRecord[];
+  }>;
+}

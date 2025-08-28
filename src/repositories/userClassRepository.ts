@@ -229,6 +229,98 @@ export class UserClassRepository {
     return result || null;
   }
 
+  async getUserClasses(userId: string, role?: 'student' | 'teacher' | 'assistant'): Promise<any[]> {
+    let query = this.db('user_classes')
+      .join('classes', 'user_classes.class_id', 'classes.id')
+      .where('user_classes.user_id', userId)
+      .where('user_classes.is_active', true)
+      .where('classes.is_active', true);
+
+    if (role) {
+      query = query.where('user_classes.role_in_class', role);
+    }
+
+    const results = await query
+      .select(
+        'user_classes.*',
+        'classes.id as class_id',
+        'classes.school_id as class_school_id',
+        'classes.name as class_name',
+        'classes.description as class_description',
+        'classes.grade_level as class_grade_level',
+        'classes.section as class_section',
+        'classes.academic_year as class_academic_year',
+        'classes.settings as class_settings',
+        'classes.is_active as class_is_active',
+        'classes.created_at as class_created_at',
+        'classes.updated_at as class_updated_at'
+      )
+      .orderBy('classes.name', 'asc');
+
+    return results.map(result => ({
+      class_id: result.class_id,
+      class_name: result.class_name,
+      class_description: result.class_description,
+      class_grade_level: result.class_grade_level,
+      class_section: result.class_section,
+      class_academic_year: result.class_academic_year,
+      role_in_class: result.role_in_class,
+      enrolled_at: result.created_at
+    }));
+  }
+
+  async getClassMemberCount(classId: string, role?: 'student' | 'teacher' | 'assistant'): Promise<number> {
+    let query = this.db('user_classes')
+      .join('users', 'user_classes.user_id', 'users.id')
+      .where('user_classes.class_id', classId)
+      .where('user_classes.is_active', true)
+      .where('users.is_active', true);
+
+    if (role) {
+      query = query.where('user_classes.role_in_class', role);
+    }
+
+    const result = await query.count('* as count').first();
+    return parseInt(String(result?.count || '0'), 10);
+  }
+
+  async getSchoolTeachers(schoolId: string): Promise<any[]> {
+    const results = await this.db('users')
+      .where('school_id', schoolId)
+      .where('user_type', 'teacher')
+      .where('is_active', true)
+      .select(
+        'id',
+        'first_name',
+        'last_name',
+        'email',
+        'avatar_url',
+        'employee_id'
+      )
+      .orderBy('last_name', 'asc')
+      .orderBy('first_name', 'asc');
+
+    return results;
+  }
+
+  async getUserById(userId: string): Promise<any> {
+    const result = await this.db('users')
+      .where('id', userId)
+      .where('is_active', true)
+      .first();
+
+    return result || null;
+  }
+
+  async getSchoolById(schoolId: string): Promise<any> {
+    const result = await this.db('schools')
+      .where('id', schoolId)
+      .where('is_active', true)
+      .first();
+
+    return result || null;
+  }
+
   /**
    * Check if a teacher is the homeroom teacher for a specific class
    */
