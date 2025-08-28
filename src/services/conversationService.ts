@@ -571,4 +571,48 @@ export class ConversationService {
     // This is a placeholder that would need proper implementation
     throw new Error('createConversation method needs to be implemented');
   }
+
+  async getConversationById(conversationId: string): Promise<any | null> {
+    try {
+      const conversation = await this.messageRepository.findConversationById(conversationId);
+      return conversation;
+    } catch (error) {
+      logger.error('Error getting conversation by ID:', error);
+      return null;
+    }
+  }
+
+  async updateConversation(conversationId: string, updateData: any, userId: string): Promise<void> {
+    try {
+      // Verify user has permission to update
+      const participant = await this.messageRepository.findConversationParticipant(conversationId, userId);
+      if (!participant) {
+        throw new Error('Access denied');
+      }
+
+      // Update the conversation
+      await this.messageRepository.updateConversation(conversationId, updateData);
+      
+      // Invalidate cache for this conversation
+      messageCache.invalidateUser(userId);
+      
+      logger.info(`Conversation ${conversationId} updated by user ${userId}`);
+    } catch (error) {
+      logger.error('Error updating conversation:', error);
+      throw error;
+    }
+  }
+
+  async getUserRoleInConversation(conversationId: string, userId: string): Promise<string> {
+    try {
+      const participant = await this.messageRepository.findConversationParticipant(conversationId, userId);
+      if (!participant) {
+        throw new Error('User not a participant');
+      }
+      return participant.role || 'member';
+    } catch (error) {
+      logger.error('Error getting user role in conversation:', error);
+      return 'member';
+    }
+  }
 } 
