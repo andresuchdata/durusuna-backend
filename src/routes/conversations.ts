@@ -82,6 +82,61 @@ router.get('/:conversationId/messages', authenticate, async (req: Request, res: 
 });
 
 /**
+ * @route GET /api/conversations/:conversationId
+ * @desc Get conversation details including participants
+ * @access Private
+ */
+router.get('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversationId } = req.params;
+    
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
+
+    // Verify user is a participant of the conversation
+    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get conversation details and participants using the service
+    // We'll need to create a method in the service to get conversation with participants
+    // For now, let's use a simpler approach by getting the data from the messages endpoint
+    // which already includes participant information
+    
+    // Get one message to extract conversation and participant info
+    const messagesResponse = await conversationService.getConversationMessages(
+      conversationId,
+      authenticatedReq.user,
+      { page: 1, limit: 1 }
+    );
+
+    if (messagesResponse.conversation) {
+      res.json({
+        id: messagesResponse.conversation.id,
+        type: messagesResponse.conversation.type,
+        name: messagesResponse.conversation.name,
+        description: messagesResponse.conversation.description,
+        avatar_url: messagesResponse.conversation.avatar_url,
+        created_by: messagesResponse.conversation.created_by,
+        is_active: messagesResponse.conversation.is_active,
+        created_at: messagesResponse.conversation.created_at,
+        updated_at: messagesResponse.conversation.updated_at,
+        participants: messagesResponse.participants || []
+      });
+    } else {
+      res.status(404).json({ error: 'Conversation not found' });
+    }
+
+  } catch (error) {
+    logger.error('Error fetching conversation details:', error);
+    res.status(500).json({ error: 'Failed to fetch conversation details' });
+  }
+});
+
+/**
  * @route GET /api/conversations/:conversationId/messages/load-more
  * @desc Load more messages for infinite scroll (optimized for performance)
  * @access Private
