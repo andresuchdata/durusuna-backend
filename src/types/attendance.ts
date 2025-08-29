@@ -128,6 +128,10 @@ export interface LocationVerificationResult {
 export interface TeacherAttendanceRequest {
   status: 'present' | 'absent' | 'late' | 'excused';
   notes?: string;
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  marked_via?: 'manual' | 'gps';
 }
 
 export interface TeacherAttendanceOverview {
