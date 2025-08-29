@@ -38,8 +38,8 @@ export class AuthRepository {
         'users.employee_id',
         'users.avatar_url',
         'users.is_active',
-        'users.is_verified',
-        'users.last_active_at',
+        'users.email_verified',
+        'users.last_login_at',
         'users.created_at',
         'users.updated_at',
         'schools.name as school_name'

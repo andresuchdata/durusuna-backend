@@ -16,6 +16,7 @@ import {
   SchoolTeachersAttendanceReport,
 } from '../types/attendance';
 import { AuthenticatedRequest } from '../types/auth';
+import { verifyLocationWithinRadius, isValidCoordinates } from '../utils/locationUtils';
 
 type AuthenticatedUser = AuthenticatedRequest['user'];
 
@@ -31,6 +32,8 @@ export class AttendanceService {
   ): Promise<SchoolAttendanceSettings | null> {
     return await this.attendanceRepository.getSchoolAttendanceSettings(schoolId);
   }
+
+
 
   async updateSchoolAttendanceSettings(
     schoolId: string,
@@ -253,6 +256,11 @@ export class AttendanceService {
       throw new Error('GPS location is required for attendance');
     }
 
+    // Validate coordinates if provided
+    if (request.latitude && request.longitude && !isValidCoordinates(request.latitude, request.longitude)) {
+      throw new Error('Invalid GPS coordinates provided');
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Start of day
 
@@ -272,11 +280,9 @@ export class AttendanceService {
     if (settings?.require_location && request.latitude && request.longitude && 
         settings.school_latitude && settings.school_longitude) {
       
-      const verification = this.attendanceRepository.verifyLocation(
-        request.latitude,
-        request.longitude,
-        settings.school_latitude,
-        settings.school_longitude,
+      const verification = verifyLocationWithinRadius(
+        { latitude: request.latitude, longitude: request.longitude },
+        { latitude: settings.school_latitude, longitude: settings.school_longitude },
         settings.location_radius_meters
       );
 
@@ -440,12 +446,32 @@ export class AttendanceService {
           'student'
         );
 
-        return {
-          ...classInfo,
+        // Debug log to see what we're getting from getUserClasses
+        console.log('🔍 Raw classInfo:', JSON.stringify(classInfo, null, 2));
+        
+        // The data is already flattened with class_ prefixes, so we can use it directly
+        // Ensure required fields are not null and provide defaults if needed
+        const safeClassData = {
+          id: classInfo.class_id || '',
+          school_id: classInfo.class_school_id || '11111111-1111-1111-1111-111111111111', // Default school ID
+          name: classInfo.class_name || 'Unnamed Class',
+          description: classInfo.class_description || null,
+          grade_level: classInfo.class_grade_level || null,
+          section: classInfo.class_section || null,
+          academic_year: classInfo.class_academic_year || '2024-2025',
+          settings: classInfo.class_settings || null,
+          is_active: classInfo.class_is_active !== undefined ? classInfo.class_is_active : true,
+          created_at: classInfo.class_created_at || new Date().toISOString(),
+          updated_at: classInfo.class_updated_at || new Date().toISOString(),
           has_attendance_session: !!session,
           is_finalized: session?.is_finalized || false,
-          student_count: studentCount
+          students_count: studentCount
         };
+
+        // Debug log to see what data we're sending
+        console.log('🔍 Teacher class data:', JSON.stringify(safeClassData, null, 2));
+        
+        return safeClassData;
       })
     );
 
@@ -464,7 +490,7 @@ export class AttendanceService {
 
     for (const classInfo of classes) {
       const session = await this.attendanceRepository.getAttendanceSession(
-        classInfo.class_id,
+        classInfo.id, // Use the actual class ID from the class data
         date
       );
 
@@ -485,7 +511,7 @@ export class AttendanceService {
 
       if (session) {
         const attendanceRecords = await this.attendanceRepository.getClassAttendanceForDate(
-          classInfo.class_id,
+          classInfo.id, // Use the actual class ID from the class data
           date
         );
 
@@ -496,11 +522,11 @@ export class AttendanceService {
       }
 
       classesDetail.push({
-        class_id: classInfo.class_id,
-        class_name: classInfo.class_name,
+        class_id: classInfo.id, // Use the actual class ID from the class data
+        class_name: classInfo.name, // Use the actual class name from the class data
         has_attendance_session: hasAttendanceSession,
         is_finalized: session?.is_finalized || false,
-        student_count: classInfo.student_count,
+        student_count: classInfo.students_count, // Use the correct field name
         ...stats
       });
     }
@@ -533,11 +559,43 @@ export class AttendanceService {
       throw new Error('Attendance already submitted for this date');
     }
 
-    // Create teacher attendance record
+    // If GPS location is provided, verify it against school settings
+    let locationVerified = false;
+    if (data.latitude && data.longitude && data.marked_via === 'gps') {
+      // Validate coordinates
+      if (!isValidCoordinates(data.latitude, data.longitude)) {
+        throw new Error('Invalid GPS coordinates provided');
+      }
+
+      const teacher = await this.userClassRepository.getUserById(teacherId);
+      if (teacher.school_id) {
+        const schoolSettings = await this.getSchoolAttendanceSettings(teacher.school_id);
+        if (schoolSettings?.require_location) {
+          const verification = verifyLocationWithinRadius(
+            { latitude: data.latitude, longitude: data.longitude },
+            { latitude: schoolSettings.school_latitude || 0, longitude: schoolSettings.school_longitude || 0 },
+            schoolSettings.location_radius_meters
+          );
+
+          if (!verification.is_valid) {
+            throw new Error(`Location verification failed. You must be within ${schoolSettings.location_radius_meters}m of the school.`);
+          }
+          
+          locationVerified = true;
+        }
+      }
+    }
+
+    // Create teacher attendance record with location verification
     const record = await this.attendanceRepository.createTeacherAttendanceRecord(
       teacherId,
       date,
-      data
+      {
+        status: data.status,
+        notes: data.notes,
+        marked_via: data.marked_via || 'manual',
+        location_verified: locationVerified
+      }
     );
 
     // Get teacher info for the response

@@ -113,24 +113,21 @@ export class MessageRepository {
         'conversations.avatar_url as conversation_avatar',
         'conversations.last_message_at',
         'conversations.created_at as conversation_created_at',
-        'last_msg.content as last_message_content',
-        'last_msg.message_type as last_message_type',
-        'last_msg.sender_id as last_message_sender_id',
-        'last_msg.created_at as last_message_created_at',
-        'participant.unread_count'
+        'conversations.created_by'
       )
-      .join('conversation_participants as participant', 'conversations.id', 'participant.conversation_id')
-      .leftJoin('messages as last_msg', 'conversations.last_message_id', 'last_msg.id')
-      .where('participant.user_id', userId)
-      .where('participant.is_active', true)
+      .join('conversation_participants as cp', 'conversations.id', 'cp.conversation_id')
+      .where('cp.user_id', userId)
+      .where('cp.is_active', true)
       .where('conversations.is_active', true)
       .orderBy('conversations.last_message_at', 'desc')
-      .limit(pageLimit)
-      .offset(offset);
+      .orderBy('conversations.created_at', 'desc')
+      .offset(offset)
+      .limit(pageLimit);
   }
 
-  async findConversationById(conversationId: string): Promise<Conversation | null> {
+  async findConversationById(conversationId: string): Promise<any | null> {
     const conversation = await this.db('conversations')
+      .select('*')
       .where('id', conversationId)
       .where('is_active', true)
       .first();

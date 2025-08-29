@@ -3,7 +3,9 @@ import { z } from 'zod';
 export const updateProfileSchema = z.object({
   first_name: z.string().min(1, 'First name cannot be empty').optional(),
   last_name: z.string().min(1, 'Last name cannot be empty').optional(),
-  email: z.string().email('Invalid email format').optional()
+  email: z.string().email('Invalid email format').optional(),
+  phone: z.string().optional(),
+  avatar_url: z.string().url('Invalid avatar URL format').optional()
 }).refine(
   data => Object.keys(data).length > 0,
   {

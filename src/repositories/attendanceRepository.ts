@@ -6,9 +6,9 @@ import {
   SchoolAttendanceSettings,
   CreateAttendanceRecordRequest,
   AttendanceStatsResponse,
-  StudentAttendanceSummary,
-  LocationVerificationResult
+  StudentAttendanceSummary
 } from '../types/attendance';
+import { verifyLocationWithinRadius, LocationVerificationResult } from '../utils/locationUtils';
 import { v4 as uuidv4 } from 'uuid';
 
 export class AttendanceRepository {
@@ -529,7 +529,12 @@ export class AttendanceRepository {
   async createTeacherAttendanceRecord(
     teacherId: string,
     date: Date,
-    data: { status: string; notes?: string }
+    data: { 
+      status: string; 
+      notes?: string;
+      marked_via?: string;
+      location_verified?: boolean;
+    }
   ): Promise<AttendanceRecord> {
     const [record] = await this.db('teacher_attendance_records')
       .insert({
@@ -538,7 +543,8 @@ export class AttendanceRepository {
         attendance_date: date,
         status: data.status,
         notes: data.notes,
-        marked_via: 'manual',
+        marked_via: data.marked_via || 'manual',
+        location_verified: data.location_verified || false,
         created_at: new Date(),
         updated_at: new Date()
       })
@@ -587,30 +593,10 @@ export class AttendanceRepository {
     schoolLon: number,
     radiusMeters: number
   ): LocationVerificationResult {
-    try {
-      // Calculate distance using Haversine formula
-      const R = 6371e3; // Earth's radius in meters
-      const φ1 = (studentLat * Math.PI) / 180;
-      const φ2 = (schoolLat * Math.PI) / 180;
-      const Δφ = ((schoolLat - studentLat) * Math.PI) / 180;
-      const Δλ = ((schoolLon - studentLon) * Math.PI) / 180;
-
-      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-      const distance = R * c; // Distance in meters
-
-      return {
-        is_valid: distance <= radiusMeters,
-        distance_meters: Math.round(distance)
-      };
-    } catch (error) {
-      return {
-        is_valid: false,
-        error: 'Failed to calculate location distance'
-      };
-    }
+    return verifyLocationWithinRadius(
+      { latitude: studentLat, longitude: studentLon },
+      { latitude: schoolLat, longitude: schoolLon },
+      radiusMeters
+    );
   }
 }

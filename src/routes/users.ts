@@ -91,6 +91,87 @@ router.delete(
   }
 );
 
+// Update user profile (including avatar)
+router.put(
+  '/profile',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  [
+    body('first_name')
+      .optional()
+      .isString()
+      .isLength({ min: 1, max: 50 })
+      .withMessage('First name must be between 1 and 50 characters'),
+    body('last_name')
+      .optional()
+      .isString()
+      .isLength({ min: 1, max: 50 })
+      .withMessage('Last name must be between 1 and 50 characters'),
+    body('email')
+      .optional()
+      .isEmail()
+      .withMessage('Valid email is required'),
+    body('avatar_url')
+      .optional()
+      .isString()
+      .isLength({ max: 500 })
+      .withMessage('Avatar URL must be less than 500 characters'),
+  ],
+  validateRequest,
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const userId = currentUser?.id;
+      const { first_name, last_name, email, avatar_url } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'User not authenticated' 
+        });
+      }
+
+      const updateData: any = {};
+      if (first_name != null) updateData.first_name = first_name;
+      if (last_name != null) updateData.last_name = last_name;
+      if (email != null) updateData.email = email;
+      if (avatar_url != null) updateData.avatar_url = avatar_url;
+
+      logger.info(`🔄 [Profile Update] User ${userId} update data:`, updateData);
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'At least one field must be provided for update' 
+        });
+      }
+
+      const updatedUser = await userService.updateUserProfile(userId, updateData);
+      
+      logger.info(`🔄 [Profile Update] Updated user data:`, {
+        id: updatedUser.id,
+        avatar_url: updatedUser.avatar_url,
+        first_name: updatedUser.first_name,
+        last_name: updatedUser.last_name
+      });
+
+      logger.info(`👤 Profile updated for user ${userId}`);
+      
+      res.json({ 
+        success: true, 
+        message: 'Profile updated successfully',
+        user: updatedUser
+      });
+    } catch (error: any) {
+      logger.error('Failed to update profile:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to update profile',
+        error: error.message 
+      });
+    }
+  }
+);
+
 // Get contacts for chat/messaging
 router.get(
   '/contacts',

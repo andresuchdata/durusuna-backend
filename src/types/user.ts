@@ -6,6 +6,8 @@ export interface User {
   user_type: string;
   role: string;
   school_id: string | null;
+  phone?: string;
+  avatar_url?: string;
   password?: string;
   is_active?: boolean;
   created_at: Date;
@@ -26,6 +28,7 @@ export interface UpdateUserProfileData {
   first_name?: string;
   last_name?: string;
   email?: string;
+  avatar_url?: string;
 }
 
 export interface ChangePasswordData {

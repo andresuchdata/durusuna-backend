@@ -637,14 +637,21 @@ router.post('/teacher/submit', authenticate, async (req: Request, res: Response)
       return res.status(403).json({ error: 'Access denied - teacher access required' });
     }
 
-    const { date, status, notes } = req.body;
+    const { date, status, notes, latitude, longitude, accuracy, marked_via } = req.body;
     const attendanceDate = date ? new Date(date) : new Date();
     attendanceDate.setHours(0, 0, 0, 0);
 
     const record = await attendanceService.submitTeacherAttendance(
       authenticatedReq.user.id,
       attendanceDate,
-      { status, notes }
+      { 
+        status, 
+        notes, 
+        latitude, 
+        longitude, 
+        accuracy, 
+        marked_via 
+      }
     );
 
     res.json({

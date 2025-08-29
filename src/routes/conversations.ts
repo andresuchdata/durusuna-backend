@@ -418,4 +418,82 @@ router.post('/:conversationId/messages/reactions', authenticate, async (req: Req
   }
 });
 
+/**
+ * @route PUT /api/conversations/:conversationId
+ * @desc Update conversation details (name, description, avatar) - for group conversations only
+ * @access Private
+ */
+router.put('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversationId } = req.params;
+    const { name, description, avatar_url } = req.body as {
+      name?: string;
+      description?: string;
+      avatar_url?: string;
+    };
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
+
+    // Verify user is a participant of the conversation
+    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get conversation details to check if it's a group conversation
+    const conversation = await conversationService.getConversationById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Only allow updates for group conversations
+    if (conversation.type !== 'group') {
+      return res.status(400).json({ error: 'Only group conversations can be updated' });
+    }
+
+    // Check if user has permission to update (admin or creator)
+    const userRole = await conversationService.getUserRoleInConversation(conversationId, authenticatedReq.user.id);
+    if (userRole !== 'admin' && conversation.created_by !== authenticatedReq.user.id) {
+      return res.status(403).json({ error: 'Only admins or group creators can update group details' });
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'At least one field must be provided for update' });
+    }
+
+    // Update the conversation
+    await conversationService.updateConversation(conversationId, updateData, authenticatedReq.user.id);
+
+    // Get updated conversation details
+    const updatedConversation = await conversationService.getConversationById(conversationId);
+
+    res.json({
+      message: 'Conversation updated successfully',
+      conversation: updatedConversation
+    });
+
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Conversation not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied' || error.message === 'Only admins or group creators can update group details') {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+    
+    logger.error('Error updating conversation:', error);
+    res.status(500).json({ error: 'Failed to update conversation' });
+  }
+});
+
 export default router; 
