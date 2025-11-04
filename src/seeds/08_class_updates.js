@@ -33,31 +33,31 @@ const CLASS_UPDATE_TEMPLATES = {
     {
       type: 'announcement',
       title: 'Pengumuman Kegiatan Tahfidz',
-      content: 'Assalamu\'alaikum warahmatullahi wabarakatuh. Berdasarkan jadwal yang telah disusun, kegiatan tahfidz akan dimulai setelah sholat Dhuha. Mohon para siswa membawa mushaf dan buku catatan hafalan. Jazakumullahu khairan.',
+      content: 'Assalamu\'alaikum warahmatullahi wabarakatuh.\n\nBerdasarkan jadwal yang telah disusun, kegiatan tahfidz akan dimulai setelah sholat Dhuha.\n\nMohon para siswa membawa:\n• Mushaf Al-Quran\n• Buku catatan hafalan\n• Semangat untuk belajar\n\nJazakumullahu khairan.',
       isPinned: true
     },
     {
       type: 'homework',
       title: 'Tugas Matematika Bab 3',
-      content: 'Ananda diharapkan mengerjakan soal latihan halaman 45-47. Kerjakan soal nomor 1-15 di buku tugas matematika. Batas pengumpulan: Kamis, 25 Januari 2025. Barakallahu fiikum.',
+      content: 'Ananda diharapkan mengerjakan soal latihan halaman 45-47.\n\nDetail tugas:\n• Kerjakan soal nomor 1-15\n• Tulis di buku tugas matematika\n• Batas pengumpulan: Kamis, 25 Januari 2025\n\nBarakallahu fiikum.',
       isPinned: false
     },
     {
       type: 'reminder',
       title: 'Reminder: Persiapan Ujian Semester',
-      content: 'Mengingatkan kepada para siswa untuk mempersiapkan diri menghadapi ujian semester. Materi yang akan diujikan meliputi seluruh bab yang telah dipelajari. Semoga Allah mudahkan.',
+      content: 'Mengingatkan kepada para siswa untuk mempersiapkan diri menghadapi ujian semester.\n\nMateri yang akan diujikan meliputi seluruh bab yang telah dipelajari.\n\nSemoga Allah mudahkan.',
       isPinned: false
     },
     {
       type: 'event',
       title: 'Peringatan Maulid Nabi Muhammad SAW',
-      content: 'Dalam rangka memperingati Maulid Nabi Muhammad SAW, akan diadakan kegiatan: 1) Qira\'ah Al-Quran, 2) Tausiyah tentang akhlak Rasulullah, 3) Salawat bersama. Mohon kehadiran semua siswa.',
+      content: 'Dalam rangka memperingati Maulid Nabi Muhammad SAW, akan diadakan kegiatan:\n\n1) Qira\'ah Al-Quran\n2) Tausiyah tentang akhlak Rasulullah\n3) Salawat bersama\n\nMohon kehadiran semua siswa.',
       isPinned: false
     },
     {
       type: 'announcement',
       title: 'Jadwal Pelajaran Tambahan',
-      content: 'Mulai minggu depan akan ada pelajaran tambahan Bahasa Arab setiap hari Sabtu pukul 08:00-10:00. Kegiatan ini untuk memperdalam kemampuan berbahasa Arab siswa. Insya Allah bermanfaat.',
+      content: 'Mulai minggu depan akan ada pelajaran tambahan Bahasa Arab.\n\nJadwal:\n• Hari: Sabtu\n• Waktu: 08:00-10:00\n• Tujuan: Memperdalam kemampuan berbahasa Arab\n\nInsya Allah bermanfaat.',
       isPinned: false
     }
   ],
@@ -65,31 +65,31 @@ const CLASS_UPDATE_TEMPLATES = {
     {
       type: 'announcement',
       title: 'Pengumuman Libur Hari Raya',
-      content: 'Assalamu\'alaikum warahmatullahi wabarakatuh. Diinformasikan bahwa sekolah akan libur dalam rangka Hari Raya Idul Fitri selama 2 minggu. Kegiatan pembelajaran akan dimulai kembali setelah libur. Taqabbalallahu minna wa minkum.',
+      content: 'Assalamu\'alaikum warahmatullahi wabarakatuh.\n\nDiinformasikan bahwa sekolah akan libur dalam rangka Hari Raya Idul Fitri selama 2 minggu.\n\nKegiatan pembelajaran akan dimulai kembali setelah libur.\n\nTaqabbalallahu minna wa minkum.',
       isPinned: true
     },
     {
       type: 'homework',
       title: 'Proyek IPA: Sistem Tata Surya',
-      content: 'Tugas proyek IPA untuk materi Sistem Tata Surya. Buatlah model tata surya sederhana menggunakan bahan-bahan yang mudah didapat. Presentasi akan dilakukan minggu depan. Semoga sukses!',
+      content: 'Tugas proyek IPA untuk materi Sistem Tata Surya.\n\nInstruksi:\n• Buatlah model tata surya sederhana\n• Gunakan bahan-bahan yang mudah didapat\n• Presentasi akan dilakukan minggu depan\n\nSemoga sukses!',
       isPinned: false
     },
     {
       type: 'reminder',
       title: 'Persiapan Ujian Nasional',
-      content: 'Bagi siswa kelas 9, mohon untuk serius mempersiapkan diri menghadapi Ujian Nasional. Manfaatkan waktu belajar dengan baik. Konsultasi bisa dilakukan setiap hari Rabu setelah sholat Ashar.',
+      content: 'Bagi siswa kelas 9, mohon untuk serius mempersiapkan diri menghadapi Ujian Nasional.\n\nTips:\n• Manfaatkan waktu belajar dengan baik\n• Konsultasi bisa dilakukan setiap hari Rabu setelah sholat Ashar\n\nSemoga Allah mudahkan.',
       isPinned: false
     },
     {
       type: 'event',
       title: 'Kompetisi Tahfidz Antar Kelas',
-      content: 'Akan diadakan kompetisi tahfidz antar kelas tingkat SMP. Setiap kelas diharapkan mengirimkan 3 perwakilan terbaik. Pendaftaran dibuka sampai akhir bulan ini. Barakallahu fiikum.',
+      content: 'Akan diadakan kompetisi tahfidz antar kelas tingkat SMP.\n\nKetentuan:\n• Setiap kelas mengirimkan 3 perwakilan terbaik\n• Pendaftaran dibuka sampai akhir bulan ini\n\nBarakallahu fiikum.',
       isPinned: false
     },
     {
       type: 'announcement',
       title: 'Program Bimbingan Konseling',
-      content: 'Bagi siswa yang memerlukan bimbingan terkait pilihan karir atau masalah pribadi, dapat menemui guru BK setiap hari Senin-Kamis pukul 13:00-15:00. Semua akan dijaga kerahasiaannya.',
+      content: 'Bagi siswa yang memerlukan bimbingan terkait pilihan karir atau masalah pribadi, dapat menemui guru BK.\n\nJadwal:\n• Hari: Senin-Kamis\n• Waktu: 13:00-15:00\n\nSemua akan dijaga kerahasiaannya.',
       isPinned: false
     }
   ]
