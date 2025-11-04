@@ -139,6 +139,13 @@ export class ConversationService {
     };
   }
 
+  /// Invalidate cache for a specific user's conversations
+  /// This should be called when messages are sent/received to ensure fresh data
+  invalidateUserConversationsCache(userId: string): void {
+    // Clear the user's conversations cache to force fresh data on next request
+    messageCache.invalidateUser(userId);
+  }
+
   async getConversationMessages(
     conversationId: string,
     currentUser: AuthenticatedUser,

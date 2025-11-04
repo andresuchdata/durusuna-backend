@@ -113,12 +113,23 @@ export class MessageRepository {
         'conversations.avatar_url as conversation_avatar',
         'conversations.last_message_at',
         'conversations.created_at as conversation_created_at',
-        'conversations.created_by'
+        'conversations.created_by',
+        // Add last message details by joining with messages table
+        'last_message.content as last_message_content',
+        'last_message.message_type as last_message_type',
+        'last_message.created_at as last_message_created_at',
+        'last_message.sender_id as last_message_sender_id',
+        // Add unread count from conversation_participants
+        'cp.unread_count'
       )
       .join('conversation_participants as cp', 'conversations.id', 'cp.conversation_id')
+      .leftJoin('messages as last_message', 'conversations.last_message_id', 'last_message.id')
       .where('cp.user_id', userId)
       .where('cp.is_active', true)
       .where('conversations.is_active', true)
+      .where(function() {
+        this.whereNull('last_message.is_deleted').orWhereNull('last_message.id');
+      })
       .orderBy('conversations.last_message_at', 'desc')
       .orderBy('conversations.created_at', 'desc')
       .offset(offset)

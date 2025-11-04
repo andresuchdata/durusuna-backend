@@ -237,7 +237,184 @@ router.delete('/attachments/:key(*)', authenticate, async (req: Request, res: Re
   }
 });
 
+/**
+ * @swagger
+ * /api/class-updates:
+ *   get:
+ *     summary: Get all class updates
+ *     description: Retrieve paginated list of class updates for the authenticated user
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of updates per page
+ *       - in: query
+ *         name: class_id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by class ID
+ *       - in: query
+ *         name: update_type
+ *         schema:
+ *           type: string
+ *           enum: [announcement, homework, reminder, event]
+ *         description: Filter by update type
+ *     responses:
+ *       200:
+ *         description: Class updates retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 updates:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ClassUpdate'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/PaginationMeta'
+ *       403:
+ *         description: Access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *   post:
+ *     summary: Create a new class update
+ *     description: Create a new class update (teachers only)
+ *     tags: [Class Updates]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - class_id
+ *               - title
+ *               - content
+ *               - update_type
+ *             properties:
+ *               class_id:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Class ID
+ *               title:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Title of the update
+ *               content:
+ *                 type: string
+ *                 maxLength: 10000
+ *                 description: Content of the update
+ *               update_type:
+ *                 type: string
+ *                 enum: [announcement, homework, reminder, event]
+ *                 description: Type of update
+ *               attachments:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ClassUpdateAttachment'
+ *                 maxItems: 5
+ *                 description: File attachments
+ *     responses:
+ *       201:
+ *         description: Class update created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 update:
+ *                   $ref: '#/components/schemas/ClassUpdate'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Access denied - teachers only
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/', authenticate, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { class_id } = req.query;
 
+    if (!class_id) {
+      return res.status(400).json({ error: 'class_id is required' });
+    }
+
+    // Use service to get class updates with pagination
+    const queryParams = req.query as ClassUpdateQueryParams & { page?: string; limit?: string };
+    const result = await classUpdatesService.getClassUpdates(
+      class_id as string,
+      queryParams,
+      authReq.user
+    );
+
+    res.json(result);
+
+  } catch (error) {
+    logger.error('Error fetching class updates:', error);
+    res.status(500).json({ error: 'Failed to fetch class updates' });
+  }
+});
+
+router.post('/', authenticate, validate(classUpdateSchema), async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { class_id, title, content, update_type, attachments }: CreateClassUpdateRequest = req.body;
+
+    // Use service to create class update
+    const newUpdate = await classUpdatesService.createClassUpdate(
+      class_id,
+      { title, content, update_type, attachments },
+      authReq.user
+    );
+
+    res.status(201).json({ update: newUpdate });
+
+    // Send notifications for the new update
+    try {
+      await getNotificationService().notifyClassUpdateCreated({
+        updateId: newUpdate.id,
+        classId: class_id,
+        authorId: authReq.user.id,
+        title,
+        content,
+        updateType: update_type
+      });
+
+      logger.info(`🔔 Successfully sent notifications for class update ${newUpdate.id}`);
+    } catch (notificationError) {
+      logger.error('🔔 Failed to send notifications:', notificationError);
+      // Don't fail the request if notification fails
+    }
+
+  } catch (error) {
+    logger.error('Error creating class update:', error);
+    res.status(500).json({ error: 'Failed to create class update' });
+  }
+});
 
 /**
  * @swagger
