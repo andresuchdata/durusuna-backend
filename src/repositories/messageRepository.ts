@@ -107,6 +107,20 @@ export class MessageRepository {
 
     console.log(`🔍 Finding conversations for user: ${userId}`);
     
+    // First, check if user has any participants records
+    const participantCheck = await this.db('conversation_participants')
+      .where('user_id', userId)
+      .count('* as count')
+      .first();
+    console.log(`   User has ${participantCheck?.count || 0} participant records`);
+    
+    const activeParticipantCheck = await this.db('conversation_participants')
+      .where('user_id', userId)
+      .where('is_active', true)
+      .count('* as count')
+      .first();
+    console.log(`   User has ${activeParticipantCheck?.count || 0} ACTIVE participant records`);
+    
     const result = await this.db('conversations')
       .select(
         'conversations.id',
