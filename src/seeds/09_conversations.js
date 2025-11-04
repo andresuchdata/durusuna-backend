@@ -12,6 +12,7 @@ const USER_IDS = {
   TEACHER_SMP_3: '20000000-0000-0000-0000-000000000013',
   STUDENT_SDIT_1A_1: '30000000-0000-0000-0000-000000000001',
   STUDENT_SDIT_1A_2: '30000000-0000-0000-0000-000000000002',
+  STUDENT_SDIT_1A_3: '30000000-0000-0000-0000-000000000003',
   STUDENT_SDIT_2C_1: '30000000-0000-0000-0000-000000000011',
   STUDENT_SMP_7M1_1: '30000000-0000-0000-0000-000000000101',
   STUDENT_SMP_7M1_2: '30000000-0000-0000-0000-000000000102',
@@ -19,6 +20,8 @@ const USER_IDS = {
   PARENT_1: '40000000-0000-0000-0000-000000000001',
   PARENT_2: '40000000-0000-0000-0000-000000000002',
   PARENT_3: '40000000-0000-0000-0000-000000000003',
+  PARENT_4: '40000000-0000-0000-0000-000000000004',
+  PARENT_5: '40000000-0000-0000-0000-000000000005',
   PARENT_16: '40000000-0000-0000-0000-000000000016',
   PARENT_17: '40000000-0000-0000-0000-000000000017',
   PARENT_18: '40000000-0000-0000-0000-000000000018'
@@ -28,7 +31,8 @@ const CONVERSATION_IDS = {
   DM_TEACHER_STUDENT: '70000000-0000-0000-0000-000000000001',
   DM_TEACHER_PARENT: '70000000-0000-0000-0000-000000000002',
   GROUP_CLASS_1A: '70000000-0000-0000-0000-000000000011',
-  GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012'
+  GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012',
+  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013'
 };
 
 /**
@@ -101,6 +105,21 @@ exports.seed = async function(knex) {
         is_active: true,
         created_at: new Date('2024-11-01T08:00:00Z'),
         updated_at: new Date('2024-12-23T11:15:00Z')
+      },
+      
+      // 5. Group: Parents of Class 1A
+      {
+        id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+        type: 'group',
+        name: 'Orang Tua Kelas 1A',
+        description: 'Group komunikasi orang tua murid kelas 1A dengan wali kelas',
+        avatar_url: null,
+        created_by: USER_IDS.TEACHER_SDIT_1,
+        last_message_id: null,
+        last_message_at: new Date('2024-12-24T09:30:00Z'),
+        is_active: true,
+        created_at: new Date('2024-12-01T10:00:00Z'),
+        updated_at: new Date('2024-12-24T09:30:00Z')
       }
     ];
     
@@ -257,6 +276,60 @@ exports.seed = async function(knex) {
         can_remove_participants: false,
         created_at: new Date('2024-11-01T08:30:00Z'),
         updated_at: new Date('2024-12-23T09:45:00Z')
+      },
+      
+      // Group: Parents of Class 1A
+      {
+        conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+        user_id: USER_IDS.TEACHER_SDIT_1,
+        joined_at: new Date('2024-12-01T10:00:00Z'),
+        unread_count: 0,
+        last_read_at: new Date('2024-12-24T09:30:00Z'),
+        is_active: true,
+        role: 'admin',
+        can_add_participants: true,
+        can_remove_participants: true,
+        created_at: new Date('2024-12-01T10:00:00Z'),
+        updated_at: new Date('2024-12-24T09:30:00Z')
+      },
+      {
+        conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+        user_id: USER_IDS.PARENT_2,
+        joined_at: new Date('2024-12-01T11:00:00Z'),
+        unread_count: 1,
+        last_read_at: new Date('2024-12-24T08:00:00Z'),
+        is_active: true,
+        role: 'member',
+        can_add_participants: false,
+        can_remove_participants: false,
+        created_at: new Date('2024-12-01T11:00:00Z'),
+        updated_at: new Date('2024-12-24T08:00:00Z')
+      },
+      {
+        conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+        user_id: USER_IDS.PARENT_4,
+        joined_at: new Date('2024-12-01T11:15:00Z'),
+        unread_count: 1,
+        last_read_at: new Date('2024-12-24T07:30:00Z'),
+        is_active: true,
+        role: 'member',
+        can_add_participants: false,
+        can_remove_participants: false,
+        created_at: new Date('2024-12-01T11:15:00Z'),
+        updated_at: new Date('2024-12-24T07:30:00Z')
+      },
+      {
+        conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+        user_id: USER_IDS.PARENT_5,
+        joined_at: new Date('2024-12-01T11:30:00Z'),
+        unread_count: 1,
+        last_read_at: new Date('2024-12-24T06:00:00Z'),
+        is_active: true,
+        role: 'member',
+        can_add_participants: false,
+        can_remove_participants: false,
+        created_at: new Date('2024-12-01T11:30:00Z'),
+        updated_at: new Date('2024-12-24T06:00:00Z')
       }
     ];
     
@@ -268,6 +341,9 @@ exports.seed = async function(knex) {
     
     // Create DMs for more teacher-student pairs
     const teacherStudentPairs = [
+      // Additional DMs for TEACHER_SDIT_1 (teacher1@asdf.com)
+      { teacher: USER_IDS.TEACHER_SDIT_1, student: USER_IDS.STUDENT_SDIT_1A_3 },
+      // Other teachers
       { teacher: USER_IDS.TEACHER_SDIT_2, student: USER_IDS.STUDENT_SDIT_1A_2 },
       { teacher: USER_IDS.TEACHER_SDIT_3, student: USER_IDS.STUDENT_SDIT_2C_1 },
       { teacher: USER_IDS.TEACHER_SMP_2, student: USER_IDS.STUDENT_SMP_7M1_2 },
@@ -324,7 +400,10 @@ exports.seed = async function(knex) {
     
     // Create DMs for more teacher-parent pairs
     const teacherParentPairs = [
+      // Additional DMs for TEACHER_SDIT_1 (teacher1@asdf.com)
       { teacher: USER_IDS.TEACHER_SDIT_1, parent: USER_IDS.PARENT_2 },
+      { teacher: USER_IDS.TEACHER_SDIT_1, parent: USER_IDS.PARENT_4 },
+      // Other teachers
       { teacher: USER_IDS.TEACHER_SDIT_2, parent: USER_IDS.PARENT_3 },
       { teacher: USER_IDS.TEACHER_SMP_1, parent: USER_IDS.PARENT_17 },
       { teacher: USER_IDS.TEACHER_SMP_2, parent: USER_IDS.PARENT_18 },
@@ -388,8 +467,10 @@ exports.seed = async function(knex) {
     console.log('   - 1 DM: Teacher ↔ Parent');
     console.log('   - 1 Group: Class 1A (Teachers + Parents)');
     console.log('   - 1 Group: All Teachers + Admins');
+    console.log('   - 1 Group: Parents of Class 1A (Teacher + Parents)');
     console.log(`   - ${teacherStudentPairs.length} additional Teacher ↔ Student DMs`);
     console.log(`   - ${teacherParentPairs.length} additional Teacher ↔ Parent DMs`);
-    console.log(`   Total: ${4 + additionalConversations.length} conversations`);
+    console.log(`   Total: ${5 + additionalConversations.length} conversations`);
+    console.log('   - teacher1@asdf.com now has: 2 DMs (student), 2 DMs (parent), 3 groups');
   });
 };

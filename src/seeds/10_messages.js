@@ -11,6 +11,9 @@ const USER_IDS = {
   STUDENT_SDIT_1A_1: '30000000-0000-0000-0000-000000000001',
   STUDENT_SMP_7M1_1: '30000000-0000-0000-0000-000000000101',
   PARENT_1: '40000000-0000-0000-0000-000000000001',
+  PARENT_2: '40000000-0000-0000-0000-000000000002',
+  PARENT_4: '40000000-0000-0000-0000-000000000004',
+  PARENT_5: '40000000-0000-0000-0000-000000000005',
   PARENT_16: '40000000-0000-0000-0000-000000000016'
 };
 
@@ -18,7 +21,8 @@ const CONVERSATION_IDS = {
   DM_TEACHER_STUDENT: '70000000-0000-0000-0000-000000000001',
   DM_TEACHER_PARENT: '70000000-0000-0000-0000-000000000002',
   GROUP_CLASS_1A: '70000000-0000-0000-0000-000000000011',
-  GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012'
+  GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012',
+  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013'
 };
 
 /**
@@ -36,9 +40,11 @@ exports.seed = async function(knex) {
     DM_TS_1: uuidv4(),
     DM_TS_2: uuidv4(),
     DM_TS_3: uuidv4(),
+    DM_TS_4: uuidv4(),
     DM_TP_1: uuidv4(),
     DM_TP_2: uuidv4(),
     DM_TP_3: uuidv4(),
+    DM_TP_4: uuidv4(),
     GRP_1A_1: uuidv4(),
     GRP_1A_2: uuidv4(),
     GRP_1A_3: uuidv4(),
@@ -46,7 +52,11 @@ exports.seed = async function(knex) {
     GRP_ADM_1: uuidv4(),
     GRP_ADM_2: uuidv4(),
     GRP_ADM_3: uuidv4(),
-    GRP_ADM_4: uuidv4()
+    GRP_ADM_4: uuidv4(),
+    GRP_PAR_1: uuidv4(),
+    GRP_PAR_2: uuidv4(),
+    GRP_PAR_3: uuidv4(),
+    GRP_PAR_4: uuidv4()
   };
   
   // 1. DM: Teacher vs Student Messages
@@ -94,6 +104,21 @@ exports.seed = async function(knex) {
       client_message_id: `client_${MESSAGE_IDS.DM_TS_3}`,
       created_at: new Date('2024-12-20T10:30:00Z'),
       updated_at: new Date('2024-12-20T10:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.DM_TS_4,
+      conversation_id: CONVERSATION_IDS.DM_TEACHER_STUDENT,
+      sender_id: USER_IDS.STUDENT_SDIT_1A_1,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Baik ustadz, terima kasih. Insya Allah Ahmad akan lebih semangat lagi!',
+      message_type: 'text',
+      reactions: JSON.stringify({ '🤲': [USER_IDS.TEACHER_SDIT_1] }),
+      is_read: true,
+      read_at: new Date('2024-12-20T11:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.DM_TS_4}`,
+      created_at: new Date('2024-12-20T10:45:00Z'),
+      updated_at: new Date('2024-12-20T10:45:00Z')
     }
   );
   
@@ -146,6 +171,21 @@ exports.seed = async function(knex) {
       client_message_id: `client_${MESSAGE_IDS.DM_TP_3}`,
       created_at: new Date('2024-12-21T14:20:00Z'),
       updated_at: new Date('2024-12-21T14:20:00Z')
+    },
+    {
+      id: MESSAGE_IDS.DM_TP_4,
+      conversation_id: CONVERSATION_IDS.DM_TEACHER_PARENT,
+      sender_id: USER_IDS.PARENT_16,
+      receiver_id: USER_IDS.TEACHER_SMP_1,
+      content: 'Barakallahu fiikum ustadz. Insya Allah kami akan lebih perhatikan pelajaran matematikanya. Jazakallahu khairan atas bimbingannya.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SMP_1] }),
+      is_read: true,
+      read_at: new Date('2024-12-21T15:30:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.DM_TP_4}`,
+      created_at: new Date('2024-12-21T15:00:00Z'),
+      updated_at: new Date('2024-12-21T15:00:00Z')
     }
   );
   
@@ -290,19 +330,86 @@ exports.seed = async function(knex) {
     }
   );
   
+  // 5. Group: Parents of Class 1A Messages
+  messages.push(
+    {
+      id: MESSAGE_IDS.GRP_PAR_1,
+      conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: null,
+      content: 'Assalamu\'alaikum ayah bunda semua. Selamat bergabung di group orang tua kelas 1A. Semoga kita bisa saling berkomunikasi dengan baik untuk mendukung perkembangan anak-anak kita.',
+      message_type: 'text',
+      reactions: JSON.stringify({ 
+        '👍': [USER_IDS.PARENT_2, USER_IDS.PARENT_4], 
+        '🤲': [USER_IDS.PARENT_5] 
+      }),
+      is_read: true,
+      read_at: new Date('2024-12-01T12:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.GRP_PAR_1}`,
+      created_at: new Date('2024-12-01T10:30:00Z'),
+      updated_at: new Date('2024-12-01T10:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.GRP_PAR_2,
+      conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+      sender_id: USER_IDS.PARENT_2,
+      receiver_id: null,
+      content: 'Wa\'alaikumussalam ustadz. Alhamdulillah, terima kasih sudah membuat group ini. Sangat membantu untuk koordinasi.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SDIT_1, USER_IDS.PARENT_4] }),
+      is_read: true,
+      read_at: new Date('2024-12-23T08:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.GRP_PAR_2}`,
+      created_at: new Date('2024-12-23T07:15:00Z'),
+      updated_at: new Date('2024-12-23T07:15:00Z')
+    },
+    {
+      id: MESSAGE_IDS.GRP_PAR_3,
+      conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+      sender_id: USER_IDS.PARENT_4,
+      receiver_id: null,
+      content: 'Ustadz, untuk jadwal kegiatan minggu depan apakah ada perubahan? Mohon informasinya.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '👍': [USER_IDS.PARENT_2, USER_IDS.PARENT_5] }),
+      is_read: true,
+      read_at: new Date('2024-12-24T08:30:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.GRP_PAR_3}`,
+      created_at: new Date('2024-12-24T07:45:00Z'),
+      updated_at: new Date('2024-12-24T07:45:00Z')
+    },
+    {
+      id: MESSAGE_IDS.GRP_PAR_4,
+      conversation_id: CONVERSATION_IDS.GROUP_PARENTS_1A,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: null,
+      content: 'Alhamdulillah tidak ada perubahan jadwal. Semua berjalan sesuai rencana. Mohon anak-anak tetap dijaga kesehatannya dan semangat belajarnya. Barakallahu fiikum.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '🤲': [USER_IDS.PARENT_2, USER_IDS.PARENT_4, USER_IDS.PARENT_5] }),
+      is_read: false,
+      read_at: null,
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.GRP_PAR_4}`,
+      created_at: new Date('2024-12-24T09:30:00Z'),
+      updated_at: new Date('2024-12-24T09:30:00Z')
+    }
+  );
+  
   await knex('messages').insert(messages);
   
   // Update conversations with last message info
   await knex('conversations').where('id', CONVERSATION_IDS.DM_TEACHER_STUDENT).update({
-    last_message_id: MESSAGE_IDS.DM_TS_3,
-    last_message_at: new Date('2024-12-20T10:30:00Z'),
-    updated_at: new Date('2024-12-20T10:30:00Z')
+    last_message_id: MESSAGE_IDS.DM_TS_4,
+    last_message_at: new Date('2024-12-20T10:45:00Z'),
+    updated_at: new Date('2024-12-20T10:45:00Z')
   });
   
   await knex('conversations').where('id', CONVERSATION_IDS.DM_TEACHER_PARENT).update({
-    last_message_id: MESSAGE_IDS.DM_TP_3,
-    last_message_at: new Date('2024-12-21T14:20:00Z'),
-    updated_at: new Date('2024-12-21T14:20:00Z')
+    last_message_id: MESSAGE_IDS.DM_TP_4,
+    last_message_at: new Date('2024-12-21T15:00:00Z'),
+    updated_at: new Date('2024-12-21T15:00:00Z')
   });
   
   await knex('conversations').where('id', CONVERSATION_IDS.GROUP_CLASS_1A).update({
@@ -316,12 +423,20 @@ exports.seed = async function(knex) {
     last_message_at: new Date('2024-12-23T11:15:00Z'),
     updated_at: new Date('2024-12-23T11:15:00Z')
   });
+  
+  await knex('conversations').where('id', CONVERSATION_IDS.GROUP_PARENTS_1A).update({
+    last_message_id: MESSAGE_IDS.GRP_PAR_4,
+    last_message_at: new Date('2024-12-24T09:30:00Z'),
+    updated_at: new Date('2024-12-24T09:30:00Z')
+  });
 
   console.log('✅ Messages seeded successfully');
   console.log(`   - Total messages: ${messages.length}`);
-  console.log('   - DM Teacher ↔ Student: 3 messages');
-  console.log('   - DM Teacher ↔ Parent: 3 messages');
+  console.log('   - DM Teacher ↔ Student: 4 messages');
+  console.log('   - DM Teacher ↔ Parent: 4 messages');
   console.log('   - Group Class 1A: 4 messages with reactions');
   console.log('   - Group Teachers/Admin: 4 messages');
+  console.log('   - Group Parents 1A: 4 messages');
+  console.log('   - All conversations now have at least 4 messages');
   console.log('   - Messages include Islamic greetings and contextual content');
 };
