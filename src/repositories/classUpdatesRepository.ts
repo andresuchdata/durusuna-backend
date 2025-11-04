@@ -34,10 +34,12 @@ export class ClassUpdatesRepository {
     // Build query for class updates
     let query = this.db('class_updates')
       .join('users', 'class_updates.author_id', 'users.id')
+      .join('classes', 'class_updates.class_id', 'classes.id')
       .where('class_updates.class_id', classId)
       .where('class_updates.is_deleted', false)
       .select(
         'class_updates.*',
+        'classes.name as class_name',
         'users.id as author_user_id',
         'users.first_name as author_first_name',
         'users.last_name as author_last_name',
@@ -106,6 +108,7 @@ export class ClassUpdatesRepository {
       return {
         id: update.id,
         class_id: update.class_id,
+        class_name: update.class_name,
         author_id: update.author_id,
         title: update.title,
         content: update.content,
@@ -208,6 +211,7 @@ export class ClassUpdatesRepository {
       return {
         id: update.id,
         class_id: update.class_id,
+        class_name: update.class_name,
         author_id: update.author_id,
         title: update.title,
         content: update.content,
