@@ -105,7 +105,9 @@ export class MessageRepository {
     const offset = (page - 1) * limit;
     const pageLimit = Math.min(limit, 25);
 
-    return await this.db('conversations')
+    console.log(`🔍 Finding conversations for user: ${userId}`);
+    
+    const result = await this.db('conversations')
       .select(
         'conversations.id',
         'conversations.type',
@@ -134,6 +136,9 @@ export class MessageRepository {
       .orderBy('conversations.created_at', 'desc')
       .offset(offset)
       .limit(pageLimit);
+    
+    console.log(`✅ Found ${result.length} conversations for user ${userId}`);
+    return result;
   }
 
   async findConversationById(conversationId: string): Promise<any | null> {
