@@ -154,10 +154,12 @@ export class ClassUpdatesRepository {
     // Get updates from all user's classes
     const updates = await this.db('class_updates')
       .join('users', 'class_updates.author_id', 'users.id')
+      .join('classes', 'class_updates.class_id', 'classes.id')
       .whereIn('class_updates.class_id', classIds)
       .where('class_updates.is_deleted', false)
       .select(
         'class_updates.*',
+        'classes.name as class_name',
         'users.id as author_user_id',
         'users.first_name as author_first_name',
         'users.last_name as author_last_name',
