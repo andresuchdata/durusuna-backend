@@ -359,14 +359,10 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   try {
     const { class_id } = req.query;
 
-    if (!class_id) {
-      return res.status(400).json({ error: 'class_id is required' });
-    }
-
     // Use service to get class updates with pagination
     const queryParams = req.query as ClassUpdateQueryParams & { page?: string; limit?: string };
     const result = await classUpdatesService.getClassUpdates(
-      class_id as string,
+      class_id as string | undefined,
       queryParams,
       authReq.user
     );

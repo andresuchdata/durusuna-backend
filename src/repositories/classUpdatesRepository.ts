@@ -130,6 +130,106 @@ export class ClassUpdatesRepository {
     });
   }
 
+  async findByUserId(
+    userId: string,
+    options: {
+      page: number;
+      limit: number;
+      offset: number;
+    }
+  ): Promise<ClassUpdateWithAuthor[]> {
+    const { limit, offset } = options;
+
+    // Get all classes the user has access to
+    const userClasses = await this.db('user_classes')
+      .where('user_id', userId)
+      .select('class_id');
+    
+    const classIds = userClasses.map(uc => uc.class_id);
+    
+    if (classIds.length === 0) {
+      return [];
+    }
+
+    // Get updates from all user's classes
+    const updates = await this.db('class_updates')
+      .join('users', 'class_updates.author_id', 'users.id')
+      .whereIn('class_updates.class_id', classIds)
+      .where('class_updates.is_deleted', false)
+      .select(
+        'class_updates.*',
+        'users.id as author_user_id',
+        'users.first_name as author_first_name',
+        'users.last_name as author_last_name',
+        'users.email as author_email',
+        'users.phone as author_phone',
+        'users.avatar_url as author_avatar',
+        'users.user_type as author_user_type',
+        'users.role as author_role',
+        'users.school_id as author_school_id',
+        'users.is_active as author_is_active',
+        'users.last_login_at as author_last_active_at',
+        'users.created_at as author_created_at',
+        'users.updated_at as author_updated_at'
+      )
+      .orderBy([
+        { column: 'class_updates.is_pinned', order: 'desc' },
+        { column: 'class_updates.updated_at', order: 'desc' },
+        { column: 'class_updates.created_at', order: 'desc' }
+      ])
+      .limit(limit)
+      .offset(offset);
+
+    // Get comments count for each update
+    const updateIds = updates.map(update => update.id);
+    let commentCounts: Array<{ class_update_id: string; count: string }> = [];
+    
+    if (updateIds.length > 0) {
+      commentCounts = await this.db('class_update_comments')
+        .whereIn('class_update_id', updateIds)
+        .where('is_deleted', false)
+        .groupBy('class_update_id')
+        .select('class_update_id')
+        .count('* as count');
+    }
+
+    // Create a map for quick lookup of comment counts
+    const commentCountMap: Record<string, number> = {};
+    commentCounts.forEach(item => {
+      commentCountMap[item.class_update_id] = parseInt(item.count);
+    });
+
+    // Format response with comment counts
+    return updates.map(update => {
+      const attachments = safeJsonParse(update.attachments, []);
+      
+      return {
+        id: update.id,
+        class_id: update.class_id,
+        author_id: update.author_id,
+        title: update.title,
+        content: update.content,
+        update_type: update.update_type,
+        is_pinned: update.is_pinned,
+        is_deleted: update.is_deleted,
+        attachments: attachments,
+        reactions: migrateReactions(safeJsonParse(update.reactions, {})),
+        comment_count: commentCountMap[update.id] || 0,
+        created_at: update.created_at,
+        updated_at: update.updated_at,
+        author: {
+          id: update.author_user_id,
+          first_name: update.author_first_name,
+          last_name: update.author_last_name,
+          email: update.author_email,
+          avatar_url: update.author_avatar || "",
+          user_type: update.author_user_type,
+          role: update.author_role
+        }
+      };
+    });
+  }
+
   async create(data: CreateClassUpdateRequest & { 
     id: string; 
     author_id: string; 
@@ -487,5 +587,11 @@ export class ClassUpdatesRepository {
         is_pinned: isPinned,
         updated_at: new Date()
       });
+  }
+
+  async getUserClasses(userId: string): Promise<Array<{ class_id: string }>> {
+    return await this.db('user_classes')
+      .where('user_id', userId)
+      .select('class_id');
   }
 }

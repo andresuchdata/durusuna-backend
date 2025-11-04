@@ -26,14 +26,33 @@ export class ClassUpdatesService {
   constructor(private classUpdatesRepository: ClassUpdatesRepository) {}
 
   async getClassUpdates(
-    classId: string,
+    classId: string | undefined,
     queryParams: ClassUpdateQueryParams & { page?: string; limit?: string },
     currentUser: AuthenticatedUser
   ): Promise<ClassUpdatesResponse> {
     const { page = '1', limit = '20', subject_offering_id, ...otherParams } = queryParams;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Check user access
+    // If no classId provided, get updates from all user's classes
+    if (!classId) {
+      const updates = await this.classUpdatesRepository.findByUserId(currentUser.id, {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        offset
+      });
+
+      return {
+        updates,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: updates.length,
+          hasMore: updates.length === parseInt(limit)
+        }
+      };
+    }
+
+    // Check user access for specific class
     await this.checkUserAccess(currentUser, classId);
 
     // Handle subject filtering if needed
