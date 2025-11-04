@@ -32,7 +32,15 @@ const CONVERSATION_IDS = {
   DM_TEACHER_PARENT: '70000000-0000-0000-0000-000000000002',
   GROUP_CLASS_1A: '70000000-0000-0000-0000-000000000011',
   GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012',
-  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013'
+  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013',
+  // Additional DMs with fixed IDs
+  DM_T1_S3: '70000000-0000-0000-0000-000000000021', // Teacher1 - Student1A_3
+  DM_T1_P2: '70000000-0000-0000-0000-000000000022', // Teacher1 - Parent2
+  DM_T1_P4: '70000000-0000-0000-0000-000000000023', // Teacher1 - Parent4
+  DM_T2_S2: '70000000-0000-0000-0000-000000000024', // Teacher2 - Student1A_2
+  DM_T3_S2C: '70000000-0000-0000-0000-000000000025', // Teacher3 - Student2C_1
+  DM_T12_S7M2: '70000000-0000-0000-0000-000000000026', // TeacherSMP2 - Student7M1_2
+  DM_T13_S8M1: '70000000-0000-0000-0000-000000000027' // TeacherSMP3 - Student8M1_1
 };
 
 /**
@@ -350,8 +358,16 @@ exports.seed = async function(knex) {
       { teacher: USER_IDS.TEACHER_SMP_3, student: USER_IDS.STUDENT_SMP_8M1_1 },
     ];
     
+    const convIdMap = [
+      CONVERSATION_IDS.DM_T1_S3,
+      CONVERSATION_IDS.DM_T2_S2,
+      CONVERSATION_IDS.DM_T3_S2C,
+      CONVERSATION_IDS.DM_T12_S7M2,
+      CONVERSATION_IDS.DM_T13_S8M1
+    ];
+    
     teacherStudentPairs.forEach((pair, index) => {
-      const convId = uuidv4();
+      const convId = convIdMap[index];
       const now = new Date();
       
       additionalConversations.push({
@@ -409,8 +425,16 @@ exports.seed = async function(knex) {
       { teacher: USER_IDS.TEACHER_SMP_2, parent: USER_IDS.PARENT_18 },
     ];
     
+    const parentConvIdMap = [
+      CONVERSATION_IDS.DM_T1_P2,
+      CONVERSATION_IDS.DM_T1_P4,
+      '70000000-0000-0000-0000-000000000028', // Teacher2 - Parent3
+      '70000000-0000-0000-0000-000000000029', // TeacherSMP1 - Parent17
+      '70000000-0000-0000-0000-000000000030'  // TeacherSMP2 - Parent18
+    ];
+    
     teacherParentPairs.forEach((pair, index) => {
-      const convId = uuidv4();
+      const convId = parentConvIdMap[index];
       const now = new Date();
       
       additionalConversations.push({

@@ -9,6 +9,7 @@ const USER_IDS = {
   TEACHER_SMP_1: '20000000-0000-0000-0000-000000000011',
   TEACHER_SMP_2: '20000000-0000-0000-0000-000000000012',
   STUDENT_SDIT_1A_1: '30000000-0000-0000-0000-000000000001',
+  STUDENT_SDIT_1A_3: '30000000-0000-0000-0000-000000000003',
   STUDENT_SMP_7M1_1: '30000000-0000-0000-0000-000000000101',
   PARENT_1: '40000000-0000-0000-0000-000000000001',
   PARENT_2: '40000000-0000-0000-0000-000000000002',
@@ -22,7 +23,11 @@ const CONVERSATION_IDS = {
   DM_TEACHER_PARENT: '70000000-0000-0000-0000-000000000002',
   GROUP_CLASS_1A: '70000000-0000-0000-0000-000000000011',
   GROUP_TEACHERS_ADMIN: '70000000-0000-0000-0000-000000000012',
-  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013'
+  GROUP_PARENTS_1A: '70000000-0000-0000-0000-000000000013',
+  // Additional conversations
+  DM_T1_S3: '70000000-0000-0000-0000-000000000021',
+  DM_T1_P2: '70000000-0000-0000-0000-000000000022',
+  DM_T1_P4: '70000000-0000-0000-0000-000000000023'
 };
 
 /**
@@ -56,7 +61,20 @@ exports.seed = async function(knex) {
     GRP_PAR_1: uuidv4(),
     GRP_PAR_2: uuidv4(),
     GRP_PAR_3: uuidv4(),
-    GRP_PAR_4: uuidv4()
+    GRP_PAR_4: uuidv4(),
+    // Additional conversations
+    T1S3_1: uuidv4(),
+    T1S3_2: uuidv4(),
+    T1S3_3: uuidv4(),
+    T1S3_4: uuidv4(),
+    T1P2_1: uuidv4(),
+    T1P2_2: uuidv4(),
+    T1P2_3: uuidv4(),
+    T1P2_4: uuidv4(),
+    T1P4_1: uuidv4(),
+    T1P4_2: uuidv4(),
+    T1P4_3: uuidv4(),
+    T1P4_4: uuidv4()
   };
   
   // 1. DM: Teacher vs Student Messages
@@ -397,6 +415,198 @@ exports.seed = async function(knex) {
     }
   );
   
+  // 6. Additional DM: Teacher1 vs Student1A_3
+  messages.push(
+    {
+      id: MESSAGE_IDS.T1S3_1,
+      conversation_id: CONVERSATION_IDS.DM_T1_S3,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.STUDENT_SDIT_1A_3,
+      content: 'Assalamu\'alaikum Fatimah. Alhamdulillah hafalan Fatimah sudah bagus. Terus semangat ya!',
+      message_type: 'text',
+      reactions: JSON.stringify({ '❤️': [USER_IDS.STUDENT_SDIT_1A_3] }),
+      is_read: true,
+      read_at: new Date('2024-12-25T09:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1S3_1}`,
+      created_at: new Date('2024-12-25T08:30:00Z'),
+      updated_at: new Date('2024-12-25T08:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1S3_2,
+      conversation_id: CONVERSATION_IDS.DM_T1_S3,
+      sender_id: USER_IDS.STUDENT_SDIT_1A_3,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Wa\'alaikumussalam ustadz. Jazakallahu khairan. Fatimah akan terus belajar.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '👍': [USER_IDS.TEACHER_SDIT_1] }),
+      is_read: true,
+      read_at: new Date('2024-12-25T10:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1S3_2}`,
+      created_at: new Date('2024-12-25T09:30:00Z'),
+      updated_at: new Date('2024-12-25T09:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1S3_3,
+      conversation_id: CONVERSATION_IDS.DM_T1_S3,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.STUDENT_SDIT_1A_3,
+      content: 'Besok kita akan muroja\'ah Surah Al-Baqarah ayat 1-5. Mohon dipersiapkan ya.',
+      message_type: 'text',
+      reactions: JSON.stringify({}),
+      is_read: true,
+      read_at: new Date('2024-12-26T08:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1S3_3}`,
+      created_at: new Date('2024-12-26T07:30:00Z'),
+      updated_at: new Date('2024-12-26T07:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1S3_4,
+      conversation_id: CONVERSATION_IDS.DM_T1_S3,
+      sender_id: USER_IDS.STUDENT_SDIT_1A_3,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Baik ustadz, insya Allah siap!',
+      message_type: 'text',
+      reactions: JSON.stringify({ '🤲': [USER_IDS.TEACHER_SDIT_1] }),
+      is_read: false,
+      read_at: null,
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1S3_4}`,
+      created_at: new Date('2024-12-26T08:15:00Z'),
+      updated_at: new Date('2024-12-26T08:15:00Z')
+    }
+  );
+  
+  // 7. Additional DM: Teacher1 vs Parent2
+  messages.push(
+    {
+      id: MESSAGE_IDS.T1P2_1,
+      conversation_id: CONVERSATION_IDS.DM_T1_P2,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.PARENT_2,
+      content: 'Assalamu\'alaikum Bapak/Ibu. Saya ingin memberikan update tentang perkembangan putra/putri Bapak/Ibu di kelas.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '👍': [USER_IDS.PARENT_2] }),
+      is_read: true,
+      read_at: new Date('2024-12-24T10:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P2_1}`,
+      created_at: new Date('2024-12-24T09:00:00Z'),
+      updated_at: new Date('2024-12-24T09:00:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P2_2,
+      conversation_id: CONVERSATION_IDS.DM_T1_P2,
+      sender_id: USER_IDS.PARENT_2,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Wa\'alaikumussalam ustadz. Alhamdulillah, terima kasih. Bagaimana perkembangannya?',
+      message_type: 'text',
+      reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SDIT_1] }),
+      is_read: true,
+      read_at: new Date('2024-12-24T11:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P2_2}`,
+      created_at: new Date('2024-12-24T10:30:00Z'),
+      updated_at: new Date('2024-12-24T10:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P2_3,
+      conversation_id: CONVERSATION_IDS.DM_T1_P2,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.PARENT_2,
+      content: 'Alhamdulillah perkembangannya baik. Anak Bapak/Ibu aktif di kelas dan hafalannya lancar. Terus dukung di rumah ya.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '🤲': [USER_IDS.PARENT_2] }),
+      is_read: true,
+      read_at: new Date('2024-12-25T08:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P2_3}`,
+      created_at: new Date('2024-12-24T14:00:00Z'),
+      updated_at: new Date('2024-12-24T14:00:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P2_4,
+      conversation_id: CONVERSATION_IDS.DM_T1_P2,
+      sender_id: USER_IDS.PARENT_2,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Barakallahu fiikum ustadz. Insya Allah kami akan terus dukung.',
+      message_type: 'text',
+      reactions: JSON.stringify({}),
+      is_read: false,
+      read_at: null,
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P2_4}`,
+      created_at: new Date('2024-12-25T09:00:00Z'),
+      updated_at: new Date('2024-12-25T09:00:00Z')
+    }
+  );
+  
+  // 8. Additional DM: Teacher1 vs Parent4
+  messages.push(
+    {
+      id: MESSAGE_IDS.T1P4_1,
+      conversation_id: CONVERSATION_IDS.DM_T1_P4,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.PARENT_4,
+      content: 'Assalamu\'alaikum. Mohon maaf mengganggu waktunya. Ada yang ingin saya sampaikan terkait pembelajaran.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '👍': [USER_IDS.PARENT_4] }),
+      is_read: true,
+      read_at: new Date('2024-12-26T09:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P4_1}`,
+      created_at: new Date('2024-12-26T08:00:00Z'),
+      updated_at: new Date('2024-12-26T08:00:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P4_2,
+      conversation_id: CONVERSATION_IDS.DM_T1_P4,
+      sender_id: USER_IDS.PARENT_4,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Wa\'alaikumussalam ustadz. Tidak mengganggu sama sekali. Silakan ustadz.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '❤️': [USER_IDS.TEACHER_SDIT_1] }),
+      is_read: true,
+      read_at: new Date('2024-12-26T10:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P4_2}`,
+      created_at: new Date('2024-12-26T09:15:00Z'),
+      updated_at: new Date('2024-12-26T09:15:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P4_3,
+      conversation_id: CONVERSATION_IDS.DM_T1_P4,
+      sender_id: USER_IDS.TEACHER_SDIT_1,
+      receiver_id: USER_IDS.PARENT_4,
+      content: 'Minggu depan ada kegiatan field trip ke museum. Mohon persiapkan perlengkapan anak dan izin tertulis.',
+      message_type: 'text',
+      reactions: JSON.stringify({ '👍': [USER_IDS.PARENT_4] }),
+      is_read: true,
+      read_at: new Date('2024-12-26T11:00:00Z'),
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P4_3}`,
+      created_at: new Date('2024-12-26T10:30:00Z'),
+      updated_at: new Date('2024-12-26T10:30:00Z')
+    },
+    {
+      id: MESSAGE_IDS.T1P4_4,
+      conversation_id: CONVERSATION_IDS.DM_T1_P4,
+      sender_id: USER_IDS.PARENT_4,
+      receiver_id: USER_IDS.TEACHER_SDIT_1,
+      content: 'Baik ustadz, akan kami siapkan. Jazakallahu khairan atas informasinya.',
+      message_type: 'text',
+      reactions: JSON.stringify({}),
+      is_read: false,
+      read_at: null,
+      is_deleted: false,
+      client_message_id: `client_${MESSAGE_IDS.T1P4_4}`,
+      created_at: new Date('2024-12-26T11:30:00Z'),
+      updated_at: new Date('2024-12-26T11:30:00Z')
+    }
+  );
+  
   await knex('messages').insert(messages);
   
   // Update conversations with last message info
@@ -429,6 +639,24 @@ exports.seed = async function(knex) {
     last_message_at: new Date('2024-12-24T09:30:00Z'),
     updated_at: new Date('2024-12-24T09:30:00Z')
   });
+  
+  await knex('conversations').where('id', CONVERSATION_IDS.DM_T1_S3).update({
+    last_message_id: MESSAGE_IDS.T1S3_4,
+    last_message_at: new Date('2024-12-26T08:15:00Z'),
+    updated_at: new Date('2024-12-26T08:15:00Z')
+  });
+  
+  await knex('conversations').where('id', CONVERSATION_IDS.DM_T1_P2).update({
+    last_message_id: MESSAGE_IDS.T1P2_4,
+    last_message_at: new Date('2024-12-25T09:00:00Z'),
+    updated_at: new Date('2024-12-25T09:00:00Z')
+  });
+  
+  await knex('conversations').where('id', CONVERSATION_IDS.DM_T1_P4).update({
+    last_message_id: MESSAGE_IDS.T1P4_4,
+    last_message_at: new Date('2024-12-26T11:30:00Z'),
+    updated_at: new Date('2024-12-26T11:30:00Z')
+  });
 
   console.log('✅ Messages seeded successfully');
   console.log(`   - Total messages: ${messages.length}`);
@@ -437,6 +665,7 @@ exports.seed = async function(knex) {
   console.log('   - Group Class 1A: 4 messages with reactions');
   console.log('   - Group Teachers/Admin: 4 messages');
   console.log('   - Group Parents 1A: 4 messages');
+  console.log('   - Teacher1 additional DMs: 3 conversations × 4 messages = 12 messages');
   console.log('   - All conversations now have at least 4 messages');
   console.log('   - Messages include Islamic greetings and contextual content');
 };

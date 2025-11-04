@@ -118,7 +118,9 @@ exports.seed = async function(knex) {
       [USER_IDS.TEACHER_SMP_1, USER_IDS.TEACHER_SMP_2, USER_IDS.TEACHER_SMP_3, USER_IDS.TEACHER_SMP_4];
     
     templates.forEach((template, templateIndex) => {
-      const authorId = teacherIds[templateIndex % teacherIds.length];
+      // Assign one teacher per class to avoid duplicates
+      const teacherIndex = classIndex % teacherIds.length;
+      const authorId = teacherIds[teacherIndex];
       const createdDate = new Date(2024, 11, 15 + templateIndex * 2); // Spread updates over time
       
       classUpdates.push({
