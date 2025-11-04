@@ -50,9 +50,11 @@ const CONVERSATION_IDS = {
 exports.seed = async function(knex) {
   // Deletes ALL existing entries
   await knex.transaction(async (trx) => {
+    console.log('🗑️  Deleting existing conversation data...');
     await trx('conversation_participants').del();
     await trx('messages').del();
     await trx('conversations').del();
+    console.log('✅ Existing data deleted');
     
     const conversations = [
       // 1. DM: Teacher vs Student
@@ -131,9 +133,12 @@ exports.seed = async function(knex) {
       }
     ];
     
+    console.log(`📝 Inserting ${conversations.length} base conversations...`);
     await trx('conversations').insert(conversations);
+    console.log('✅ Base conversations inserted');
     
     // Create conversation participants
+    console.log('👥 Creating conversation participants...');
     const participants = [
       // DM: Teacher vs Student
       {
@@ -341,9 +346,12 @@ exports.seed = async function(knex) {
       }
     ];
     
+    console.log(`📝 Inserting ${participants.length} base participants...`);
     await trx('conversation_participants').insert(participants);
+    console.log('✅ Base participants inserted');
     
     // Add more conversations for other users
+    console.log('➕ Creating additional conversations...');
     const additionalConversations = [];
     const additionalParticipants = [];
     
@@ -482,8 +490,11 @@ exports.seed = async function(knex) {
     });
     
     if (additionalConversations.length > 0) {
+      console.log(`📝 Inserting ${additionalConversations.length} additional conversations...`);
       await trx('conversations').insert(additionalConversations);
+      console.log(`📝 Inserting ${additionalParticipants.length} additional participants...`);
       await trx('conversation_participants').insert(additionalParticipants);
+      console.log('✅ Additional conversations and participants inserted');
     }
     
     console.log('✅ Conversations and participants seeded successfully');
