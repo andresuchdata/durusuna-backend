@@ -49,12 +49,13 @@ const CONVERSATION_IDS = {
  */
 exports.seed = async function(knex) {
   // Deletes ALL existing entries
-  await knex.transaction(async (trx) => {
-    console.log('🗑️  Deleting existing conversation data...');
-    await trx('conversation_participants').del();
-    await trx('messages').del();
-    await trx('conversations').del();
-    console.log('✅ Existing data deleted');
+  try {
+    await knex.transaction(async (trx) => {
+      console.log('🗑️  Deleting existing conversation data...');
+      await trx('conversation_participants').del();
+      await trx('messages').del();
+      await trx('conversations').del();
+      console.log('✅ Existing data deleted');
     
     const conversations = [
       // 1. DM: Teacher vs Student
@@ -507,5 +508,9 @@ exports.seed = async function(knex) {
     console.log(`   - ${teacherParentPairs.length} additional Teacher ↔ Parent DMs`);
     console.log(`   Total: ${5 + additionalConversations.length} conversations`);
     console.log('   - teacher1@asdf.com now has: 2 DMs (student), 2 DMs (parent), 3 groups');
-  });
+    });
+  } catch (error) {
+    console.error('❌ Error seeding conversations:', error);
+    throw error;
+  }
 };
