@@ -6,12 +6,22 @@ const USER_IDS = {
   ADMIN_SMP: '10000000-0000-0000-0000-000000000002',
   TEACHER_SDIT_1: '20000000-0000-0000-0000-000000000001',
   TEACHER_SDIT_2: '20000000-0000-0000-0000-000000000002',
+  TEACHER_SDIT_3: '20000000-0000-0000-0000-000000000003',
   TEACHER_SMP_1: '20000000-0000-0000-0000-000000000011',
   TEACHER_SMP_2: '20000000-0000-0000-0000-000000000012',
+  TEACHER_SMP_3: '20000000-0000-0000-0000-000000000013',
   STUDENT_SDIT_1A_1: '30000000-0000-0000-0000-000000000001',
+  STUDENT_SDIT_1A_2: '30000000-0000-0000-0000-000000000002',
+  STUDENT_SDIT_2C_1: '30000000-0000-0000-0000-000000000011',
   STUDENT_SMP_7M1_1: '30000000-0000-0000-0000-000000000101',
+  STUDENT_SMP_7M1_2: '30000000-0000-0000-0000-000000000102',
+  STUDENT_SMP_8M1_1: '30000000-0000-0000-0000-000000000121',
   PARENT_1: '40000000-0000-0000-0000-000000000001',
-  PARENT_16: '40000000-0000-0000-0000-000000000016'
+  PARENT_2: '40000000-0000-0000-0000-000000000002',
+  PARENT_3: '40000000-0000-0000-0000-000000000003',
+  PARENT_16: '40000000-0000-0000-0000-000000000016',
+  PARENT_17: '40000000-0000-0000-0000-000000000017',
+  PARENT_18: '40000000-0000-0000-0000-000000000018'
 };
 
 const CONVERSATION_IDS = {
@@ -252,10 +262,134 @@ exports.seed = async function(knex) {
     
     await trx('conversation_participants').insert(participants);
     
+    // Add more conversations for other users
+    const additionalConversations = [];
+    const additionalParticipants = [];
+    
+    // Create DMs for more teacher-student pairs
+    const teacherStudentPairs = [
+      { teacher: USER_IDS.TEACHER_SDIT_2, student: USER_IDS.STUDENT_SDIT_1A_2 },
+      { teacher: USER_IDS.TEACHER_SDIT_3, student: USER_IDS.STUDENT_SDIT_2C_1 },
+      { teacher: USER_IDS.TEACHER_SMP_2, student: USER_IDS.STUDENT_SMP_7M1_2 },
+      { teacher: USER_IDS.TEACHER_SMP_3, student: USER_IDS.STUDENT_SMP_8M1_1 },
+    ];
+    
+    teacherStudentPairs.forEach((pair, index) => {
+      const convId = uuidv4();
+      const now = new Date();
+      
+      additionalConversations.push({
+        id: convId,
+        type: 'direct',
+        name: null,
+        description: null,
+        avatar_url: null,
+        created_by: pair.teacher,
+        last_message_id: null,
+        last_message_at: now,
+        is_active: true,
+        created_at: now,
+        updated_at: now
+      });
+      
+      additionalParticipants.push(
+        {
+          conversation_id: convId,
+          user_id: pair.teacher,
+          joined_at: now,
+          unread_count: 0,
+          last_read_at: now,
+          is_active: true,
+          role: 'member',
+          can_add_participants: false,
+          can_remove_participants: false,
+          created_at: now,
+          updated_at: now
+        },
+        {
+          conversation_id: convId,
+          user_id: pair.student,
+          joined_at: now,
+          unread_count: 0,
+          last_read_at: now,
+          is_active: true,
+          role: 'member',
+          can_add_participants: false,
+          can_remove_participants: false,
+          created_at: now,
+          updated_at: now
+        }
+      );
+    });
+    
+    // Create DMs for more teacher-parent pairs
+    const teacherParentPairs = [
+      { teacher: USER_IDS.TEACHER_SDIT_1, parent: USER_IDS.PARENT_2 },
+      { teacher: USER_IDS.TEACHER_SDIT_2, parent: USER_IDS.PARENT_3 },
+      { teacher: USER_IDS.TEACHER_SMP_1, parent: USER_IDS.PARENT_17 },
+      { teacher: USER_IDS.TEACHER_SMP_2, parent: USER_IDS.PARENT_18 },
+    ];
+    
+    teacherParentPairs.forEach((pair, index) => {
+      const convId = uuidv4();
+      const now = new Date();
+      
+      additionalConversations.push({
+        id: convId,
+        type: 'direct',
+        name: null,
+        description: null,
+        avatar_url: null,
+        created_by: pair.teacher,
+        last_message_id: null,
+        last_message_at: now,
+        is_active: true,
+        created_at: now,
+        updated_at: now
+      });
+      
+      additionalParticipants.push(
+        {
+          conversation_id: convId,
+          user_id: pair.teacher,
+          joined_at: now,
+          unread_count: 0,
+          last_read_at: now,
+          is_active: true,
+          role: 'member',
+          can_add_participants: false,
+          can_remove_participants: false,
+          created_at: now,
+          updated_at: now
+        },
+        {
+          conversation_id: convId,
+          user_id: pair.parent,
+          joined_at: now,
+          unread_count: 0,
+          last_read_at: now,
+          is_active: true,
+          role: 'member',
+          can_add_participants: false,
+          can_remove_participants: false,
+          created_at: now,
+          updated_at: now
+        }
+      );
+    });
+    
+    if (additionalConversations.length > 0) {
+      await trx('conversations').insert(additionalConversations);
+      await trx('conversation_participants').insert(additionalParticipants);
+    }
+    
     console.log('✅ Conversations and participants seeded successfully');
     console.log('   - 1 DM: Teacher ↔ Student');
     console.log('   - 1 DM: Teacher ↔ Parent');
     console.log('   - 1 Group: Class 1A (Teachers + Parents)');
     console.log('   - 1 Group: All Teachers + Admins');
+    console.log(`   - ${teacherStudentPairs.length} additional Teacher ↔ Student DMs`);
+    console.log(`   - ${teacherParentPairs.length} additional Teacher ↔ Parent DMs`);
+    console.log(`   Total: ${4 + additionalConversations.length} conversations`);
   });
 };
