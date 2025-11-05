@@ -22,8 +22,55 @@ interface UserAccess {
   role_in_class?: string;
 }
 
+interface Attachment {
+  id: string;
+  url: string;
+  key?: string;
+  [key: string]: any;
+}
+
 export class ClassUpdatesService {
   constructor(private classUpdatesRepository: ClassUpdatesRepository) {}
+
+  /**
+   * Fix attachment URLs that may be using private storage URLs
+   * Converts private R2/S3 URLs to backend proxy URLs
+   */
+  private fixAttachmentUrls(attachments: Attachment[] | null | undefined): Attachment[] {
+    if (!attachments || !Array.isArray(attachments)) return [];
+
+    const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
+
+    return attachments.map(attachment => {
+      // If URL contains private storage endpoints, replace with backend proxy
+      if (attachment.url && 
+          (attachment.url.includes('cloudflarestorage.com') || 
+           attachment.url.includes('.s3.amazonaws.com'))) {
+        
+        // Extract the key from the URL or use the stored key
+        let key = attachment.key;
+        if (!key && attachment.url.includes('cloudflarestorage.com')) {
+          // Extract key from R2 URL: https://xxx.r2.cloudflarestorage.com/bucket-name/folder/year/month/file.ext
+          const urlParts = attachment.url.split('/');
+          const bucketIndex = urlParts.findIndex(part => part.includes('cloudflarestorage.com')) + 1;
+          if (bucketIndex > 0) {
+            // Skip bucket name, take folder/year/month/file
+            key = urlParts.slice(bucketIndex + 1).join('/');
+          }
+        }
+
+        if (key) {
+          // Generate backend proxy URL
+          return {
+            ...attachment,
+            url: `${backendUrl}/api/uploads/serve/${key}`
+          };
+        }
+      }
+
+      return attachment;
+    });
+  }
 
   async getClassUpdates(
     classId: string | undefined,
@@ -43,13 +90,19 @@ export class ClassUpdatesService {
         search
       });
 
+      // Fix attachment URLs for all updates
+      const fixedUpdates = updates.map(update => ({
+        ...update,
+        attachments: this.fixAttachmentUrls(update.attachments as any) as any
+      }));
+
       return {
-        updates,
+        updates: fixedUpdates,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: updates.length,
-          hasMore: updates.length === parseInt(limit)
+          total: fixedUpdates.length,
+          hasMore: fixedUpdates.length === parseInt(limit)
         }
       };
     }
@@ -74,13 +127,19 @@ export class ClassUpdatesService {
       currentUserId: currentUser.id
     });
 
+    // Fix attachment URLs for all updates
+    const fixedUpdates = updates.map(update => ({
+      ...update,
+      attachments: this.fixAttachmentUrls(update.attachments as any) as any
+    }));
+
     return {
-      updates,
+      updates: fixedUpdates,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: updates.length,
-        hasMore: updates.length === parseInt(limit)
+        total: fixedUpdates.length,
+        hasMore: fixedUpdates.length === parseInt(limit)
       }
     };
   }
@@ -110,7 +169,11 @@ export class ClassUpdatesService {
       throw new Error('Failed to retrieve created update');
     }
 
-    return createdUpdate;
+    // Fix attachment URLs before returning
+    return {
+      ...createdUpdate,
+      attachments: this.fixAttachmentUrls(createdUpdate.attachments as any) as any
+    };
   }
 
   private async checkUserAccess(currentUser: AuthenticatedUser, classId: string): Promise<void> {
@@ -392,7 +455,11 @@ export class ClassUpdatesService {
       throw new Error('Failed to update class update');
     }
 
-    return updatedUpdate;
+    // Fix attachment URLs before returning
+    return {
+      ...updatedUpdate,
+      attachments: this.fixAttachmentUrls(updatedUpdate.attachments as any) as any
+    };
   }
 
   /**

@@ -150,7 +150,8 @@ class StorageService {
       let url: string;
       const s3PublicUrl = process.env.S3_PUBLIC_URL; // e.g., https://pub-xxxxx.r2.dev or custom domain
 
-      if (s3PublicUrl) {
+      // Only use S3_PUBLIC_URL if it's a valid public URL (not the private storage endpoint)
+      if (s3PublicUrl && !s3PublicUrl.includes('cloudflarestorage.com') && !s3PublicUrl.includes('s3.amazonaws.com')) {
         // Use direct Sevalla/Cloudflare R2 public URL for better performance
         url = `${s3PublicUrl}/${key}`;
       } else {
@@ -414,7 +415,8 @@ class StorageService {
   generateOptimizedUrl(key: string): string {
     const s3PublicUrl = process.env.S3_PUBLIC_URL; // e.g., https://pub-xxxxx.r2.dev or custom domain
 
-    if (s3PublicUrl) {
+    // Only use S3_PUBLIC_URL if it's a valid public URL (not the private storage endpoint)
+    if (s3PublicUrl && !s3PublicUrl.includes('cloudflarestorage.com') && !s3PublicUrl.includes('s3.amazonaws.com')) {
       // Use direct Sevalla/Cloudflare R2 public URL for better performance
       return `${s3PublicUrl}/${key}`;
     }
