@@ -70,7 +70,8 @@ export class ClassUpdatesService {
       limit: parseInt(limit),
       offset,
       authorIds,
-      search
+      search,
+      currentUserId: currentUser.id
     });
 
     return {

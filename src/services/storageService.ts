@@ -146,10 +146,19 @@ class StorageService {
 
       await this._s3Client.send(command);
 
-      // Generate URL through backend API (eliminates storage endpoint exposure)
-      const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
-      const pathParts = key.split('/');
-      const url = `${backendUrl}/api/uploads/serve/${pathParts.join('/')}`;
+      // Generate URL - prioritize direct S3 public URL (Sevalla/R2), fallback to backend proxy
+      let url: string;
+      const s3PublicUrl = process.env.S3_PUBLIC_URL; // e.g., https://pub-xxxxx.r2.dev or custom domain
+
+      if (s3PublicUrl) {
+        // Use direct Sevalla/Cloudflare R2 public URL for better performance
+        url = `${s3PublicUrl}/${key}`;
+      } else {
+        // Fallback to backend proxy URL
+        const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
+        const pathParts = key.split('/');
+        url = `${backendUrl}/api/uploads/serve/${pathParts.join('/')}`;
+      }
 
       return {
         key,
@@ -403,6 +412,14 @@ class StorageService {
    * Can use CDN URLs for better performance if configured
    */
   generateOptimizedUrl(key: string): string {
+    const s3PublicUrl = process.env.S3_PUBLIC_URL; // e.g., https://pub-xxxxx.r2.dev or custom domain
+
+    if (s3PublicUrl) {
+      // Use direct Sevalla/Cloudflare R2 public URL for better performance
+      return `${s3PublicUrl}/${key}`;
+    }
+
+    // Fallback to backend proxy URL
     const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
     const pathParts = key.split('/');
     return `${backendUrl}/api/uploads/serve/${pathParts.join('/')}`;

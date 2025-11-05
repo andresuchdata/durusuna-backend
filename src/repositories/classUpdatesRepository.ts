@@ -21,6 +21,7 @@ export class ClassUpdatesRepository {
       offset: number;
       authorIds?: string[];
       search?: string;
+      currentUserId?: string;
     }
   ): Promise<ClassUpdateWithAuthor[]> {
     const { 
@@ -30,7 +31,8 @@ export class ClassUpdatesRepository {
       type, 
       exclude_pinned, 
       authorIds,
-      search 
+      search,
+      currentUserId
     } = options;
 
     // Build query for class updates
@@ -85,12 +87,16 @@ export class ClassUpdatesRepository {
       query = query.where('class_updates.id', 'non-existent-id');
     }
 
+    // Order by pinned status only if the author is the current user
     const updates = await query
-      .orderBy([
-        { column: 'class_updates.is_pinned', order: 'desc' },
-        { column: 'class_updates.updated_at', order: 'desc' },
-        { column: 'class_updates.created_at', order: 'desc' }
-      ])
+      .orderByRaw(
+        currentUserId 
+          ? `CASE WHEN class_updates.author_id = ? AND class_updates.is_pinned = true THEN 0 ELSE 1 END`
+          : `class_updates.is_pinned DESC`,
+        currentUserId ? [currentUserId] : []
+      )
+      .orderBy('class_updates.updated_at', 'desc')
+      .orderBy('class_updates.created_at', 'desc')
       .limit(limit)
       .offset(offset);
 
@@ -210,12 +216,14 @@ export class ClassUpdatesRepository {
       query = query.where('class_updates.author_id', author_id);
     }
 
+    // Order by pinned status only if the author is the current user
     const updates = await query
-      .orderBy([
-        { column: 'class_updates.is_pinned', order: 'desc' },
-        { column: 'class_updates.updated_at', order: 'desc' },
-        { column: 'class_updates.created_at', order: 'desc' }
-      ])
+      .orderByRaw(
+        `CASE WHEN class_updates.author_id = ? AND class_updates.is_pinned = true THEN 0 ELSE 1 END`,
+        [userId]
+      )
+      .orderBy('class_updates.updated_at', 'desc')
+      .orderBy('class_updates.created_at', 'desc')
       .limit(limit)
       .offset(offset);
 
