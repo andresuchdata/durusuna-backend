@@ -144,7 +144,9 @@ export class MessageRepository {
       .where('cp.is_active', true)
       .where('conversations.is_active', true)
       .where(function() {
-        this.whereNull('last_message.is_deleted').orWhereNull('last_message.id');
+        this.where('last_message.is_deleted', false)
+          .orWhereNull('last_message.is_deleted')
+          .orWhereNull('last_message.id');
       })
       .orderBy('conversations.last_message_at', 'desc')
       .orderBy('conversations.created_at', 'desc')
