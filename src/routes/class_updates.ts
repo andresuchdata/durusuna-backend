@@ -133,13 +133,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
       filesToUpload,
       'class-updates',
       {
-        processImage: true,
-        imageOptions: {
-          maxWidth: 1920,
-          maxHeight: 1080,
-          quality: 85,
-          createThumbnail: true,
-        },
+        processImage: false, // Disable image processing to speed up uploads
         customMetadata: {
           'uploaded-by': authReq.user.id,
           'class-id': class_id,
