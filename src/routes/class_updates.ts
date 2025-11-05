@@ -77,8 +77,103 @@ interface UserAccess {
 }
 
 /**
+ * @route POST /api/class-updates/generate-presigned-urls
+ * @desc Generate presigned URLs for direct S3/R2 upload (bypasses Railway proxy)
+ * @access Private (Teachers only)
+ */
+router.post('/generate-presigned-urls', authenticate, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { class_id, files }: { class_id: string; files: Array<{ name: string; type: string; size: number }> } = req.body;
+
+    if (!class_id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'Files array is required' });
+    }
+
+    if (files.length > 5) {
+      return res.status(400).json({ error: 'Maximum 5 files allowed' });
+    }
+
+    // Verify user has permission to upload to this class
+    await classUpdatesService.validateUploadPermissions(authReq.user, class_id);
+
+    // Validate each file
+    const validationErrors: Array<{ file: string; errors: string[] }> = [];
+    files.forEach((file) => {
+      const validation = storageService.validateFile(file.type, file.size, {
+        maxSize: 5 * 1024 * 1024, // 5MB for class updates
+        maxImageSize: 5 * 1024 * 1024, // 5MB for images
+        maxVideoSize: 50 * 1024 * 1024, // 50MB for videos
+      });
+      if (!validation.isValid) {
+        validationErrors.push({
+          file: file.name,
+          errors: validation.errors,
+        });
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        error: 'Some files are invalid',
+        details: validationErrors,
+      });
+    }
+
+    // Generate presigned URLs for each file
+    const presignedUrls = await Promise.all(
+      files.map(async (file) => {
+        const fileExtension = file.name.split('.').pop() || 'bin';
+        const fileName = `${uuidv4()}.${fileExtension}`;
+        const key = `class-updates/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${fileName}`;
+
+        const uploadUrl = await storageService.generatePresignedUploadUrl(
+          key,
+          file.type,
+          600 // 10 minutes to upload
+        );
+
+        const publicUrl = storageService.generateOptimizedUrl(key);
+
+        return {
+          id: uuidv4(),
+          uploadUrl,
+          publicUrl,
+          key,
+          fileName,
+          originalName: file.name,
+          mimeType: file.type,
+          size: file.size,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      urls: presignedUrls,
+    });
+  } catch (error) {
+    logger.error('Error generating presigned URLs:', {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+      classId: req.body?.class_id,
+      userId: authReq.user?.id,
+    });
+
+    res.status(500).json({
+      error: 'Failed to generate presigned URLs',
+      message: (error as Error).message,
+    });
+  }
+});
+
+/**
  * @route POST /api/class-updates/upload-attachments
- * @desc Upload attachments for class updates
+ * @desc Upload attachments for class updates (legacy endpoint, kept for backwards compatibility)
  * @access Private (Teachers only)
  */
 router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: Request, res: Response) => {
