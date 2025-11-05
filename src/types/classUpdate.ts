@@ -1,6 +1,7 @@
 export interface ClassUpdate {
   id: string;
   class_id: string;
+  class_name?: string;
   author_id: string;
   title?: string;
   content: string;
@@ -41,6 +42,7 @@ export interface ReactionData {
 export interface ClassUpdateWithAuthor extends ClassUpdate {
   author: {
     id: string;
+    class_name?: string;
     first_name: string;
     last_name: string;
     email: string;

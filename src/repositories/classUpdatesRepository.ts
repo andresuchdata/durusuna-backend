@@ -59,10 +59,11 @@ export class ClassUpdatesRepository {
 
     // Search functionality - search in title, content, and author name
     if (search) {
+      const db = this.db;
       query = query.where(function() {
         this.where('class_updates.title', 'ilike', `%${search}%`)
           .orWhere('class_updates.content', 'ilike', `%${search}%`)
-          .orWhere(this.db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
+          .orWhere(db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
       });
     }
 
@@ -191,10 +192,11 @@ export class ClassUpdatesRepository {
 
     // Search functionality - search in title, content, and author name
     if (search) {
+      const db = this.db;
       query = query.where(function() {
         this.where('class_updates.title', 'ilike', `%${search}%`)
           .orWhere('class_updates.content', 'ilike', `%${search}%`)
-          .orWhere(this.db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
+          .orWhere(db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
       });
     }
 
@@ -297,9 +299,11 @@ export class ClassUpdatesRepository {
   async findByIdWithAuthor(updateId: string): Promise<ClassUpdateWithAuthor | null> {
     const update = await this.db('class_updates')
       .join('users', 'class_updates.author_id', 'users.id')
+      .join('classes', 'class_updates.class_id', 'classes.id')
       .where('class_updates.id', updateId)
       .select(
         'class_updates.*',
+        'classes.name as class_name',
         'users.id as author_user_id',
         'users.first_name as author_first_name',
         'users.last_name as author_last_name',
@@ -315,6 +319,7 @@ export class ClassUpdatesRepository {
     return {
       id: update.id,
       class_id: update.class_id,
+      class_name: update.class_name,
       author_id: update.author_id,
       title: update.title,
       content: update.content,
