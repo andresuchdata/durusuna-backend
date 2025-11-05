@@ -105,6 +105,8 @@ export interface ClassUpdateQueryParams {
   is_pinned?: boolean;
   exclude_pinned?: string;
   subject_offering_id?: string;
+  search?: string;
+  class_id?: string;
 }
 
 export interface ClassUpdatesResponse {

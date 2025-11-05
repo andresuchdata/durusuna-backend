@@ -20,6 +20,7 @@ export class ClassUpdatesRepository {
       limit: number; 
       offset: number;
       authorIds?: string[];
+      search?: string;
     }
   ): Promise<ClassUpdateWithAuthor[]> {
     const { 
@@ -28,7 +29,8 @@ export class ClassUpdatesRepository {
       offset, 
       type, 
       exclude_pinned, 
-      authorIds 
+      authorIds,
+      search 
     } = options;
 
     // Build query for class updates
@@ -54,6 +56,15 @@ export class ClassUpdatesRepository {
         'users.created_at as author_created_at',
         'users.updated_at as author_updated_at'
       );
+
+    // Search functionality - search in title, content, and author name
+    if (search) {
+      query = query.where(function() {
+        this.where('class_updates.title', 'ilike', `%${search}%`)
+          .orWhere('class_updates.content', 'ilike', `%${search}%`)
+          .orWhere(this.db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
+      });
+    }
 
     // Filter by type if specified
     if (type) {
@@ -135,13 +146,13 @@ export class ClassUpdatesRepository {
 
   async findByUserId(
     userId: string,
-    options: {
+    options: ClassUpdateQueryParams & {
       page: number;
       limit: number;
       offset: number;
     }
   ): Promise<ClassUpdateWithAuthor[]> {
-    const { limit, offset } = options;
+    const { limit, offset, type, author_id, search } = options;
 
     // Get all classes the user has access to
     const userClasses = await this.db('user_classes')
@@ -154,8 +165,8 @@ export class ClassUpdatesRepository {
       return [];
     }
 
-    // Get updates from all user's classes
-    const updates = await this.db('class_updates')
+    // Build query for updates from all user's classes
+    let query = this.db('class_updates')
       .join('users', 'class_updates.author_id', 'users.id')
       .join('classes', 'class_updates.class_id', 'classes.id')
       .whereIn('class_updates.class_id', classIds)
@@ -176,7 +187,28 @@ export class ClassUpdatesRepository {
         'users.last_login_at as author_last_active_at',
         'users.created_at as author_created_at',
         'users.updated_at as author_updated_at'
-      )
+      );
+
+    // Search functionality - search in title, content, and author name
+    if (search) {
+      query = query.where(function() {
+        this.where('class_updates.title', 'ilike', `%${search}%`)
+          .orWhere('class_updates.content', 'ilike', `%${search}%`)
+          .orWhere(this.db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
+      });
+    }
+
+    // Filter by type if specified
+    if (type) {
+      query = query.where('class_updates.update_type', type);
+    }
+
+    // Filter by author if specified
+    if (author_id) {
+      query = query.where('class_updates.author_id', author_id);
+    }
+
+    const updates = await query
       .orderBy([
         { column: 'class_updates.is_pinned', order: 'desc' },
         { column: 'class_updates.updated_at', order: 'desc' },

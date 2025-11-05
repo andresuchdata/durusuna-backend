@@ -27,18 +27,20 @@ export class ClassUpdatesService {
 
   async getClassUpdates(
     classId: string | undefined,
-    queryParams: ClassUpdateQueryParams & { page?: string; limit?: string },
+    queryParams: ClassUpdateQueryParams & { page?: string; limit?: string; search?: string },
     currentUser: AuthenticatedUser
   ): Promise<ClassUpdatesResponse> {
-    const { page = '1', limit = '20', subject_offering_id, ...otherParams } = queryParams;
+    const { page = '1', limit = '20', subject_offering_id, search, ...otherParams } = queryParams;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // If no classId provided, get updates from all user's classes
     if (!classId) {
       const updates = await this.classUpdatesRepository.findByUserId(currentUser.id, {
+        ...otherParams,
         page: parseInt(page),
         limit: parseInt(limit),
-        offset
+        offset,
+        search
       });
 
       return {
@@ -67,7 +69,8 @@ export class ClassUpdatesService {
       page: parseInt(page),
       limit: parseInt(limit),
       offset,
-      authorIds
+      authorIds,
+      search
     });
 
     return {
