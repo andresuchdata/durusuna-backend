@@ -271,6 +271,8 @@ export class MessageRepository {
 
     let messagesQuery = this.db('messages')
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
+      .leftJoin('messages as reply_msg', 'messages.reply_to_id', 'reply_msg.id')
+      .leftJoin('users as reply_sender', 'reply_msg.sender_id', 'reply_sender.id')
       .where('messages.conversation_id', conversationId)
       .where('messages.is_deleted', false)
       .select(
@@ -295,7 +297,13 @@ export class MessageRepository {
         'sender.avatar_url as sender_avatar',
         'sender.user_type as sender_user_type',
         'sender.role as sender_role',
-        'sender.is_active as sender_is_active'
+        'sender.is_active as sender_is_active',
+        'reply_msg.id as reply_to_message_id',
+        'reply_msg.content as reply_to_content',
+        'reply_msg.message_type as reply_to_message_type',
+        'reply_msg.sender_id as reply_to_sender_id',
+        'reply_sender.first_name as reply_to_sender_first_name',
+        'reply_sender.last_name as reply_to_sender_last_name'
       );
 
     // Use cursor-based pagination
@@ -335,6 +343,8 @@ export class MessageRepository {
 
     let messagesQuery = this.db('messages')
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
+      .leftJoin('messages as reply_msg', 'messages.reply_to_id', 'reply_msg.id')
+      .leftJoin('users as reply_sender', 'reply_msg.sender_id', 'reply_sender.id')
       .where('messages.conversation_id', conversationId)
       .where('messages.is_deleted', false)
       .select(
@@ -353,7 +363,13 @@ export class MessageRepository {
         'sender.first_name as sender_first_name',
         'sender.last_name as sender_last_name',
         'sender.avatar_url as sender_avatar',
-        'sender.user_type as sender_user_type'
+        'sender.user_type as sender_user_type',
+        'reply_msg.id as reply_to_message_id',
+        'reply_msg.content as reply_to_content',
+        'reply_msg.message_type as reply_to_message_type',
+        'reply_msg.sender_id as reply_to_sender_id',
+        'reply_sender.first_name as reply_to_sender_first_name',
+        'reply_sender.last_name as reply_to_sender_last_name'
       );
 
     // Apply cursor filtering
@@ -403,6 +419,8 @@ export class MessageRepository {
   async findMessageWithSender(messageId: string): Promise<any | null> {
     return await this.db('messages')
       .leftJoin('users as sender', 'messages.sender_id', 'sender.id')
+      .leftJoin('messages as reply_msg', 'messages.reply_to_id', 'reply_msg.id')
+      .leftJoin('users as reply_sender', 'reply_msg.sender_id', 'reply_sender.id')
       .where('messages.id', messageId)
       .select(
         'messages.*',
@@ -412,7 +430,13 @@ export class MessageRepository {
         'sender.avatar_url as sender_avatar',
         'sender.user_type as sender_user_type',
         'sender.role as sender_role',
-        'sender.is_active as sender_is_active'
+        'sender.is_active as sender_is_active',
+        'reply_msg.id as reply_to_message_id',
+        'reply_msg.content as reply_to_content',
+        'reply_msg.message_type as reply_to_message_type',
+        'reply_msg.sender_id as reply_to_sender_id',
+        'reply_sender.first_name as reply_to_sender_first_name',
+        'reply_sender.last_name as reply_to_sender_last_name'
       )
       .first();
   }

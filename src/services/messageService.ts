@@ -370,6 +370,13 @@ export class MessageService {
         role: completeMessage.sender_role,
         is_active: Boolean(completeMessage.sender_is_active)
       },
+      reply_to: completeMessage.reply_to_message_id ? {
+        id: completeMessage.reply_to_message_id,
+        content: completeMessage.reply_to_content,
+        sender_id: completeMessage.reply_to_sender_id,
+        sender_name: `${completeMessage.reply_to_sender_first_name} ${completeMessage.reply_to_sender_last_name}`,
+        message_type: completeMessage.reply_to_message_type
+      } : undefined,
       is_from_me: true
     };
 
@@ -481,5 +488,57 @@ export class MessageService {
       },
       query: q.trim()
     };
+  }
+
+  async forwardMessage(
+    messageId: string,
+    targetConversationId: string,
+    currentUser: AuthenticatedUser
+  ): Promise<SendMessageResponse> {
+    // Find the original message
+    const originalMessage = await this.messageRepository.findMessageById(messageId);
+    
+    if (!originalMessage) {
+      throw new Error('Message not found');
+    }
+
+    // Verify user has access to the original message (is participant of that conversation)
+    const originalParticipant = await this.messageRepository.findConversationParticipant(
+      originalMessage.conversation_id, 
+      currentUser.id
+    );
+    
+    if (!originalParticipant) {
+      throw new Error('Access denied to original message');
+    }
+
+    // Verify user is participant in target conversation
+    const targetParticipant = await this.messageRepository.findConversationParticipant(
+      targetConversationId,
+      currentUser.id
+    );
+
+    if (!targetParticipant) {
+      throw new Error('Access denied to target conversation');
+    }
+
+    // Create metadata to mark as forwarded
+    const metadata = {
+      ...safeJsonParse(originalMessage.metadata, {}),
+      forwarded: true,
+      original_message_id: messageId,
+      original_sender_id: originalMessage.sender_id,
+      forwarded_at: new Date().toISOString()
+    };
+
+    // Create the forwarded message using sendMessage
+    const response = await this.sendMessage({
+      conversation_id: targetConversationId,
+      content: originalMessage.content,
+      message_type: originalMessage.message_type,
+      metadata
+    }, currentUser);
+
+    return response;
   }
 } 

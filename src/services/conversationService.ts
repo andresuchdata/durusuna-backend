@@ -222,6 +222,13 @@ export class ConversationService {
         role: msg.sender_role,
         is_active: Boolean(msg.sender_is_active)
       },
+      reply_to: msg.reply_to_message_id ? {
+        id: msg.reply_to_message_id,
+        content: msg.reply_to_content,
+        sender_id: msg.reply_to_sender_id,
+        sender_name: `${msg.reply_to_sender_first_name} ${msg.reply_to_sender_last_name}`,
+        message_type: msg.reply_to_message_type
+      } : undefined,
       is_from_me: Boolean(msg.sender_id === currentUser.id)
     }));
 
@@ -361,6 +368,13 @@ export class ConversationService {
         role: 'user',
         is_active: true
       },
+      reply_to: msg.reply_to_message_id ? {
+        id: msg.reply_to_message_id,
+        content: msg.reply_to_content,
+        sender_id: msg.reply_to_sender_id,
+        sender_name: `${msg.reply_to_sender_first_name} ${msg.reply_to_sender_last_name}`,
+        message_type: msg.reply_to_message_type
+      } : undefined,
       is_from_me: Boolean(msg.sender_id === currentUser.id)
     }));
 

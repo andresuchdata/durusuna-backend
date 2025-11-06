@@ -116,4 +116,37 @@ router.post('/:messageId/reactions', authenticate, async (req, res, next) => {
   }
 });
 
+/**
+ * @route POST /api/messages/:messageId/forward
+ * @desc Forward a message to another conversation
+ * @access Private
+ */
+router.post('/:messageId/forward', authenticate, async (req, res, next) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { messageId } = req.params;
+    const { conversation_id } = req.body as { conversation_id?: string };
+
+    if (!conversation_id) {
+      return res.status(400).json({ error: 'Target conversation_id is required' });
+    }
+
+    const response = await messageService.forwardMessage(messageId!, conversation_id, authenticatedReq.user);
+    return res.status(201).json(response);
+
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Message not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied to original message' || 
+          error.message === 'Access denied to target conversation') {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+    logger.error('Error forwarding message:', error);
+    res.status(500).json({ error: 'Failed to forward message' });
+  }
+});
+
 export default router;

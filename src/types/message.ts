@@ -57,6 +57,13 @@ export interface MessageWithSender extends Message {
     role: 'user' | 'admin';
     is_active: boolean;
   };
+  reply_to?: {
+    id: string;
+    content?: string;
+    sender_id: string;
+    sender_name: string;
+    message_type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
+  };
   sent_at?: string;
   is_from_me: boolean;
 }
