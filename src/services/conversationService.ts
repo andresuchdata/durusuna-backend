@@ -562,9 +562,24 @@ export class ConversationService {
   }
 
   async findDirectConversation(userId1: string, userId2: string): Promise<any | null> {
-    // This would need to be implemented in the repository
-    // For now, return null to indicate no existing conversation
-    return null;
+    try {
+      const conversation = await this.messageRepository.findDirectConversation(userId1, userId2);
+      if (!conversation) {
+        return null;
+      }
+      
+      // Get full conversation details with participants
+      const conversationDetails = await this.messageRepository.findConversationById(conversation.id);
+      const participants = await this.messageRepository.findParticipantsByConversationId(conversation.id);
+      
+      return {
+        ...conversationDetails,
+        participants,
+      };
+    } catch (error) {
+      logger.error('Error finding direct conversation:', error);
+      return null;
+    }
   }
 
   async createConversation(params: {
@@ -574,9 +589,55 @@ export class ConversationService {
     name?: string;
     description?: string;
   }): Promise<any> {
-    // Implementation would depend on your database schema
-    // This is a placeholder that would need proper implementation
-    throw new Error('createConversation method needs to be implemented');
+    try {
+      const { type, createdBy, participantIds, name, description } = params;
+      
+      // Validate type
+      if (!['direct', 'group'].includes(type)) {
+        throw new Error('Invalid conversation type. Must be "direct" or "group"');
+      }
+      
+      // For direct conversations, check if one already exists
+      if (type === 'direct' && participantIds.length === 2) {
+        const existingConversation = await this.findDirectConversation(participantIds[0], participantIds[1]);
+        if (existingConversation) {
+          logger.info(`Direct conversation already exists: ${existingConversation.id}`);
+          return existingConversation;
+        }
+      }
+      
+      // Create the conversation
+      const conversationId = await this.messageRepository.createConversation({
+        type: type as 'direct' | 'group',
+        name: type === 'group' ? name : undefined,
+        description: type === 'group' ? description : undefined,
+        created_by: createdBy,
+      });
+      
+      logger.info(`Created new conversation: ${conversationId}, type: ${type}`);
+      
+      // Add all participants
+      await this.messageRepository.addParticipants(conversationId, participantIds);
+      
+      logger.info(`Added ${participantIds.length} participants to conversation ${conversationId}`);
+      
+      // Invalidate cache for all participants
+      participantIds.forEach(userId => {
+        messageCache.invalidateUser(userId);
+      });
+      
+      // Get the full conversation details with participants
+      const conversation = await this.messageRepository.findConversationById(conversationId);
+      const participants = await this.messageRepository.findParticipantsByConversationId(conversationId);
+      
+      return {
+        ...conversation,
+        participants,
+      };
+    } catch (error) {
+      logger.error('Error creating conversation:', error);
+      throw error;
+    }
   }
 
   async getConversationById(conversationId: string): Promise<any | null> {
