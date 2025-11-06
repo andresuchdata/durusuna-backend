@@ -557,6 +557,9 @@ export class ConversationService {
 
     // Also mark individual messages as read (optional, for consistency)
     await this.messageRepository.markMessagesAsRead(conversationId, currentUser.id);
+    
+    // Invalidate cache to ensure fresh data on next fetch
+    messageCache.invalidateUser(currentUser.id);
   }
 
   async isUserParticipant(conversationId: string, userId: string): Promise<boolean> {
