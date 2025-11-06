@@ -510,6 +510,17 @@ export class MessageRepository {
       });
   }
 
+  async incrementUnreadCount(conversationId: string, excludeUserId: string): Promise<void> {
+    // Increment unread count for all participants except the sender
+    await this.db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .whereNot('user_id', excludeUserId)
+      .increment('unread_count', 1)
+      .update({
+        updated_at: new Date().toISOString()
+      });
+  }
+
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
     await this.db('messages')
       .where('conversation_id', conversationId)

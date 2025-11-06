@@ -453,6 +453,9 @@ export class ConversationService {
       last_message_at: message.created_at
     });
 
+    // Increment unread count for all participants except the sender
+    await this.messageRepository.incrementUnreadCount(conversationId, currentUser.id);
+
     const formattedMessage: MessageWithSender = {
       id: completeMessage.id,
       conversation_id: conversationId,
@@ -599,7 +602,7 @@ export class ConversationService {
       
       // For direct conversations, check if one already exists
       if (type === 'direct' && participantIds.length === 2) {
-        const existingConversation = await this.findDirectConversation(participantIds[0], participantIds[1]);
+        const existingConversation = await this.findDirectConversation(participantIds[0]!, participantIds[1]!);
         if (existingConversation) {
           logger.info(`Direct conversation already exists: ${existingConversation.id}`);
           return existingConversation;
