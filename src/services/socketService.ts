@@ -177,22 +177,50 @@ const handleConnection = (socket: Socket) => {
   
   socket.on('typing:start', (data: TypingData) => {
     const { conversationId } = data;
+    logger.info(`👨‍💻 User ${userId} started typing in conversation ${conversationId}`, {
+      userId,
+      conversationId,
+      roomName: `conversation_${conversationId}`,
+      socketId: socket.id
+    });
+    
+    // Check if user is in the room
+    if (globalIo) {
+      const room = globalIo.sockets.adapter.rooms.get(`conversation_${conversationId}`);
+      if (room) {
+        logger.info(`👨‍💻 Room has ${room.size} members: ${Array.from(room).join(', ')}`);
+      } else {
+        logger.warn(`👨‍💻 Room conversation_${conversationId} not found!`);
+      }
+    }
+    
     socket.to(`conversation_${conversationId}`).emit('typing:start', {
       userId: userId,
       conversationId: conversationId,
       isTyping: true,
       timestamp: new Date().toISOString(),
     });
+    
+    logger.info(`👨‍💻 Broadcasted typing:start to room conversation_${conversationId}`);
   });
 
   socket.on('typing:stop', (data: TypingData) => {
     const { conversationId } = data;
+    logger.info(`👨‍💻 User ${userId} stopped typing in conversation ${conversationId}`, {
+      userId,
+      conversationId,
+      roomName: `conversation_${conversationId}`,
+      socketId: socket.id
+    });
+    
     socket.to(`conversation_${conversationId}`).emit('typing:stop', {
       userId: userId,
       conversationId: conversationId,
       isTyping: false,
       timestamp: new Date().toISOString(),
     });
+    
+    logger.info(`👨‍💻 Broadcasted typing:stop to room conversation_${conversationId}`);
   });
 
   // === MESSAGE STATUS ===
