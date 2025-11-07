@@ -1,20 +1,27 @@
 const bcrypt = require('bcryptjs');
 import { UserRepository } from '../repositories/userRepository';
 import { FCMTokenRepository } from '../repositories/fcmTokenRepository';
-import { 
-  User, 
-  UserWithSchool, 
-  UpdateUserProfileData, 
-  ChangePasswordData, 
-  AuthenticatedUser 
+import {
+  User,
+  UserWithSchool,
+  AuthenticatedUser,
+  UpdateUserData,
 } from '../types/user';
-import { 
-  updateProfileSchema, 
-  changePasswordSchema, 
+import {
+  updateProfileSchema,
+  changePasswordSchema,
   searchUsersSchema,
+  createUserSchema,
+  updateUserSchema,
+  batchCreateUsersSchema,
+  listUsersQuerySchema,
   type UpdateProfileInput,
   type ChangePasswordInput,
-  type SearchUsersInput
+  type SearchUsersInput,
+  type CreateUserInput,
+  type UpdateUserInput,
+  type BatchCreateUsersInput,
+  type ListUsersQueryInput,
 } from '../schemas/userSchemas';
 
 export class UserService {
@@ -23,6 +30,29 @@ export class UserService {
   constructor(private userRepository: UserRepository) {
     // Get db instance from userRepository (cleaner than passing separately)
     this.fcmTokenRepository = new FCMTokenRepository((this.userRepository as any).db);
+  }
+
+  private ensureSchool(currentUser: AuthenticatedUser): string {
+    if (!currentUser.school_id) {
+      throw new Error('User not associated with a school');
+    }
+    return currentUser.school_id;
+  }
+
+  private isAdmin(currentUser: AuthenticatedUser): boolean {
+    return currentUser.role === 'admin';
+  }
+
+  private isTeacher(currentUser: AuthenticatedUser): boolean {
+    return currentUser.user_type === 'teacher';
+  }
+
+  private canReadUsers(currentUser: AuthenticatedUser): boolean {
+    return this.isAdmin(currentUser) || this.isTeacher(currentUser) || currentUser.user_type === 'student' || currentUser.user_type === 'parent';
+  }
+
+  private canUpdateUsers(currentUser: AuthenticatedUser): boolean {
+    return this.isAdmin(currentUser) || this.isTeacher(currentUser);
   }
 
   async getUserProfile(userId: string): Promise<UserWithSchool> {
@@ -69,7 +99,7 @@ export class UserService {
     // Verify current password
     const isCurrentPasswordValid = await bcrypt.compare(
       validatedData.current_password, 
-      userWithPassword.password!
+      userWithPassword.password_hash
     );
     
     if (!isCurrentPasswordValid) {
@@ -84,7 +114,7 @@ export class UserService {
     await this.userRepository.updatePassword(userId, hashedNewPassword);
   }
 
-  async getSchoolUsers(currentUser: AuthenticatedUser, schoolId: string): Promise<Omit<User, 'password'>[]> {
+  async getSchoolUsers(currentUser: AuthenticatedUser, schoolId: string): Promise<Omit<User, 'password_hash'>[]> {
     // Check authorization - only admins can get all school users
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
@@ -142,8 +172,6 @@ export class UserService {
   }
 
   async getContacts(currentUser: AuthenticatedUser, page: number = 1, limit: number = 50, search?: string, userType?: string) {
-    const offset = (page - 1) * limit;
-
     // Get current user's school
     const currentUserData = await this.userRepository.findCurrentUserSchool(currentUser.id);
     
@@ -187,7 +215,7 @@ export class UserService {
     };
   }
 
-  async getSchoolStudents(currentUser: AuthenticatedUser): Promise<Omit<User, 'password'>[]> {
+  async getSchoolStudents(currentUser: AuthenticatedUser): Promise<Omit<User, 'password_hash'>[]> {
     // Only admins can get all school students
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
@@ -196,7 +224,7 @@ export class UserService {
     return await this.userRepository.findStudentsBySchoolId(currentUser.school_id);
   }
 
-  async getSchoolTeachers(currentUser: AuthenticatedUser): Promise<Omit<User, 'password'>[]> {
+  async getSchoolTeachers(currentUser: AuthenticatedUser): Promise<Omit<User, 'password_hash'>[]> {
     // Only admins can get all school teachers
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
@@ -205,7 +233,7 @@ export class UserService {
     return await this.userRepository.findTeachersBySchoolId(currentUser.school_id);
   }
 
-  async getUsersByType(currentUser: AuthenticatedUser, userType: string): Promise<Omit<User, 'password'>[]> {
+  async getUsersByType(currentUser: AuthenticatedUser, userType: string): Promise<Omit<User, 'password_hash'>[]> {
     // Only admins can get users by type
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
@@ -217,6 +245,159 @@ export class UserService {
     }
 
     return await this.userRepository.findUsersByTypeAndSchool(currentUser.school_id, userType);
+  }
+
+  async listUsers(currentUser: AuthenticatedUser, input: ListUsersQueryInput) {
+    if (!this.canReadUsers(currentUser)) {
+      throw new Error('Access denied: insufficient permissions');
+    }
+
+    const params = listUsersQuerySchema.parse(input);
+    const schoolId = this.ensureSchool(currentUser);
+
+    return this.userRepository.listUsers({
+      schoolId,
+      page: params.page,
+      limit: params.limit,
+      search: params.search,
+      userType: params.userType,
+    });
+  }
+
+  async getUserById(currentUser: AuthenticatedUser, userId: string) {
+    if (!this.canReadUsers(currentUser)) {
+      throw new Error('Access denied: insufficient permissions');
+    }
+
+    const schoolId = this.ensureSchool(currentUser);
+    const user = await this.userRepository.findByIdAndSchool(userId, schoolId);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const { password_hash, ...safeUser } = user;
+    return safeUser;
+  }
+
+  async createUser(currentUser: AuthenticatedUser, payload: CreateUserInput) {
+    if (!this.isAdmin(currentUser)) {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    const data = createUserSchema.parse(payload);
+    const schoolId = this.ensureSchool(currentUser);
+
+    const existing = await this.userRepository.findByEmail(data.email, schoolId);
+    if (existing) {
+      throw new Error(`User with email ${data.email} already exists`);
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+    const user = await this.userRepository.createUser({
+      ...data,
+      school_id: schoolId,
+      password_hash: hashedPassword,
+    });
+
+    return user;
+  }
+
+  async createUsersBatch(currentUser: AuthenticatedUser, payload: BatchCreateUsersInput) {
+    if (!this.isAdmin(currentUser)) {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    const data = batchCreateUsersSchema.parse(payload);
+    const schoolId = this.ensureSchool(currentUser);
+
+    const seen = new Set<string>();
+    for (const user of data.users) {
+      const email = user.email.toLowerCase();
+      if (seen.has(email)) {
+        throw new Error(`Duplicate email in batch payload: ${email}`);
+      }
+      seen.add(email);
+    }
+
+    for (const user of data.users) {
+      const existing = await this.userRepository.findByEmail(user.email, schoolId);
+      if (existing) {
+        throw new Error(`User with email ${user.email} already exists`);
+      }
+    }
+
+    const usersWithHashes = await Promise.all(
+      data.users.map(async (user) => ({
+        ...user,
+        school_id: schoolId,
+        password_hash: await bcrypt.hash(user.password, 12),
+      })),
+    );
+
+    return this.userRepository.createUsersBatch(usersWithHashes);
+  }
+
+  async updateUser(currentUser: AuthenticatedUser, userId: string, payload: UpdateUserInput) {
+    if (!this.canUpdateUsers(currentUser)) {
+      throw new Error('Access denied: insufficient permissions');
+    }
+
+    const data = updateUserSchema.parse(payload);
+    const schoolId = this.ensureSchool(currentUser);
+
+    const targetUser = await this.userRepository.findByIdAndSchool(userId, schoolId);
+    if (!targetUser) {
+      throw new Error('User not found');
+    }
+
+    if (!this.isAdmin(currentUser)) {
+      const forbiddenFields = ['role', 'user_type', 'is_active'];
+      for (const field of forbiddenFields) {
+        if (field in data) {
+          throw new Error('Access denied: insufficient permissions');
+        }
+      }
+    }
+
+    if (data.email && data.email !== targetUser.email) {
+      const existing = await this.userRepository.findByEmail(data.email, schoolId);
+      if (existing && existing.id !== userId) {
+        throw new Error(`User with email ${data.email} already exists`);
+      }
+    }
+
+    const updatePayload: UpdateUserData & { password_hash?: string } = { ...data };
+
+    if (data.password) {
+      updatePayload.password_hash = await bcrypt.hash(data.password, 12);
+      delete updatePayload.password;
+    }
+
+    const updated = await this.userRepository.updateUser(userId, schoolId, updatePayload);
+    if (!updated) {
+      throw new Error('Failed to update user');
+    }
+
+    return updated;
+  }
+
+  async deleteUser(currentUser: AuthenticatedUser, userId: string) {
+    if (!this.isAdmin(currentUser)) {
+      throw new Error('Access denied: Admin role required');
+    }
+
+    const schoolId = this.ensureSchool(currentUser);
+    if (currentUser.id === userId) {
+      throw new Error('You cannot delete your own account');
+    }
+
+    const user = await this.userRepository.findByIdAndSchool(userId, schoolId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    await this.userRepository.deactivateUser(userId, schoolId);
   }
 
   async updateFCMToken(userId: string, fcmToken: string): Promise<void> {

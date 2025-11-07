@@ -1,5 +1,13 @@
 import { Knex } from 'knex';
-import { User, School, UpdateUserProfileData } from '../types/user';
+import {
+  User,
+  School,
+  UpdateUserProfileData,
+  CreateUserData,
+  UpdateUserData,
+  ListUsersParams,
+  ListUsersResult,
+} from '../types/user';
 
 export class UserRepository {
   constructor(private db: Knex) {}
@@ -13,13 +21,26 @@ export class UserRepository {
     return user || null;
   }
 
-  async findByIdWithPassword(id: string): Promise<Pick<User, 'id' | 'password'> | null> {
+  async findByIdAndSchool(id: string, schoolId: string): Promise<User | null> {
     const user = await this.db('users')
-      .select('id', 'password')
+      .select('*')
+      .where({ id, school_id: schoolId })
+      .first();
+
+    return user || null;
+  }
+
+  async findByIdWithPassword(id: string): Promise<{ id: string; password_hash: string } | null> {
+    const user = await this.db('users')
+      .select('id', 'password_hash')
       .where('id', id)
       .first();
     
-    return user || null;
+    if (!user) return null;
+    return {
+      id: user.id,
+      password_hash: user.password_hash,
+    };
   }
 
   async findSchoolById(schoolId: string): Promise<School | null> {
@@ -34,39 +55,45 @@ export class UserRepository {
   async updateProfile(id: string, data: UpdateUserProfileData): Promise<void> {
     const updateData = {
       ...data,
-      updated_at: new Date()
+      updated_at: new Date(),
     };
 
-    await this.db('users')
-      .where('id', id)
-      .update(updateData);
+    await this.db('users').where('id', id).update(updateData);
   }
 
   async updatePassword(id: string, hashedPassword: string): Promise<void> {
-    await this.db('users')
-      .where('id', id)
-      .update({
-        password: hashedPassword,
-        updated_at: new Date()
-      });
+    await this.db('users').where('id', id).update({
+      password_hash: hashedPassword,
+      updated_at: new Date(),
+    });
   }
 
-  async findBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
+  async findByEmail(email: string, schoolId: string): Promise<User | null> {
+    const user = await this.db('users')
+      .select('*')
+      .where('school_id', schoolId)
+      .andWhereRaw('LOWER(email) = ?', email.toLowerCase())
+      .first();
+
+    return user || null;
+  }
+
+  async findBySchoolId(schoolId: string): Promise<Omit<User, 'password_hash'>[]> {
     const users = await this.db('users')
       .select('*')
       .where('school_id', schoolId)
       .orderBy('last_name', 'asc');
     
-    return users.map(({ password, ...user }) => user);
+    return users.map(({ password_hash, ...user }) => user);
   }
 
   async searchUsers(
-    currentUserSchoolId: string, 
-    currentUserId: string, 
-    searchTerm: string, 
+    currentUserSchoolId: string,
+    currentUserId: string,
+    searchTerm: string,
     limit: number = 20,
     userType?: string
-  ): Promise<Omit<User, 'password'>[]> {
+  ): Promise<Omit<User, 'password_hash'>[]> {
     const searchPattern = `%${searchTerm}%`;
     
     let query = this.db('users')
@@ -94,7 +121,7 @@ export class UserRepository {
       .orderBy('first_name', 'asc')
       .limit(limit);
     
-    return users.map(({ password, ...user }) => user);
+    return users.map(({ password_hash, ...user }) => user);
   }
 
   async findCurrentUserSchool(userId: string): Promise<{ school_id: string | null } | null> {
@@ -106,7 +133,7 @@ export class UserRepository {
     return user || null;
   }
 
-  async findStudentsBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
+  async findStudentsBySchoolId(schoolId: string): Promise<Omit<User, 'password_hash'>[]> {
     const students = await this.db('users')
       .select('*')
       .where('school_id', schoolId)
@@ -114,10 +141,10 @@ export class UserRepository {
       .where('is_active', true)
       .orderBy('last_name', 'asc');
     
-    return students.map(({ password, ...user }) => user);
+    return students.map(({ password_hash, ...user }) => user);
   }
 
-  async findTeachersBySchoolId(schoolId: string): Promise<Omit<User, 'password'>[]> {
+  async findTeachersBySchoolId(schoolId: string): Promise<Omit<User, 'password_hash'>[]> {
     const teachers = await this.db('users')
       .select('*')
       .where('school_id', schoolId)
@@ -125,10 +152,10 @@ export class UserRepository {
       .where('is_active', true)
       .orderBy('last_name', 'asc');
     
-    return teachers.map(({ password, ...user }) => user);
+    return teachers.map(({ password_hash, ...user }) => user);
   }
 
-  async findUsersByTypeAndSchool(schoolId: string, userType: string): Promise<Omit<User, 'password'>[]> {
+  async findUsersByTypeAndSchool(schoolId: string, userType: string): Promise<Omit<User, 'password_hash'>[]> {
     const users = await this.db('users')
       .select('*')
       .where('school_id', schoolId)
@@ -136,7 +163,156 @@ export class UserRepository {
       .where('is_active', true)
       .orderBy('last_name', 'asc');
     
-    return users.map(({ password, ...user }) => user);
+    return users.map(({ password_hash, ...user }) => user);
+  }
+
+  async listUsers(params: ListUsersParams): Promise<ListUsersResult> {
+    const { schoolId, page = 1, limit = 20, search, userType, includeInactive = false } = params;
+    const offset = (page - 1) * limit;
+
+    const baseQuery = this.db('users')
+      .where('school_id', schoolId)
+      .modify((qb) => {
+        if (!includeInactive) {
+          qb.where('is_active', true);
+        }
+        if (userType && userType !== 'all') {
+          qb.where('user_type', userType);
+        }
+        if (search && search.trim()) {
+          const pattern = `%${search}%`;
+          qb.andWhere(function () {
+            this.where('first_name', 'ilike', pattern)
+              .orWhere('last_name', 'ilike', pattern)
+              .orWhere('email', 'ilike', pattern)
+              .orWhere(this.client.raw("CONCAT(first_name, ' ', last_name)"), 'ilike', pattern);
+          });
+        }
+      });
+
+    const [totalResult] = await baseQuery.clone().count<{ count: string }[]>({ count: '*' });
+
+    const records = await baseQuery
+      .clone()
+      .select(
+        'id',
+        'email',
+        'first_name',
+        'last_name',
+        'user_type',
+        'role',
+        'school_id',
+        'phone',
+        'avatar_url',
+        'is_active',
+        'date_of_birth',
+        'student_id',
+        'employee_id',
+        'last_login_at',
+        'created_at',
+        'updated_at',
+      )
+      .orderBy([{ column: 'last_name', order: 'asc' }, { column: 'first_name', order: 'asc' }])
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      users: records,
+      total: Number(totalResult?.count ?? 0),
+      page,
+      limit,
+    };
+  }
+
+  async createUser(
+    data: CreateUserData & { school_id: string; password_hash: string },
+  ): Promise<Omit<User, 'password_hash'>> {
+    const now = new Date();
+    const insertData = {
+      email: data.email.toLowerCase(),
+      password_hash: data.password_hash,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      user_type: data.user_type,
+      role: data.role ?? 'user',
+      school_id: data.school_id,
+      phone: data.phone,
+      avatar_url: data.avatar_url,
+      date_of_birth: data.date_of_birth ?? null,
+      student_id: data.student_id ?? null,
+      employee_id: data.employee_id ?? null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const [user] = await this.db('users')
+      .insert(insertData)
+      .returning([ 'id','email','first_name','last_name','user_type','role','school_id','phone','avatar_url','is_active','date_of_birth','student_id','employee_id','last_login_at','created_at','updated_at' ]);
+
+    return user;
+  }
+
+  async createUsersBatch(
+    payload: Array<CreateUserData & { school_id: string; password_hash: string }>,
+  ): Promise<Omit<User, 'password_hash'>[]> {
+    const now = new Date();
+    const rows = payload.map((data) => ({
+      email: data.email.toLowerCase(),
+      password_hash: data.password_hash,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      user_type: data.user_type,
+      role: data.role ?? 'user',
+      school_id: data.school_id,
+      phone: data.phone,
+      avatar_url: data.avatar_url,
+      date_of_birth: data.date_of_birth ?? null,
+      student_id: data.student_id ?? null,
+      employee_id: data.employee_id ?? null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    }));
+
+    const inserted = await this.db('users')
+      .insert(rows)
+      .returning([ 'id','email','first_name','last_name','user_type','role','school_id','phone','avatar_url','is_active','date_of_birth','student_id','employee_id','last_login_at','created_at','updated_at' ]);
+
+    return inserted;
+  }
+
+  async updateUser(
+    userId: string,
+    schoolId: string,
+    data: UpdateUserData & { password_hash?: string },
+  ): Promise<Omit<User, 'password_hash'> | null> {
+    const updatePayload: Record<string, unknown> = {
+      ...data,
+      updated_at: new Date(),
+    };
+
+    delete updatePayload.password;
+
+    if (data.password_hash) {
+      updatePayload.password_hash = data.password_hash;
+    }
+
+    const [user] = await this.db('users')
+      .where({ id: userId, school_id: schoolId })
+      .update(updatePayload)
+      .returning([ 'id','email','first_name','last_name','user_type','role','school_id','phone','avatar_url','is_active','date_of_birth','student_id','employee_id','last_login_at','created_at','updated_at' ]);
+
+    return user ?? null;
+  }
+
+  async deactivateUser(userId: string, schoolId: string): Promise<void> {
+    await this.db('users')
+      .where({ id: userId, school_id: schoolId })
+      .update({
+        is_active: false,
+        updated_at: new Date(),
+      });
   }
 
   async updateFCMToken(userId: string, fcmToken: string): Promise<void> {

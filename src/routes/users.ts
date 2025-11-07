@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { UserService } from '../services/userService';
 import { validateRequest } from '../middleware/validateRequest';
@@ -11,6 +12,99 @@ import { getContactsSchema, type GetContactsInput } from '../schemas/userSchemas
 
 const router = express.Router();
 const userService = new UserService(new UserRepository(db));
+
+const handleUserRouteError = (error: unknown, res: Response, defaultMessage: string) => {
+  if (error instanceof ZodError) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: error.issues,
+    });
+  }
+
+  if (error instanceof Error) {
+    const message = error.message || defaultMessage;
+    const lower = message.toLowerCase();
+
+    if (lower.includes('access denied') || lower.includes('insufficient permissions')) {
+      return res.status(403).json({ success: false, message });
+    }
+
+    if (message === 'User not found') {
+      return res.status(404).json({ success: false, message });
+    }
+
+    if (lower.includes('already exists')) {
+      return res.status(409).json({ success: false, message });
+    }
+
+    if (lower.includes('not associated with a school')) {
+      return res.status(400).json({ success: false, message });
+    }
+
+    if (lower.includes('cannot delete your own')) {
+      return res.status(400).json({ success: false, message });
+    }
+
+    return res.status(500).json({ success: false, message });
+  }
+
+  logger.error(defaultMessage, error);
+  return res.status(500).json({ success: false, message: defaultMessage });
+};
+
+// List users with optional filters (admin/teacher full access, others read-only)
+router.get(
+  '/',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const result = await userService.listUsers(currentUser, {
+        page: req.query.page as any,
+        limit: req.query.limit as any,
+        search: req.query.search as string | undefined,
+        userType: req.query.userType as string | undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      logger.error('Failed to list users:', error);
+      handleUserRouteError(error, res, 'Failed to list users');
+    }
+  }
+);
+
+// Create single user (admin only)
+router.post(
+  '/',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const user = await userService.createUser(currentUser, req.body);
+      res.status(201).json({ success: true, user });
+    } catch (error) {
+      logger.error('Failed to create user:', error);
+      handleUserRouteError(error, res, 'Failed to create user');
+    }
+  }
+);
+
+// Batch create users (admin only)
+router.post(
+  '/batch',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const users = await userService.createUsersBatch(currentUser, req.body);
+      res.status(201).json({ success: true, users });
+    } catch (error) {
+      logger.error('Failed to batch create users:', error);
+      handleUserRouteError(error, res, 'Failed to batch create users');
+    }
+  }
+);
 
 // Update FCM token for push notifications
 router.put(
@@ -172,6 +266,46 @@ router.put(
   }
 );
 
+// Update user (admin & teacher)
+router.put(
+  '/:id',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
+      return res.status(405).json({ success: false, message: 'Method not allowed' });
+    }
+
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const updated = await userService.updateUser(currentUser, req.params.id, req.body);
+      res.json({ success: true, user: updated });
+    } catch (error) {
+      logger.error(`Failed to update user ${req.params.id}:`, error);
+      handleUserRouteError(error, res, 'Failed to update user');
+    }
+  }
+);
+
+// Delete user (admin only)
+router.delete(
+  '/:id',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
+      return res.status(405).json({ success: false, message: 'Method not allowed' });
+    }
+
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      await userService.deleteUser(currentUser, req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      logger.error(`Failed to delete user ${req.params.id}:`, error);
+      handleUserRouteError(error, res, 'Failed to delete user');
+    }
+  }
+);
+
 // Get contacts for chat/messaging
 router.get(
   '/contacts',
@@ -232,6 +366,26 @@ router.get(
         message: 'Failed to get contacts',
         error: error.message 
       });
+    }
+  }
+);
+
+// Get user detail (all roles read access)
+router.get(
+  '/:id',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
+      return res.status(405).json({ success: false, message: 'Method not allowed' });
+    }
+
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const user = await userService.getUserById(currentUser, req.params.id);
+      res.json({ success: true, user });
+    } catch (error) {
+      logger.error(`Failed to fetch user ${req.params.id}:`, error);
+      handleUserRouteError(error, res, 'Failed to fetch user');
     }
   }
 );
