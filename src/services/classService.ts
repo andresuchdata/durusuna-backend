@@ -1,6 +1,7 @@
 import { ClassRepository } from '../repositories/classRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { EnrollmentRepository } from '../repositories/enrollmentRepository';
 import { AuthenticatedRequest } from '../types/auth';
 
 type AuthenticatedUser = AuthenticatedRequest['user'];
@@ -8,26 +9,53 @@ import {
   Class,
   CreateClassRequest as CreateClassData,
   UpdateClassRequest as UpdateClassData,
-  ClassWithDetails,
-  UserClassWithUser
+  ClassWithDetails
 } from '../types/class';
 
 export class ClassService {
   private lessonRepository: LessonRepository;
   private userClassRepository: UserClassRepository;
+  private enrollmentRepository: EnrollmentRepository;
 
   constructor(
     private classRepository: ClassRepository,
     lessonRepository: LessonRepository,
-    userClassRepository: UserClassRepository
+    userClassRepository: UserClassRepository,
+    enrollmentRepository: EnrollmentRepository
   ) {
     this.lessonRepository = lessonRepository;
     this.userClassRepository = userClassRepository;
+    this.enrollmentRepository = enrollmentRepository;
   }
 
   async getAllClasses(currentUser: AuthenticatedUser): Promise<Class[]> {
-    // Admins and regular users can see all classes in their school
-    return await this.classRepository.findBySchoolId(currentUser.school_id);
+    // Admins can see all classes in their school
+    if (currentUser.role === 'admin') {
+      return await this.classRepository.findBySchoolId(currentUser.school_id);
+    }
+
+    // Teachers and students can see classes they're directly assigned to
+    if (currentUser.user_type === 'teacher' || currentUser.user_type === 'student') {
+      const userClasses = await this.userClassRepository.findUserClassesByUserId(currentUser.id);
+      const classMap = new Map<string, Class>();
+
+      userClasses.forEach((userClass) => {
+        if (userClass.class && userClass.class.is_active) {
+          classMap.set(userClass.class.id, userClass.class as Class);
+        }
+      });
+
+      return Array.from(classMap.values());
+    }
+
+    // Parents can see classes for their active children assignments
+    if (currentUser.user_type === 'parent') {
+      const parentClasses = await this.userClassRepository.findParentClasses(currentUser.id);
+      return parentClasses;
+    }
+
+    // Default to no classes for unsupported user types
+    return [];
   }
 
   async getUserClasses(currentUser: AuthenticatedUser): Promise<ClassWithDetails[]> {
@@ -145,7 +173,11 @@ export class ClassService {
       return classItem.school_id === currentUser.school_id;
     }
 
-    // Regular users need to be enrolled in the class
+    if (currentUser.user_type === 'parent') {
+      return await this.userClassRepository.checkParentClassAccess(currentUser.id, classId);
+    }
+
+    // Regular users (students/teachers) need to be enrolled in the class
     return await this.userClassRepository.checkUserClassAccess(currentUser.id, classId);
   }
 
@@ -276,40 +308,31 @@ export class ClassService {
       throw new Error('Access denied');
     }
 
-    // For teachers, filter subjects to show only the ones they teach
-    let teacherFilterId: string | undefined;
-    if (currentUser.user_type === 'teacher' && currentUser.role !== 'admin') {
-      teacherFilterId = currentUser.id;
+    // Admins can see all subjects
+    if (currentUser.role === 'admin') {
+      const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId);
+      return await this.mapSubjectsWithLessons(classSubjects);
     }
 
-    // Get class subjects with their details, filtered by teacher if applicable
-    const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId, teacherFilterId);
-
-    // Get lessons for each subject
-    const subjects = [];
-    for (const cs of classSubjects) {
-      const lessons = await this.lessonRepository.findByClassSubjectId(cs.class_subject_id);
-      
-      subjects.push({
-        subject_id: cs.subject_id,
-        subject_name: cs.subject_name,
-        subject_code: cs.subject_code,
-        subject_description: cs.subject_description,
-        hours_per_week: cs.hours_per_week,
-        classroom: cs.classroom,
-        schedule: cs.schedule,
-        teacher: {
-          id: cs.teacher_id,
-          first_name: cs.first_name,
-          last_name: cs.last_name,
-          email: cs.email,
-          avatar_url: cs.avatar_url
-        },
-        lessons: lessons
-      });
+    // Teachers see only subjects they teach
+    if (currentUser.user_type === 'teacher') {
+      const classSubjects = await this.classRepository.findClassSubjectsWithDetails(classId, currentUser.id);
+      return await this.mapSubjectsWithLessons(classSubjects);
     }
 
-    return subjects;
+    // Students see subjects where they have active enrollments
+    if (currentUser.user_type === 'student') {
+      const enrollments = await this.enrollmentRepository.getStudentEnrollments(currentUser.id);
+      return this.mapSubjectsFromEnrollments(enrollments, classId);
+    }
+
+    // Parents see subjects tied to their children
+    if (currentUser.user_type === 'parent') {
+      const enrollments = await this.enrollmentRepository.getChildrenEnrollments(currentUser.id);
+      return this.mapSubjectsFromEnrollments(enrollments, classId);
+    }
+
+    return [];
   }
 
   async getClassOfferings(classId: string, currentUser: AuthenticatedUser) {
@@ -332,5 +355,59 @@ export class ClassService {
     );
 
     return offerings;
+  }
+
+  private async mapSubjectsWithLessons(classSubjects: any[]) {
+    return await Promise.all(classSubjects.map(async (cs) => {
+      const lessons = await this.lessonRepository.findByClassSubjectId(cs.class_subject_id);
+
+      return {
+        subject_id: cs.subject_id,
+        subject_name: cs.subject_name,
+        subject_code: cs.subject_code,
+        subject_description: cs.subject_description,
+        hours_per_week: cs.hours_per_week,
+        classroom: cs.classroom,
+        schedule: cs.schedule,
+        teacher: cs.teacher_id ? {
+          id: cs.teacher_id,
+          first_name: cs.first_name,
+          last_name: cs.last_name,
+          email: cs.email,
+          avatar_url: cs.avatar_url
+        } : null,
+        lessons
+      };
+    }));
+  }
+
+  private mapSubjectsFromEnrollments(enrollments: any[], classId: string) {
+    const subjectsMap = new Map<string, any>();
+
+    enrollments
+      .filter((enrollment) => enrollment.class_id === classId)
+      .forEach((enrollment) => {
+        if (!subjectsMap.has(enrollment.subject_id)) {
+          subjectsMap.set(enrollment.subject_id, {
+            subject_id: enrollment.subject_id,
+            subject_name: enrollment.subject_name,
+            subject_code: enrollment.subject_code,
+            subject_description: enrollment.subject_description,
+            hours_per_week: enrollment.hours_per_week,
+            classroom: enrollment.room,
+            schedule: enrollment.schedule,
+            teacher: enrollment.primary_teacher_id ? {
+              id: enrollment.primary_teacher_id,
+              first_name: enrollment.teacher_first_name,
+              last_name: enrollment.teacher_last_name,
+              email: enrollment.teacher_email,
+              avatar_url: enrollment.teacher_avatar_url
+            } : null,
+            lessons: []
+          });
+        }
+      });
+
+    return Array.from(subjectsMap.values());
   }
 } 

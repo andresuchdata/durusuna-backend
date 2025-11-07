@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ZodError } from 'zod';
 import { ClassService } from '../services/classService';
 import { ClassUpdatesService } from '../services/classUpdatesService';
@@ -6,6 +6,7 @@ import { ClassRepository } from '../repositories/classRepository';
 import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { EnrollmentRepository } from '../repositories/enrollmentRepository';
 import { authenticate, authorize } from '../shared/middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
@@ -30,8 +31,85 @@ const classRepository = new ClassRepository(db);
 const classUpdatesRepository = new ClassUpdatesRepository(db);
 const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
-const classService = new ClassService(classRepository, lessonRepository, userClassRepository);
+const enrollmentRepository = new EnrollmentRepository(db);
+const classService = new ClassService(classRepository, lessonRepository, userClassRepository, enrollmentRepository);
 const classUpdatesService = new ClassUpdatesService(classUpdatesRepository);
+
+const createClassHandler: RequestHandler = async (req, res) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const classData = {
+      ...req.body,
+      school_id: authenticatedReq.user.school_id
+    };
+
+    const classItem = await classService.createClass(classData, authenticatedReq.user);
+    res.status(201).json({
+      message: 'Class created successfully',
+      class: classItem
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        error: 'Validation Error',
+        errors: error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'Access denied') {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+
+    logger.error('Error creating class:', error);
+    res.status(500).json({ error: 'Failed to create class' });
+  }
+};
+
+const updateClassHandler: RequestHandler = async (req, res) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: 'Class ID is required' });
+      return;
+    }
+
+    const classItem = await classService.updateClass(id, req.body, authenticatedReq.user);
+    res.json({
+      message: 'Class updated successfully',
+      class: classItem
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        error: 'Validation Error',
+        errors: error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'Class not found') {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'Access denied') {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+
+    logger.error('Error updating class:', error);
+    res.status(500).json({ error: 'Failed to update class' });
+  }
+};
 
 // Initialize notification system (lazy loaded to avoid circular dependencies)
 let classUpdateNotificationService: ClassUpdateNotificationService | null = null;
@@ -345,80 +423,14 @@ router.post('/:classId/updates', authenticate, validate(classUpdateSchema), asyn
  * @desc Create new class
  * @access Private (teachers and admins)
  */
-router.post('/', authenticate, authorize([], ['teacher']), async (req: Request, res: Response, next: NextFunction) => {
-  const authenticatedReq = req as AuthenticatedRequest;
-  try {
-    // Set school_id from user's school
-    const classData = {
-      ...req.body,
-      school_id: authenticatedReq.user.school_id
-    };
-    
-    const classItem = await classService.createClass(classData, authenticatedReq.user);
-    res.status(201).json({
-      message: 'Class created successfully',
-      class: classItem
-    });
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        errors: error.issues.map((err: any) => ({
-          field: err.path.join('.'),
-          message: err.message
-        }))
-      });
-    }
-    
-    if (error instanceof Error && error.message === 'Access denied') {
-      return res.status(403).json({ error: error.message });
-    }
-    
-    logger.error('Error creating class:', error);
-    res.status(500).json({ error: 'Failed to create class' });
-  }
-});
+router.post('/', authenticate, authorize([], ['teacher']), createClassHandler);
 
 /**
  * @route PUT /api/classes/:id
  * @desc Update class
  * @access Private (teachers and admins)
  */
-router.put('/:id', authenticate, authorize([], ['teacher']), async (req: Request, res: Response, next: NextFunction) => {
-  const authenticatedReq = req as AuthenticatedRequest;
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ error: 'Class ID is required' });
-    }
-    const classItem = await classService.updateClass(id, req.body, authenticatedReq.user);
-    res.json({
-      message: 'Class updated successfully',
-      class: classItem
-    });
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        errors: error.issues.map((err: any) => ({
-          field: err.path.join('.'),
-          message: err.message
-        }))
-      });
-    }
-    
-    if (error instanceof Error && error.message === 'Class not found') {
-      return res.status(404).json({ error: error.message });
-    }
-    
-    if (error instanceof Error && error.message === 'Access denied') {
-      return res.status(403).json({ error: error.message });
-    }
-    
-    logger.error('Error updating class:', error);
-    res.status(500).json({ error: 'Failed to update class' });
-  }
-});
+router.put('/:id', authenticate, authorize([], ['teacher']), updateClassHandler);
 
 /**
  * @route GET /api/classes/:id/students

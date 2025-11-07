@@ -84,14 +84,14 @@ export class EnrollmentRepository {
       JOIN classes c ON co.class_id = c.id
       LEFT JOIN users pt ON co.primary_teacher_id = pt.id
       JOIN users student ON e.student_id = student.id
-      JOIN parent_children pc ON pc.child_id = student.id
-      WHERE pc.parent_id = ?
+      JOIN parent_student_relationships psr ON psr.student_id = student.id
+      WHERE psr.parent_id = ?
         AND e.is_active = true
         AND e.status = 'active'
         AND co.is_active = true
         AND s.is_active = true
         AND c.is_active = true
-        AND pc.is_active = true
+        AND psr.is_active = true
       ORDER BY student.first_name ASC, student.last_name ASC, s.name ASC, c.name ASC
     `;
 

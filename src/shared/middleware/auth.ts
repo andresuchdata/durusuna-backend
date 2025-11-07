@@ -66,8 +66,8 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
  * Checks if user has required role or user type
  */
 export const authorize = (allowedRoles: string[] = [], allowedUserTypes: string[] = []) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const { role, user_type } = req.user;
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const { role, user_type } = (req as AuthenticatedRequest).user;
 
     // Check role authorization
     if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {

@@ -145,12 +145,12 @@ export class ClassOfferingService {
     // Parents have access to their children's offerings
     if (currentUser.user_type === 'parent') {
       const childEnrollment = await this.db('enrollments')
-        .join('parent_children', 'enrollments.student_id', 'parent_children.child_id')
-        .where('parent_children.parent_id', currentUser.id)
+        .join('parent_student_relationships', 'enrollments.student_id', 'parent_student_relationships.student_id')
+        .where('parent_student_relationships.parent_id', currentUser.id)
         .where('enrollments.class_offering_id', offeringId)
         .where('enrollments.is_active', true)
         .where('enrollments.status', 'active')
-        .where('parent_children.is_active', true)
+        .where('parent_student_relationships.is_active', true)
         .first();
       return !!childEnrollment;
     }

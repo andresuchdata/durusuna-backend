@@ -1,5 +1,5 @@
 import { Knex } from 'knex';
-import { UserClass, UserClassWithUser, UserClassWithClass } from '../types/class';
+import { Class, UserClass, UserClassWithUser, UserClassWithClass } from '../types/class';
 
 export class UserClassRepository {
   constructor(private db: Knex) {}
@@ -76,6 +76,18 @@ export class UserClassRepository {
     return !!userClass;
   }
 
+  async checkParentClassAccess(parentId: string, classId: string): Promise<boolean> {
+    const result = await this.db('parent_student_relationships as psr')
+      .join('user_classes', 'psr.student_id', 'user_classes.user_id')
+      .where('psr.parent_id', parentId)
+      .where('psr.is_active', true)
+      .where('user_classes.class_id', classId)
+      .where('user_classes.is_active', true)
+      .first();
+
+    return !!result;
+  }
+
   async checkUserSchoolAccess(userId: string, schoolId: string): Promise<boolean> {
     const user = await this.db('users')
       .where('id', userId)
@@ -134,6 +146,26 @@ export class UserClassRepository {
       .returning('id');
     
     return userClass.id;
+  }
+
+  async findParentClasses(parentId: string): Promise<Class[]> {
+    const rows = await this.db('parent_student_relationships as psr')
+      .join('user_classes', 'psr.student_id', 'user_classes.user_id')
+      .join('classes', 'user_classes.class_id', 'classes.id')
+      .where('psr.parent_id', parentId)
+      .where('psr.is_active', true)
+      .where('user_classes.is_active', true)
+      .where('classes.is_active', true)
+      .select('classes.*')
+      .orderBy('classes.grade_level', 'asc')
+      .orderBy('classes.name', 'asc');
+
+    const classMap = new Map<string, Class>();
+    rows.forEach((row) => {
+      classMap.set(row.id, row as Class);
+    });
+
+    return Array.from(classMap.values());
   }
 
   async removeUserFromClass(userId: string, classId: string): Promise<void> {
