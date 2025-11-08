@@ -78,7 +78,9 @@ export interface ListUsersParams {
   limit?: number;
   search?: string;
   userType?: 'teacher' | 'student' | 'parent' | 'admin' | 'all';
-  includeInactive?: boolean;
+  isActive?: boolean;
+  dobFrom?: Date;
+  dobTo?: Date;
 }
 
 export interface ListUsersResult {

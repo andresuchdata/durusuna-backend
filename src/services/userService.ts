@@ -261,6 +261,9 @@ export class UserService {
       limit: params.limit,
       search: params.search,
       userType: params.userType,
+      isActive: params.isActive,
+      dobFrom: params.dobFrom,
+      dobTo: params.dobTo,
     });
   }
 

@@ -65,6 +65,9 @@ router.get(
         limit: req.query.limit as any,
         search: req.query.search as string | undefined,
         userType: req.query.userType as string | undefined,
+        isActive: req.query.isActive as any,
+        dobFrom: req.query.dobFrom as string | undefined,
+        dobTo: req.query.dobTo as string | undefined,
       });
       res.json(result);
     } catch (error) {

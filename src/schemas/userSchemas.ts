@@ -107,6 +107,32 @@ export const listUsersQuerySchema = z.object({
     .optional(),
   search: z.string().optional(),
   userType: z.enum(['teacher', 'student', 'parent', 'admin', 'all']).optional(),
+  isActive: z
+    .union([z.string(), z.boolean()])
+    .transform((val) => {
+      if (val === 'true' || val === true) return true;
+      if (val === 'false' || val === false) return false;
+      return undefined;
+    })
+    .optional(),
+  dobFrom: z
+    .union([z.string(), z.date()])
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      if (val instanceof Date) return val;
+      const parsed = new Date(val);
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    }),
+  dobTo: z
+    .union([z.string(), z.date()])
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      if (val instanceof Date) return val;
+      const parsed = new Date(val);
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    }),
 });
 
 // Export types from schemas

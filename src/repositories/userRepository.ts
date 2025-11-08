@@ -167,26 +167,33 @@ export class UserRepository {
   }
 
   async listUsers(params: ListUsersParams): Promise<ListUsersResult> {
-    const { schoolId, page = 1, limit = 20, search, userType, includeInactive = false } = params;
+    const { schoolId, page = 1, limit = 20, search, userType, isActive, dobFrom, dobTo } = params;
     const offset = (page - 1) * limit;
 
     const baseQuery = this.db('users')
       .where('school_id', schoolId)
       .modify((qb) => {
-        if (!includeInactive) {
-          qb.where('is_active', true);
+        if (isActive !== undefined) {
+          qb.where('is_active', isActive);
         }
         if (userType && userType !== 'all') {
           qb.where('user_type', userType);
         }
         if (search && search.trim()) {
-          const pattern = `%${search}%`;
+          const pattern = `%${search.trim()}%`;
           qb.andWhere(function () {
             this.where('first_name', 'ilike', pattern)
               .orWhere('last_name', 'ilike', pattern)
               .orWhere('email', 'ilike', pattern)
+              .orWhere('phone', 'ilike', pattern)
               .orWhere(this.client.raw("CONCAT(first_name, ' ', last_name)"), 'ilike', pattern);
           });
+        }
+        if (dobFrom) {
+          qb.where('date_of_birth', '>=', dobFrom);
+        }
+        if (dobTo) {
+          qb.where('date_of_birth', '<=', dobTo);
         }
       });
 
