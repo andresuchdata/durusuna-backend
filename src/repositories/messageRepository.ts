@@ -591,4 +591,60 @@ export class MessageRepository {
     
     return participants.map(p => p.user_id);
   }
+
+  async findActiveParticipantsByConversationId(conversationId: string): Promise<any[]> {
+    return await this.db('conversation_participants')
+      .join('users', 'conversation_participants.user_id', 'users.id')
+      .where('conversation_participants.conversation_id', conversationId)
+      .where('conversation_participants.is_active', true)
+      .select(
+        'users.id',
+        'users.first_name',
+        'users.last_name',
+        'users.display_name',
+        'users.avatar_url',
+        'conversation_participants.role',
+        'conversation_participants.joined_at'
+      );
+  }
+
+  async softDeleteParticipant(conversationId: string, userId: string): Promise<void> {
+    await this.db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .where('user_id', userId)
+      .update({
+        is_active: false,
+        left_at: new Date(),
+        updated_at: new Date()
+      });
+  }
+
+  async deleteConversationMessages(conversationId: string): Promise<void> {
+    await this.db('messages')
+      .where('conversation_id', conversationId)
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+  }
+
+  async removeAllParticipants(conversationId: string): Promise<void> {
+    await this.db('conversation_participants')
+      .where('conversation_id', conversationId)
+      .update({
+        is_active: false,
+        left_at: new Date(),
+        updated_at: new Date()
+      });
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    await this.db('conversations')
+      .where('id', conversationId)
+      .update({
+        is_active: false,
+        updated_at: new Date()
+      });
+  }
 } 

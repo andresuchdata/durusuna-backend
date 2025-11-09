@@ -11,7 +11,8 @@ const router = express.Router();
 
 // Initialize service layer
 const authRepository = new AuthRepository(db);
-const authService = new AuthService(authRepository);
+const schoolRepository = new (require('../repositories/schoolRepository').SchoolRepository)(db);
+const authService = new AuthService(authRepository, schoolRepository);
 
 // Rate limiting middleware (import from existing middleware)
 const { rateLimitSensitive } = require('../shared/middleware/auth');
@@ -132,6 +133,136 @@ router.post('/register', rateLimitSensitive, async (req: Request, res: Response)
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to register user'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/register-admin:
+ *   post:
+ *     summary: Register a new admin and create school
+ *     description: Create a new school and admin user account
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - school_name
+ *               - school_address
+ *               - first_name
+ *               - last_name
+ *               - email
+ *               - password
+ *             properties:
+ *               school_name:
+ *                 type: string
+ *                 description: Name of the school
+ *                 example: "Greenwood High School"
+ *               school_address:
+ *                 type: string
+ *                 description: School address
+ *                 example: "123 Main St, City, State 12345"
+ *               school_phone:
+ *                 type: string
+ *                 description: School phone number
+ *                 example: "+1234567890"
+ *               school_email:
+ *                 type: string
+ *                 format: email
+ *                 description: School email address
+ *                 example: "info@greenwood.edu"
+ *               school_website:
+ *                 type: string
+ *                 format: uri
+ *                 description: School website URL
+ *                 example: "https://www.greenwood.edu"
+ *               first_name:
+ *                 type: string
+ *                 description: Admin user's first name
+ *                 example: "John"
+ *               last_name:
+ *                 type: string
+ *                 description: Admin user's last name
+ *                 example: "Smith"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Admin user email address
+ *                 example: "admin@greenwood.edu"
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Admin user password (minimum 8 characters)
+ *                 example: "SecurePass123!"
+ *               phone:
+ *                 type: string
+ *                 description: Admin user phone number
+ *                 example: "+1234567890"
+ *     responses:
+ *       201:
+ *         description: Admin registered and school created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Email already registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/register-admin', rateLimitSensitive, async (req: Request, res: Response) => {
+  try {
+    const result = await authService.registerAdmin(req.body);
+    
+    res.status(201).json({
+      message: 'Admin registered and school created successfully',
+      user: result.user,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        errors: error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+    }
+    
+    if (error instanceof Error) {
+      if (error.message === 'Email already registered') {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: error.message
+        });
+      }
+    }
+    
+    logger.error('Admin registration error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to register admin and create school'
     });
   }
 });

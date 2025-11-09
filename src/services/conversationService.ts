@@ -703,4 +703,63 @@ export class ConversationService {
       return 'member';
     }
   }
+
+  async deleteConversation(conversationId: string, userId: string): Promise<{ action: 'left' | 'deleted' }> {
+    try {
+      // Verify user is a participant
+      const participant = await this.messageRepository.findConversationParticipant(conversationId, userId);
+      if (!participant) {
+        throw new Error('Access denied');
+      }
+
+      // Get conversation details
+      const conversation = await this.messageRepository.findConversationById(conversationId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      // For direct messages: Always soft delete (only hide from this user's view)
+      if (conversation.type === 'direct') {
+        await this.messageRepository.softDeleteParticipant(conversationId, userId);
+        messageCache.invalidateUser(userId);
+        logger.info(`User ${userId} deleted their view of direct conversation ${conversationId}`);
+        return { action: 'deleted' };
+      }
+
+      // For group conversations: Leave the group (soft delete)
+      if (conversation.type === 'group') {
+        // Check if this is the last active participant who is also the creator/admin
+        const activeParticipants = await this.messageRepository.findActiveParticipantsByConversationId(conversationId);
+        const isLastActiveParticipant = activeParticipants.length === 1;
+        const isCreatorOrAdmin = conversation.created_by === userId || participant.role === 'admin';
+
+        if (isLastActiveParticipant && isCreatorOrAdmin) {
+          // Last admin/creator leaving - delete the entire group
+          await this.messageRepository.deleteConversationMessages(conversationId);
+          await this.messageRepository.removeAllParticipants(conversationId);
+          await this.messageRepository.deleteConversation(conversationId);
+          
+          // Invalidate cache for all former participants
+          const allParticipantIds = await this.messageRepository.findParticipantUserIds(conversationId);
+          allParticipantIds.forEach(participantId => {
+            messageCache.invalidateUser(participantId);
+          });
+          
+          logger.info(`Group conversation ${conversationId} deleted by last admin/creator ${userId}`);
+          return { action: 'deleted' };
+        } else {
+          // Regular leave group
+          await this.messageRepository.softDeleteParticipant(conversationId, userId);
+          messageCache.invalidateUser(userId);
+          logger.info(`User ${userId} left group conversation ${conversationId}`);
+          return { action: 'left' };
+        }
+      }
+
+      throw new Error('Invalid conversation type');
+    } catch (error) {
+      logger.error('Error deleting conversation:', error);
+      throw error;
+    }
+  }
 } 

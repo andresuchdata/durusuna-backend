@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { ConversationService } from '../services/conversationService';
 import { MessageService } from '../services/messageService';
 import { MessageRepository } from '../repositories/messageRepository';
@@ -254,6 +254,10 @@ router.delete('/:conversationId/messages/:messageId', authenticate, async (req: 
   try {
     const { messageId } = req.params;
 
+    if (!messageId) {
+      return res.status(400).json({ error: 'Message ID is required' });
+    }
+
     const result = await messageService.deleteMessage(messageId, authenticatedReq.user);
 
     if (!result.success) {
@@ -351,6 +355,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
     // For direct conversations, check if one already exists
     if (type === 'direct') {
+      if (!participant_ids[0]) {
+        return res.status(400).json({ error: 'Participant ID is required for direct conversations' });
+      }
       const existingConversation = await conversationService.findDirectConversation(
         authenticatedReq.user.id,
         participant_ids[0]
@@ -387,6 +394,10 @@ router.post('/:conversationId/messages/reactions', authenticate, async (req: Req
   try {
     const { conversationId } = req.params;
     const { messageIds } = req.body as { messageIds?: string[] };
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
 
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return res.status(400).json({ error: 'messageIds array is required' });
@@ -493,6 +504,54 @@ router.put('/:conversationId', authenticate, async (req: Request, res: Response)
     
     logger.error('Error updating conversation:', error);
     res.status(500).json({ error: 'Failed to update conversation' });
+  }
+});
+
+/**
+ * @route DELETE /api/conversations/:conversationId
+ * @desc Leave a group conversation or delete a direct conversation from user's view
+ * @access Private
+ */
+router.delete('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversationId } = req.params;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
+
+    // Verify user is a participant of the conversation
+    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Delete/leave the conversation using the service (handles logic internally)
+    const result = await conversationService.deleteConversation(conversationId, authenticatedReq.user.id);
+
+    const message = result.action === 'left' 
+      ? 'Left the group conversation successfully' 
+      : 'Conversation deleted successfully';
+
+    res.json({
+      message,
+      action: result.action,
+      conversation_id: conversationId
+    });
+
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Conversation not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'Access denied') {
+        return res.status(403).json({ error: error.message });
+      }
+    }
+    
+    logger.error('Error deleting conversation:', error);
+    res.status(500).json({ error: 'Failed to delete conversation' });
   }
 });
 

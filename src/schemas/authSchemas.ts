@@ -52,6 +52,22 @@ export const resetPasswordSchema = z.object({
   new_password: z.string().min(8, 'Password must be at least 8 characters')
 });
 
+export const registerAdminSchema = z.object({
+  // School information
+  school_name: z.string().min(1, 'School name is required').trim(),
+  school_address: z.string().min(1, 'School address is required').trim(),
+  school_phone: z.string().optional(),
+  school_email: z.string().email('Invalid school email format').optional(),
+  school_website: z.string().url('Invalid website URL').optional(),
+  
+  // Admin user information
+  first_name: z.string().min(1, 'First name is required').trim(),
+  last_name: z.string().min(1, 'Last name is required').trim(),
+  email: z.string().email('Invalid email format').toLowerCase(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  phone: z.string().optional()
+});
+
 // Export types from schemas
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -59,4 +75,5 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>; 
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type RegisterAdminInput = z.infer<typeof registerAdminSchema>; 

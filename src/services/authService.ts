@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 import { AuthRepository } from '../repositories/authRepository';
+import { SchoolRepository } from '../repositories/schoolRepository';
 import { 
   RegisterUserData, 
   LoginCredentials, 
@@ -19,19 +20,24 @@ import {
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  registerAdminSchema,
   type RegisterInput,
   type LoginInput,
   type UpdateProfileInput,
   type ChangePasswordInput,
   type RefreshTokenInput,
   type ForgotPasswordInput,
-  type ResetPasswordInput
+  type ResetPasswordInput,
+  type RegisterAdminInput
 } from '../schemas/authSchemas';
 
 import { generateTokenPair, verifyRefreshToken, JWTUser } from '../utils/jwt';
 
 export class AuthService {
-  constructor(private authRepository: AuthRepository) {}
+  constructor(
+    private authRepository: AuthRepository,
+    private schoolRepository?: SchoolRepository
+  ) {}
 
   async register(data: RegisterInput): Promise<{ user: AuthUser; accessToken: string; refreshToken: string; expiresIn: string }> {
     // Validate input
@@ -70,6 +76,62 @@ export class AuthService {
     const user = await this.authRepository.findUserById(userId);
     if (!user) {
       throw new Error('Failed to create user');
+    }
+
+    // Generate tokens
+    const tokens = generateTokenPair(user);
+
+    return {
+      user,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn
+    };
+  }
+
+  async registerAdmin(data: RegisterAdminInput): Promise<{ user: AuthUser; accessToken: string; refreshToken: string; expiresIn: string }> {
+    if (!this.schoolRepository) {
+      throw new Error('School repository not available');
+    }
+
+    // Validate input
+    const validatedData = registerAdminSchema.parse(data);
+    
+    // Check if email already exists (check across all schools)
+    const existingUser = await this.authRepository.findUserByEmail(validatedData.email);
+    if (existingUser) {
+      throw new Error('Email already registered');
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(validatedData.password, saltRounds);
+
+    // Create school first
+    const schoolId = await this.schoolRepository.create({
+      name: validatedData.school_name,
+      address: validatedData.school_address,
+      phone: validatedData.school_phone,
+      email: validatedData.school_email,
+      website: validatedData.school_website,
+    });
+
+    // Create admin user for the school
+    const userData = {
+      email: validatedData.email,
+      first_name: validatedData.first_name,
+      last_name: validatedData.last_name,
+      user_type: 'admin' as const,
+      school_id: schoolId,
+      phone: validatedData.phone,
+    };
+
+    const userId = await this.authRepository.createUser(userData, hashedPassword);
+
+    // Get created user
+    const user = await this.authRepository.findUserById(userId);
+    if (!user) {
+      throw new Error('Failed to create admin user');
     }
 
     // Generate tokens
