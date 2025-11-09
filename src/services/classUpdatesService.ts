@@ -533,11 +533,16 @@ export class ClassUpdatesService {
       hasAccess = !!targetClass;
     } else {
       const userClass = await this.classUpdatesRepository.getUserClassWithDetails(currentUser.id, classId);
-      hasAccess = userClass && (userClass.user_type === 'teacher' || userClass.role_in_class === 'teacher');
+      hasAccess = !!userClass;
     }
 
     if (!hasAccess) {
-      throw new Error('Access denied to this class');
+      // Provide a more specific error message based on user type
+      if (user.user_type === 'parent') {
+        throw new Error('Only teachers can create class updates and upload attachments');
+      }
+
+      throw new Error('Access denied to this class. Only teachers can upload attachments.');
     }
 
     return user;

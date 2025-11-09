@@ -157,8 +157,24 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
       urls: presignedUrls,
     });
   } catch (error) {
+    const errorMessage = (error as Error).message;
+    
+    // Check if this is a permission error
+    if (errorMessage.includes('Access denied') || errorMessage.includes('Only teachers')) {
+      logger.warn('Permission denied for presigned URL generation:', {
+        error: errorMessage,
+        classId: req.body?.class_id,
+        userId: authReq.user?.id,
+      });
+
+      return res.status(403).json({
+        error: 'Access denied',
+        message: errorMessage,
+      });
+    }
+
     logger.error('Error generating presigned URLs:', {
-      error: (error as Error).message,
+      error: errorMessage,
       stack: (error as Error).stack,
       classId: req.body?.class_id,
       userId: authReq.user?.id,
@@ -166,7 +182,7 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
 
     res.status(500).json({
       error: 'Failed to generate presigned URLs',
-      message: (error as Error).message,
+      message: errorMessage,
     });
   }
 });
@@ -269,8 +285,24 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
 
     res.json(response);
   } catch (error) {
+    const errorMessage = (error as Error).message;
+    
+    // Check if this is a permission error
+    if (errorMessage.includes('Access denied') || errorMessage.includes('Only teachers')) {
+      logger.warn('Permission denied for attachment upload:', {
+        error: errorMessage,
+        classId: req.body?.class_id,
+        userId: authReq.user?.id,
+      });
+
+      return res.status(403).json({
+        error: 'Access denied',
+        message: errorMessage,
+      });
+    }
+
     logger.error('Error uploading class update attachments:', {
-      error: (error as Error).message,
+      error: errorMessage,
       stack: (error as Error).stack,
       fileCount: req.files?.length,
       classId: req.body?.class_id,
@@ -288,7 +320,7 @@ router.post('/upload-attachments', authenticate, upload.array('attachments', 5),
     
     res.status(500).json({ 
       error: 'Failed to upload attachments',
-      message: (error as Error).message,
+      message: errorMessage,
       timestamp: new Date().toISOString()
     });
   }
