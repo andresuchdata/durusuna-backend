@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 import { UserRepository } from '../repositories/userRepository';
 import { FCMTokenRepository } from '../repositories/fcmTokenRepository';
+import { AccessControlService } from './accessControlService';
 import {
   User,
   UserWithSchool,
@@ -26,10 +27,12 @@ import {
 
 export class UserService {
   private fcmTokenRepository: FCMTokenRepository;
+  private accessControlService: AccessControlService;
 
   constructor(private userRepository: UserRepository) {
     // Get db instance from userRepository (cleaner than passing separately)
     this.fcmTokenRepository = new FCMTokenRepository((this.userRepository as any).db);
+    this.accessControlService = new AccessControlService((this.userRepository as any).db);
   }
 
   private ensureSchool(currentUser: AuthenticatedUser): string {
@@ -172,21 +175,18 @@ export class UserService {
   }
 
   async getContacts(currentUser: AuthenticatedUser, page: number = 1, limit: number = 50, search?: string, userType?: string) {
-    // Get current user's school
-    const currentUserData = await this.userRepository.findCurrentUserSchool(currentUser.id);
-    
-    if (!currentUserData || !currentUserData.school_id) {
-      throw new Error('User not associated with a school');
-    }
+    // Ensure user has a school
+    this.ensureSchool(currentUser);
 
-    // Use search logic with optional search term and user type filter
-    const users = await this.userRepository.searchUsers(
-      currentUserData.school_id,
-      currentUser.id,
-      search || '', // Use provided search term or empty string
+    // Use AccessControlService to get role-based filtered users
+    const offset = (page - 1) * limit;
+    const users = await this.accessControlService.getAccessibleUsers(currentUser, {
+      search,
+      userType,
       limit,
-      userType
-    );
+      offset,
+      includeInactive: false
+    });
 
     const formattedUsers = users.map(user => ({
       id: user.id,
@@ -197,11 +197,11 @@ export class UserService {
       avatar_url: user.avatar_url || null,
       user_type: user.user_type,
       role: user.role,
-      school_id: currentUserData.school_id,
-      is_active: true,
+      school_id: user.school_id,
+      is_active: user.is_active,
       last_active_at: user.last_login_at || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      created_at: user.created_at.toISOString(),
+      updated_at: user.updated_at?.toISOString() || user.created_at.toISOString()
     }));
 
     return {
@@ -253,18 +253,38 @@ export class UserService {
     }
 
     const params = listUsersQuerySchema.parse(input);
-    const schoolId = this.ensureSchool(currentUser);
+    this.ensureSchool(currentUser);
 
-    return this.userRepository.listUsers({
-      schoolId,
-      page: params.page,
-      limit: params.limit,
+    // For admin users, use the original repository method for full user management
+    if (currentUser.role === 'admin') {
+      return this.userRepository.listUsers({
+        schoolId: currentUser.school_id!,
+        page: params.page,
+        limit: params.limit,
+        search: params.search,
+        userType: params.userType,
+        isActive: params.isActive,
+        dobFrom: params.dobFrom,
+        dobTo: params.dobTo,
+      });
+    }
+
+    // For non-admin users, use access control service
+    const offset = ((params.page || 1) - 1) * (params.limit || 20);
+    const users = await this.accessControlService.getAccessibleUsers(currentUser, {
       search: params.search,
       userType: params.userType,
-      isActive: params.isActive,
-      dobFrom: params.dobFrom,
-      dobTo: params.dobTo,
+      limit: params.limit || 20,
+      offset,
+      includeInactive: params.isActive !== undefined ? !params.isActive : false
     });
+
+    return {
+      users,
+      total: users.length, // Note: This won't be accurate for pagination, but non-admins typically don't need exact counts
+      page: params.page || 1,
+      limit: params.limit || 20,
+    };
   }
 
   async getUserById(currentUser: AuthenticatedUser, userId: string) {
@@ -272,8 +292,17 @@ export class UserService {
       throw new Error('Access denied: insufficient permissions');
     }
 
-    const schoolId = this.ensureSchool(currentUser);
-    const user = await this.userRepository.findByIdAndSchool(userId, schoolId);
+    this.ensureSchool(currentUser);
+
+    // Check if user can access this specific user
+    if (currentUser.role !== 'admin') {
+      const canAccess = await this.accessControlService.canAccessUser(currentUser, userId);
+      if (!canAccess) {
+        throw new Error('Access denied: You cannot view this user');
+      }
+    }
+
+    const user = await this.userRepository.findByIdAndSchool(userId, currentUser.school_id!);
 
     if (!user) {
       throw new Error('User not found');

@@ -34,6 +34,7 @@ import assignmentRoutes from './routes/assignments';
 import enrollmentRoutes from './routes/enrollments';
 import classOfferingRoutes from './routes/classOfferings';
 import academicRoutes from './routes/academic';
+import accessRoutes from './routes/access';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
@@ -189,6 +190,7 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/class-offerings', classOfferingRoutes);
 app.use('/api/academic', academicRoutes);
+app.use('/api/access', accessRoutes);
 
 /**
  * @swagger

@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { ConversationService } from '../services/conversationService';
 import { MessageService } from '../services/messageService';
 import { MessageRepository } from '../repositories/messageRepository';
+import { AccessControlService } from '../services/accessControlService';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { validate, messageSchema } from '../utils/validation';
@@ -15,6 +16,7 @@ const router = express.Router();
 
 // Initialize service layer
 const messageRepository = new MessageRepository(db);
+const accessControlService = new AccessControlService(db);
 const conversationService = new ConversationService(messageRepository);
 const messageService = new MessageService(messageRepository);
 
@@ -351,6 +353,18 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
     if (type === 'group' && (!name || name.trim().length === 0)) {
       return res.status(400).json({ error: 'Group conversations must have a name' });
+    }
+
+    // Validate that current user can access all participants
+    const canAccessParticipants = await accessControlService.canAccessConversationParticipants(
+      authenticatedReq.user,
+      participant_ids
+    );
+
+    if (!canAccessParticipants) {
+      return res.status(403).json({ 
+        error: 'Access denied: You cannot create conversations with one or more of these participants' 
+      });
     }
 
     // For direct conversations, check if one already exists
