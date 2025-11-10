@@ -137,6 +137,7 @@ export interface SendMessageRequest {
   content?: string;
   message_type?: 'text' | 'image' | 'video' | 'audio' | 'file' | 'emoji';
   reply_to_id?: string;
+  attachments?: MessageAttachment[];
   metadata?: Record<string, any>;
 }
 

@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
-import multer from 'multer';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { authenticate } from '../middleware/auth';
 import logger from '../shared/utils/logger';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';
+import { uploadMiddleware } from '../shared/middleware/upload';
 import {
   UploadFileRequest,
   UploadFileResponse,
@@ -26,20 +26,12 @@ import {
 
 const router = express.Router();
 
-// Configure multer for memory storage (we'll handle S3 upload manually)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-});
-
 /**
  * @route POST /api/uploads/file
  * @desc Upload single file
  * @access Private
  */
-router.post('/file', authenticate, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/file', authenticate, uploadMiddleware.general.single('file'), async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     if (!req.file) {
@@ -114,7 +106,7 @@ router.post('/file', authenticate, upload.single('file'), async (req: Request, r
  * @desc Upload multiple files
  * @access Private
  */
-router.post('/files', authenticate, upload.array('files', 10), async (req: Request, res: Response) => {
+router.post('/files', authenticate, uploadMiddleware.general.array('files', 10), async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {

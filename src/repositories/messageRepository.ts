@@ -284,6 +284,7 @@ export class MessageRepository {
         'messages.content',
         'messages.message_type',
         'messages.reply_to_id',
+        'messages.metadata',
         'messages.is_read',
         'messages.is_edited',
         'messages.edited_at',

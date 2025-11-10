@@ -1,13 +1,17 @@
 import express, { Request, Response, NextFunction } from 'express';
+import mime from 'mime-types';
+import { v4 as uuidv4 } from 'uuid';
 import { ConversationService } from '../services/conversationService';
 import { MessageService } from '../services/messageService';
 import { MessageRepository } from '../repositories/messageRepository';
 import { AccessControlService } from '../services/accessControlService';
+import storageService from '../services/storageService';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { validate, messageSchema } from '../utils/validation';
 import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
+import { uploadMiddleware, determineMessageType } from '../shared/middleware/upload';
 import {
   ConversationPaginationParams
 } from '../types/message';
@@ -218,6 +222,152 @@ router.post('/:conversationId/messages', authenticate, validate(messageSchema), 
     res.status(500).json({ error: 'Failed to send message' });
   }
 });
+
+/**
+ * @route POST /api/conversations/:conversationId/upload-media
+ * @desc Upload media files for a conversation
+ * @access Private
+ */
+router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat.array('files'), async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversationId } = req.params;
+    
+    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    // Check if user is a participant in this conversation
+    const participant = await messageRepository.findConversationParticipant(
+      conversationId!, 
+      authenticatedReq.user.id
+    );
+    
+    if (!participant) {
+      return res.status(403).json({ error: 'Access denied to this conversation' });
+    }
+
+    const uploadPromises = req.files.map(async (file: Express.Multer.File) => {
+      // Determine folder based on file type
+      const folder = getMediaFolder(file.mimetype);
+      
+      const uploadOptions = {
+        processImage: file.mimetype.startsWith('image/'),
+        imageOptions: {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 85,
+          createThumbnail: true,
+        },
+        customMetadata: {
+          'uploaded-by': authenticatedReq.user.id,
+          'conversation-id': conversationId!,
+          'upload-context': 'chat-media',
+        },
+      };
+
+      const fileInfo = await storageService.uploadFile(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        folder,
+        uploadOptions
+      );
+
+      return {
+        id: fileInfo.key,
+        url: fileInfo.url,
+        fileName: fileInfo.fileName,
+        originalName: fileInfo.originalName,
+        mimeType: fileInfo.mimeType,
+        size: fileInfo.size,
+        type: getFileType(fileInfo.mimeType),
+      };
+    });
+
+    const uploadedFiles = await Promise.all(uploadPromises);
+
+    res.json({ 
+      success: true,
+      files: uploadedFiles 
+    });
+  } catch (error) {
+    logger.error('Error uploading media:', error);
+    res.status(500).json({ error: 'Failed to upload media' });
+  }
+});
+
+/**
+ * @route POST /api/conversations/generate-presigned-urls
+ * @desc Generate presigned URLs for direct client uploads
+ * @access Private
+ */
+router.post('/generate-presigned-urls', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { conversation_id, files } = req.body;
+
+    if (!conversation_id || !files || !Array.isArray(files)) {
+      return res.status(400).json({ error: 'conversation_id and files array are required' });
+    }
+
+    // Check if user is a participant in this conversation
+    const participant = await messageRepository.findConversationParticipant(
+      conversation_id, 
+      authenticatedReq.user.id
+    );
+    
+    if (!participant) {
+      return res.status(403).json({ error: 'Access denied to this conversation' });
+    }
+
+    const urlPromises = files.map(async (fileInfo: any) => {
+      const folder = getMediaFolder(fileInfo.type);
+      const fileName = `${uuidv4()}.${mime.extension(fileInfo.type) || 'bin'}`;
+      const key = `${folder}/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${fileName}`;
+      
+      const uploadUrl = await storageService.generatePresignedUploadUrl(key, fileInfo.type);
+      // Generate public URL based on bucket configuration
+      const s3PublicUrl = process.env.S3_PUBLIC_URL;
+      const publicUrl = s3PublicUrl ? `${s3PublicUrl}/${key}` : `/api/uploads/serve/${key}`;
+
+      return {
+        id: key,
+        uploadUrl,
+        publicUrl,
+        key,
+        fileName,
+        originalName: fileInfo.name,
+        mimeType: fileInfo.type,
+        size: fileInfo.size,
+      };
+    });
+
+    const urls = await Promise.all(urlPromises);
+
+    res.json({ urls });
+  } catch (error) {
+    logger.error('Error generating presigned URLs:', error);
+    res.status(500).json({ error: 'Failed to generate presigned URLs' });
+  }
+});
+
+// Helper functions
+function getMediaFolder(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return 'chat/images';
+  if (mimeType.startsWith('video/')) return 'chat/videos';
+  if (mimeType.startsWith('audio/')) return 'chat/audio';
+  return 'chat/documents';
+}
+
+function getFileType(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.includes('pdf') || mimeType.includes('document') || 
+      mimeType.includes('spreadsheet') || mimeType.includes('text/')) return 'document';
+  return 'file';
+}
 
 /**
  * @route PUT /api/conversations/:conversationId/mark-read
