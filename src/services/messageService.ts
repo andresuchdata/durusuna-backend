@@ -2,6 +2,7 @@ import { MessageRepository } from '../repositories/messageRepository';
 import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../shared/utils/logger';
+import { determineMessageType } from '../shared/middleware/upload';
 import {
   MessageWithSender,
   SendMessageRequest,
@@ -214,7 +215,8 @@ export class MessageService {
       message_type = 'text',
       reply_to_id,
       metadata,
-      client_message_id
+      client_message_id,
+      attachments
     } = messageData;
 
     let conversationId = conversation_id;
@@ -316,14 +318,25 @@ export class MessageService {
     }
 
     if (!message) {
+      // Prepare metadata with attachments if provided
+      const enrichedMetadata = {
+        ...metadata,
+        ...(attachments && attachments.length > 0 ? { attachments } : {})
+      };
+
+      // Determine message type from attachments if present, otherwise use provided type
+      const finalMessageType = attachments && attachments.length > 0
+        ? determineMessageType(attachments, message_type)
+        : message_type;
+
       message = await this.messageRepository.createMessage({
         conversation_id: conversationId,
         sender_id: currentUser.id,
         receiver_id: receiverId || undefined,
         content: content || undefined,
-        message_type,
+        message_type: finalMessageType,
         reply_to_id: reply_to_id || undefined,
-        metadata,
+        metadata: enrichedMetadata,
         client_message_id: client_message_id || undefined,
       });
     }
@@ -341,6 +354,10 @@ export class MessageService {
       last_message_at: message.created_at
     });
 
+    // Extract attachments from metadata
+    const messageMetadata = safeJsonParse(completeMessage.metadata, {});
+    const messageAttachments = messageMetadata.attachments || attachments || [];
+
     const formattedMessage: MessageWithSender = {
       id: completeMessage.id,
       conversation_id: conversationId,
@@ -349,6 +366,8 @@ export class MessageService {
       content: completeMessage.content,
       message_type: completeMessage.message_type,
       reply_to_id: completeMessage.reply_to_id,
+      attachments: messageAttachments,
+      metadata: messageMetadata,
       is_read: Boolean(completeMessage.is_read),
       is_edited: Boolean(completeMessage.is_edited),
       is_deleted: Boolean(completeMessage.is_deleted),

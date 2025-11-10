@@ -1,6 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import multer from 'multer';
 import db from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { validate, classUpdateSchema, commentSchema } from '../utils/validation';
@@ -8,6 +7,7 @@ import logger from '../shared/utils/logger';
 import { safeJsonParse, migrateReactions, safeJsonStringify, ReactionData } from '../utils/json';
 import storageService from '../services/storageService';
 import { AuthenticatedRequest } from '../types/auth';
+import { uploadMiddleware } from '../shared/middleware/upload';
 import { ClassUpdatesService } from '../services/classUpdatesService';
 import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { NotificationOutboxRepository } from '../repositories/notificationOutboxRepository';
@@ -59,15 +59,7 @@ function getNotificationService() {
   return classUpdateNotificationService;
 }
 
-// Configure multer for memory storage for class update attachments
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit for class updates (to support videos)
-  },
-});
-
-// JSON utilities now imported from utils/json.ts
+// Use centralized upload middleware
 
 interface UserAccess {
   user_type: 'student' | 'teacher' | 'parent' | 'admin';
@@ -192,7 +184,7 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
  * @desc Upload attachments for class updates (legacy endpoint, kept for backwards compatibility)
  * @access Private (Teachers only)
  */
-router.post('/upload-attachments', authenticate, upload.array('attachments', 5), async (req: Request, res: Response) => {
+router.post('/upload-attachments', authenticate, uploadMiddleware.classUpdates.array('attachments'), async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
