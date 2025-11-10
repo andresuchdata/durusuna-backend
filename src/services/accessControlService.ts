@@ -1,5 +1,5 @@
 import { Knex } from 'knex';
-import { AuthenticatedUser } from '../types/auth';
+import { AuthenticatedUser } from '../types/user';
 
 export interface AccessibleUser {
   id: string;
@@ -140,31 +140,60 @@ export class AccessControlService {
     const userIds = new Set<string>();
 
     // 1. All admins in the same school
-    const admins = await this.db('users')
+    let adminsQuery = this.db('users')
       .where({
         school_id: currentUser.school_id,
         role: 'admin'
       })
-      .where('id', '!=', currentUser.id)
-      .where('is_active', options.includeInactive ? undefined : true)
-      .select('id');
+      .where('id', '!=', currentUser.id);
+    
+    if (!options.includeInactive) {
+      adminsQuery = adminsQuery.where('is_active', true);
+    }
+    
+    const admins = await adminsQuery.select('id');
     
     admins.forEach(admin => userIds.add(admin.id));
 
     // 2. All teachers from the same school
-    const teachers = await this.db('users')
+    let teachersQuery = this.db('users')
       .where({
         school_id: currentUser.school_id,
         user_type: 'teacher'
       })
-      .where('id', '!=', currentUser.id)
-      .where('is_active', options.includeInactive ? undefined : true)
-      .select('id');
+      .where('id', '!=', currentUser.id);
+    
+    if (!options.includeInactive) {
+      teachersQuery = teachersQuery.where('is_active', true);
+    }
+    
+    const teachers = await teachersQuery.select('id');
     
     teachers.forEach(teacher => userIds.add(teacher.id));
 
-    // 3. Parents of students in classes this teacher teaches
-    const parentsOfStudents = await this.db('parent_student_relationships as psr')
+    // 3. Students in classes this teacher teaches
+    let studentsQuery = this.db('enrollments as e')
+      .join('class_offering_teachers as cot', 'e.class_offering_id', 'cot.class_offering_id')
+      .join('users as students', 'e.student_id', 'students.id')
+      .where({
+        'cot.teacher_id': currentUser.id,
+        'cot.is_active': true,
+        'e.status': 'active'
+      })
+      .where('students.school_id', currentUser.school_id);
+    
+    if (!options.includeInactive) {
+      studentsQuery = studentsQuery.where('students.is_active', true);
+    }
+    
+    const studentsInClasses = await studentsQuery
+      .distinct('students.id')
+      .select('students.id');
+
+    studentsInClasses.forEach(student => userIds.add(student.id));
+
+    // 4. Parents of students in classes this teacher teaches
+    let parentsQuery = this.db('parent_student_relationships as psr')
       .join('users as parents', 'psr.parent_id', 'parents.id')
       .join('users as students', 'psr.student_id', 'students.id')
       .join('enrollments as e', 'students.id', 'e.student_id')
@@ -174,8 +203,13 @@ export class AccessControlService {
         'psr.is_active': true,
         'e.status': 'active'
       })
-      .where('parents.school_id', currentUser.school_id)
-      .where('parents.is_active', options.includeInactive ? undefined : true)
+      .where('parents.school_id', currentUser.school_id);
+    
+    if (!options.includeInactive) {
+      parentsQuery = parentsQuery.where('parents.is_active', true);
+    }
+    
+    const parentsOfStudents = await parentsQuery
       .distinct('parents.id')
       .select('parents.id');
 
@@ -199,13 +233,17 @@ export class AccessControlService {
     const userIds = new Set<string>();
 
     // 1. All admins in the same school
-    const admins = await this.db('users')
+    let adminsQuery = this.db('users')
       .where({
         school_id: currentUser.school_id,
         role: 'admin'
-      })
-      .where('is_active', options.includeInactive ? undefined : true)
-      .select('id');
+      });
+    
+    if (!options.includeInactive) {
+      adminsQuery = adminsQuery.where('is_active', true);
+    }
+    
+    const admins = await adminsQuery.select('id');
     
     admins.forEach(admin => userIds.add(admin.id));
 
@@ -222,7 +260,7 @@ export class AccessControlService {
       const studentIds = children.map(child => child.student_id);
 
       // 3. Teachers of their children's classes (including homeroom teachers)
-      const teachersOfChildren = await this.db('enrollments as e')
+      let teachersQuery = this.db('enrollments as e')
         .join('class_offering_teachers as cot', 'e.class_offering_id', 'cot.class_offering_id')
         .join('users as teachers', 'cot.teacher_id', 'teachers.id')
         .whereIn('e.student_id', studentIds)
@@ -230,15 +268,20 @@ export class AccessControlService {
           'e.status': 'active',
           'cot.is_active': true
         })
-        .where('teachers.school_id', currentUser.school_id)
-        .where('teachers.is_active', options.includeInactive ? undefined : true)
+        .where('teachers.school_id', currentUser.school_id);
+      
+      if (!options.includeInactive) {
+        teachersQuery = teachersQuery.where('teachers.is_active', true);
+      }
+      
+      const teachersOfChildren = await teachersQuery
         .distinct('teachers.id')
         .select('teachers.id');
 
       teachersOfChildren.forEach(teacher => userIds.add(teacher.id));
 
       // 4. Parents of students in the same classes as their children
-      const parentsInSameClasses = await this.db('enrollments as e1')
+      let parentsQuery = this.db('enrollments as e1')
         .join('enrollments as e2', 'e1.class_offering_id', 'e2.class_offering_id')
         .join('parent_student_relationships as psr', 'e2.student_id', 'psr.student_id')
         .join('users as parents', 'psr.parent_id', 'parents.id')
@@ -249,8 +292,13 @@ export class AccessControlService {
           'psr.is_active': true
         })
         .where('parents.id', '!=', currentUser.id)
-        .where('parents.school_id', currentUser.school_id)
-        .where('parents.is_active', options.includeInactive ? undefined : true)
+        .where('parents.school_id', currentUser.school_id);
+      
+      if (!options.includeInactive) {
+        parentsQuery = parentsQuery.where('parents.is_active', true);
+      }
+      
+      const parentsInSameClasses = await parentsQuery
         .distinct('parents.id')
         .select('parents.id');
 
@@ -275,18 +323,22 @@ export class AccessControlService {
     const userIds = new Set<string>();
 
     // 1. All admins in the same school
-    const admins = await this.db('users')
+    let adminsQuery = this.db('users')
       .where({
         school_id: currentUser.school_id,
         role: 'admin'
-      })
-      .where('is_active', options.includeInactive ? undefined : true)
-      .select('id');
+      });
+    
+    if (!options.includeInactive) {
+      adminsQuery = adminsQuery.where('is_active', true);
+    }
+    
+    const admins = await adminsQuery.select('id');
     
     admins.forEach(admin => userIds.add(admin.id));
 
     // 2. Teachers of their classes (including homeroom teachers)
-    const teachersOfStudent = await this.db('enrollments as e')
+    let teachersQuery = this.db('enrollments as e')
       .join('class_offering_teachers as cot', 'e.class_offering_id', 'cot.class_offering_id')
       .join('users as teachers', 'cot.teacher_id', 'teachers.id')
       .where({
@@ -294,15 +346,20 @@ export class AccessControlService {
         'e.status': 'active',
         'cot.is_active': true
       })
-      .where('teachers.school_id', currentUser.school_id)
-      .where('teachers.is_active', options.includeInactive ? undefined : true)
+      .where('teachers.school_id', currentUser.school_id);
+    
+    if (!options.includeInactive) {
+      teachersQuery = teachersQuery.where('teachers.is_active', true);
+    }
+    
+    const teachersOfStudent = await teachersQuery
       .distinct('teachers.id')
       .select('teachers.id');
 
     teachersOfStudent.forEach(teacher => userIds.add(teacher.id));
 
     // 3. Parents of students in the same classes
-    const parentsInSameClasses = await this.db('enrollments as e1')
+    let parentsQuery = this.db('enrollments as e1')
       .join('enrollments as e2', 'e1.class_offering_id', 'e2.class_offering_id')
       .join('parent_student_relationships as psr', 'e2.student_id', 'psr.student_id')
       .join('users as parents', 'psr.parent_id', 'parents.id')
@@ -312,8 +369,13 @@ export class AccessControlService {
         'e2.status': 'active',
         'psr.is_active': true
       })
-      .where('parents.school_id', currentUser.school_id)
-      .where('parents.is_active', options.includeInactive ? undefined : true)
+      .where('parents.school_id', currentUser.school_id);
+    
+    if (!options.includeInactive) {
+      parentsQuery = parentsQuery.where('parents.is_active', true);
+    }
+    
+    const parentsInSameClasses = await parentsQuery
       .distinct('parents.id')
       .select('parents.id');
 
@@ -373,7 +435,7 @@ export class AccessControlService {
     }
 
     if (currentUser.user_type === 'teacher') {
-      return ['teacher', 'parent'];
+      return ['teacher', 'student', 'parent'];
     }
 
     if (currentUser.user_type === 'parent' || currentUser.user_type === 'student') {
