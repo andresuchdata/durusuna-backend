@@ -123,14 +123,15 @@ export const messageSchema = Joi.object({
     'string.guid': 'Receiver ID must be a valid UUID'
   }),
   client_message_id: Joi.string().max(128).optional(),
-  content: Joi.string().max(5000).optional().messages({
+  content: Joi.string().max(5000).allow('').optional().messages({
     'string.max': 'Message content cannot exceed 5000 characters'
   }),
   message_type: Joi.string().valid('text', 'image', 'video', 'audio', 'file', 'emoji').default('text'),
   reply_to_id: Joi.string().uuid().optional().messages({
     'string.guid': 'Reply to ID must be a valid UUID'
   }),
-  metadata: Joi.object().optional()
+  metadata: Joi.object().optional(),
+  attachments: Joi.array().items(Joi.object().optional()).optional()
 }).or('conversation_id', 'receiver_id').messages({
   'object.missing': 'Either conversation_id or receiver_id is required'
 });
