@@ -3,6 +3,7 @@ import { AuthenticatedUser } from '../types/user';
 import messageCache from '../utils/messageCache';
 import logger from '../shared/utils/logger';
 import { safeJsonParse } from '../utils/json';
+import { determineMessageType } from '../shared/middleware/upload';
 import {
   MessageWithSender,
   ConversationWithDetails,
@@ -407,7 +408,8 @@ export class ConversationService {
       message_type = 'text',
       reply_to_id,
       metadata,
-      client_message_id
+      client_message_id,
+      attachments
     } = messageData;
 
     // Verify conversation exists and user is a participant
@@ -449,15 +451,26 @@ export class ConversationService {
     }
 
     if (!message) {
+      // Prepare metadata with attachments if provided
+      const enrichedMetadata = {
+        ...metadata,
+        ...(attachments && attachments.length > 0 ? { attachments } : {})
+      };
+
+      // Determine message type from attachments if present, otherwise use provided type
+      const finalMessageType = attachments && attachments.length > 0
+        ? determineMessageType(attachments, message_type)
+        : message_type;
+
       // Create message
       message = await this.messageRepository.createMessage({
         conversation_id: conversationId,
         sender_id: currentUser.id,
         receiver_id: receiverId,
         content: content || undefined,
-        message_type,
+        message_type: finalMessageType,
         reply_to_id: reply_to_id || undefined,
-        metadata,
+        metadata: enrichedMetadata,
         client_message_id: client_message_id || undefined,
       });
     }
