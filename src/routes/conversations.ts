@@ -299,16 +299,25 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
 
 /**
  * @route POST /api/conversations/generate-presigned-urls
- * @desc Generate presigned URLs for direct client uploads
+ * @desc Generate presigned URLs for direct client uploads (FAST upload method)
  * @access Private
  */
 router.post('/generate-presigned-urls', authenticate, async (req: Request, res: Response) => {
   const authenticatedReq = req as AuthenticatedRequest;
   try {
-    const { conversation_id, files } = req.body;
+    const { conversation_id, files }: { conversation_id: string; files: Array<{ name: string; type: string; size: number }> } = req.body;
 
+    // Validate required fields
     if (!conversation_id || !files || !Array.isArray(files)) {
       return res.status(400).json({ error: 'conversation_id and files array are required' });
+    }
+
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'Files array cannot be empty' });
+    }
+
+    if (files.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 files allowed per conversation message' });
     }
 
     // Check if user is a participant in this conversation
@@ -321,34 +330,81 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
       return res.status(403).json({ error: 'Access denied to this conversation' });
     }
 
-    const urlPromises = files.map(async (fileInfo: any) => {
-      const folder = getMediaFolder(fileInfo.type);
-      const fileName = `${uuidv4()}.${mime.extension(fileInfo.type) || 'bin'}`;
-      const key = `${folder}/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${fileName}`;
-      
-      const uploadUrl = await storageService.generatePresignedUploadUrl(key, fileInfo.type);
-      // Generate public URL based on bucket configuration
-      const s3PublicUrl = process.env.S3_PUBLIC_URL;
-      const publicUrl = s3PublicUrl ? `${s3PublicUrl}/${key}` : `/api/uploads/serve/${key}`;
-
-      return {
-        id: key,
-        uploadUrl,
-        publicUrl,
-        key,
-        fileName,
-        originalName: fileInfo.name,
-        mimeType: fileInfo.type,
-        size: fileInfo.size,
-      };
+    // Validate each file
+    const validationErrors: Array<{ file: string; errors: string[] }> = [];
+    files.forEach((file) => {
+      const validation = storageService.validateFile(file.type, file.size, {
+        maxSize: 10 * 1024 * 1024, // 10MB default max size for conversations
+        maxImageSize: 10 * 1024 * 1024, // 10MB for images
+        maxVideoSize: 100 * 1024 * 1024, // 100MB for videos
+        maxAudioSize: 25 * 1024 * 1024, // 25MB for audio
+      });
+      if (!validation.isValid) {
+        validationErrors.push({
+          file: file.name,
+          errors: validation.errors,
+        });
+      }
     });
 
-    const urls = await Promise.all(urlPromises);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        error: 'File validation failed',
+        details: validationErrors,
+      });
+    }
 
-    res.json({ urls });
+    // Generate presigned URLs for each file
+    const presignedUrls = await Promise.all(
+      files.map(async (fileInfo) => {
+        const folder = getMediaFolder(fileInfo.type);
+        const fileExtension = fileInfo.name.split('.').pop() || mime.extension(fileInfo.type) || 'bin';
+        const fileName = `${uuidv4()}.${fileExtension}`;
+        const key = `${folder}/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${fileName}`;
+        
+        const uploadUrl = await storageService.generatePresignedUploadUrl(
+          key, 
+          fileInfo.type,
+          600 // 10 minutes to upload
+        );
+        
+        // Generate public URL (consistent with class updates)
+        const publicUrl = storageService.generateOptimizedUrl(key);
+
+        return {
+          id: uuidv4(), // Generate unique ID for each file (consistent with class updates)
+          uploadUrl,
+          publicUrl,
+          key,
+          fileName,
+          originalName: fileInfo.name,
+          mimeType: fileInfo.type,
+          size: fileInfo.size,
+        };
+      })
+    );
+
+    // Return consistent format with class updates
+    res.json({
+      success: true,
+      urls: presignedUrls,
+    });
   } catch (error) {
-    logger.error('Error generating presigned URLs:', error);
-    res.status(500).json({ error: 'Failed to generate presigned URLs' });
+    const errorMessage = (error as Error).message;
+    
+    // Enhanced error logging for debugging
+    logger.error('Error generating conversation presigned URLs:', {
+      error: errorMessage,
+      stack: (error as Error).stack,
+      conversationId: req.body?.conversation_id,
+      userId: authenticatedReq.user?.id,
+      fileCount: req.body?.files?.length,
+    });
+
+    res.status(500).json({
+      error: 'Failed to generate presigned URLs',
+      message: errorMessage,
+    });
   }
 });
 

@@ -59,6 +59,7 @@ interface FileValidationOptions {
   maxSize?: number;
   maxImageSize?: number;
   maxVideoSize?: number;
+  maxAudioSize?: number;
 }
 
 interface FileValidationResult {
@@ -514,6 +515,7 @@ class StorageService {
       maxSize = 5 * 1024 * 1024, // 5MB default
       maxImageSize = 5 * 1024 * 1024, // 5MB for images
       maxVideoSize = 100 * 1024 * 1024, // 100MB for videos (matches multer limit)
+      maxAudioSize = 25 * 1024 * 1024, // 25MB for audio files
     } = options;
 
     const errors: string[] = [];
@@ -529,6 +531,8 @@ class StorageService {
       sizeLimit = maxImageSize;
     } else if (mimeType.startsWith('video/')) {
       sizeLimit = maxVideoSize;
+    } else if (mimeType.startsWith('audio/')) {
+      sizeLimit = maxAudioSize;
     }
 
     if (size > sizeLimit) {
