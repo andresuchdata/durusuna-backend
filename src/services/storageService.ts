@@ -427,9 +427,14 @@ class StorageService {
     const isAudio = file.mimeType.startsWith('audio/');
     const isDocument = [
       'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain',
+      'application/msword', // .doc files
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx files
+      'application/vnd.ms-excel', // .xls files
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx files
+      'application/vnd.ms-powerpoint', // .ppt files
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx files
+      'text/plain', // .txt files
+      'text/csv', // .csv files
     ].includes(file.mimeType);
 
     // Ensure size is a valid number
@@ -504,13 +509,22 @@ class StorageService {
   validateFile(mimeType: string, size: number, options: FileValidationOptions = {}): FileValidationResult {
     const {
       allowedTypes = [
+        // Images
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        // Videos
         'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/avi', 'video/webm',
+        // Audio
         'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac',
+        // Documents
         'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain',
+        'application/msword', // .doc files
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx files
+        'application/vnd.ms-excel', // .xls files
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx files
+        'application/vnd.ms-powerpoint', // .ppt files
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx files
+        'text/plain', // .txt files
+        'text/csv', // .csv files
       ],
       maxSize = 5 * 1024 * 1024, // 5MB default
       maxImageSize = 5 * 1024 * 1024, // 5MB for images

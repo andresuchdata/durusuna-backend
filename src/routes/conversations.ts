@@ -420,8 +420,21 @@ function getFileType(mimeType: string): string {
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType.startsWith('video/')) return 'video';
   if (mimeType.startsWith('audio/')) return 'audio';
-  if (mimeType.includes('pdf') || mimeType.includes('document') || 
-      mimeType.includes('spreadsheet') || mimeType.includes('text/')) return 'document';
+  
+  // Check for specific document types
+  const documentTypes = [
+    'application/pdf',
+    'application/msword', // .doc files
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx files
+    'application/vnd.ms-excel', // .xls files
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx files
+    'application/vnd.ms-powerpoint', // .ppt files
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx files
+    'text/plain', // .txt files
+    'text/csv', // .csv files
+  ];
+  
+  if (documentTypes.includes(mimeType)) return 'document';
   return 'file';
 }
 
