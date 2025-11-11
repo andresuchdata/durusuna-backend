@@ -478,6 +478,10 @@ export class ConversationService {
     // Increment unread count for all participants except the sender
     await this.messageRepository.incrementUnreadCount(conversationId, currentUser.id);
 
+    // Extract attachments from metadata
+    const messageMetadata = safeJsonParse(completeMessage.metadata, {});
+    const messageAttachments = messageMetadata.attachments || [];
+
     const formattedMessage: MessageWithSender = {
       id: completeMessage.id,
       conversation_id: conversationId,
@@ -486,6 +490,8 @@ export class ConversationService {
       content: completeMessage.content,
       message_type: completeMessage.message_type,
       reply_to_id: completeMessage.reply_to_id,
+      attachments: messageAttachments,
+      metadata: messageMetadata,
       is_read: Boolean(completeMessage.is_read),
       is_edited: Boolean(completeMessage.is_edited),
       is_deleted: Boolean(completeMessage.is_deleted),
@@ -508,6 +514,13 @@ export class ConversationService {
         role: completeMessage.sender_role,
         is_active: Boolean(completeMessage.sender_is_active)
       },
+      reply_to: completeMessage.reply_to_message_id ? {
+        id: completeMessage.reply_to_message_id,
+        content: completeMessage.reply_to_content,
+        sender_id: completeMessage.reply_to_sender_id,
+        sender_name: `${completeMessage.reply_to_sender_first_name} ${completeMessage.reply_to_sender_last_name}`,
+        message_type: completeMessage.reply_to_message_type
+      } : undefined,
       is_from_me: true
     };
 
@@ -521,6 +534,8 @@ export class ConversationService {
         content: formattedMessage.content,
         message_type: formattedMessage.message_type,
         reply_to_id: formattedMessage.reply_to_id,
+        attachments: messageAttachments,
+        metadata: messageMetadata,
         sent_at: formattedMessage.sent_at || new Date().toISOString(),
         edited_at: formattedMessage.edited_at,
         deleted_at: formattedMessage.deleted_at,
