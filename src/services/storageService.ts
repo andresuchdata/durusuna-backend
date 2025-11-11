@@ -41,6 +41,8 @@ interface FileInfo {
   size: number;
   folder: string;
   metadata: Record<string, any>;
+  thumbnailUrl?: string;
+  thumbnailKey?: string;
 }
 
 interface EnhancedFileInfo extends FileInfo {
@@ -120,11 +122,45 @@ class StorageService {
       };
 
       // Process images if needed (but not videos)
+      let thumbnailUrl: string | undefined;
       if (mimeType.startsWith('image/') && options.processImage !== false) {
         try {
           const imageInfo = await this.processImage(buffer, options.imageOptions);
           processedBuffer = imageInfo.buffer;
           metadata = { ...metadata, ...imageInfo.metadata };
+          
+          // Upload thumbnail if generated
+          if (imageInfo.thumbnailBuffer && options.imageOptions?.createThumbnail) {
+            const thumbnailKey = key.replace(/(\.[^.]+)$/, '_thumb$1');
+            const thumbnailCommand = new PutObjectCommand({
+              Bucket: this.bucketName,
+              Key: thumbnailKey,
+              Body: imageInfo.thumbnailBuffer,
+              ContentType: mimeType,
+              Metadata: {
+                'original-name': originalName,
+                'upload-folder': folder,
+                'is-thumbnail': 'true',
+                'parent-key': key,
+                ...options.customMetadata,
+              },
+            });
+            
+            await this._s3Client.send(thumbnailCommand);
+            
+            // Generate thumbnail URL
+            const s3PublicUrl = process.env.S3_PUBLIC_URL;
+            if (s3PublicUrl && !s3PublicUrl.includes('cloudflarestorage.com') && !s3PublicUrl.includes('s3.amazonaws.com')) {
+              thumbnailUrl = `${s3PublicUrl}/${thumbnailKey}`;
+            } else {
+              const backendUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:3001';
+              const pathParts = thumbnailKey.split('/');
+              thumbnailUrl = `${backendUrl}/api/uploads/serve/${pathParts.join('/')}`;
+            }
+            
+            metadata.thumbnailUrl = thumbnailUrl;
+            metadata.thumbnailKey = thumbnailKey;
+          }
         } catch (imageError) {
           logger.warn('Image processing failed, uploading original:', (imageError as Error).message);
           // Continue with original buffer if image processing fails
@@ -170,6 +206,8 @@ class StorageService {
         size: processedBuffer.length,
         folder,
         metadata,
+        thumbnailUrl,
+        thumbnailKey: metadata.thumbnailKey,
       };
     } catch (error) {
       logger.error('Error uploading file to Sevalla:', error);

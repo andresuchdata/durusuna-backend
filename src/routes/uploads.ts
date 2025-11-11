@@ -247,6 +247,90 @@ router.post('/presigned-upload', authenticate, async (req: Request, res: Respons
 });
 
 /**
+ * @route POST /api/uploads/avatar
+ * @desc Upload avatar with thumbnail generation
+ * @access Private
+ */
+router.post('/avatar', authenticate, uploadMiddleware.general.single('avatar'), async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No avatar file uploaded' } as UploadError);
+    }
+
+    // Validate file is an image
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ 
+        error: 'Avatar must be an image file' 
+      } as UploadError);
+    }
+
+    // Validate file size (max 5MB for avatars)
+    const validation = storageService.validateFile(req.file.mimetype, req.file.size, {
+      maxImageSize: 5 * 1024 * 1024, // 5MB
+    });
+    if (!validation.isValid) {
+      return res.status(400).json({ 
+        error: 'Invalid avatar file',
+        details: validation.errors 
+      } as UploadError);
+    }
+
+    // Avatar-specific upload options - always process and create thumbnails
+    const uploadOptions: FileUploadOptions = {
+      processImage: true,
+      imageOptions: {
+        maxWidth: 800,  // Smaller for avatars
+        maxHeight: 800,
+        quality: 90,    // Higher quality for avatars
+        createThumbnail: true,
+        thumbnailSize: 150, // Standard avatar thumbnail size
+      },
+      customMetadata: {
+        'uploaded-by': authenticatedReq.user.id,
+        'upload-context': 'avatar',
+        'user-id': authenticatedReq.user.id,
+      },
+    };
+
+    // Upload to avatars folder
+    const fileInfo = await storageService.uploadFile(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      'avatars',
+      uploadOptions
+    );
+
+    // Get enhanced metadata
+    const enhancedFileInfo: EnhancedFileInfo = storageService.getFileMetadata(fileInfo);
+
+    const response: UploadFileResponse = {
+      success: true,
+      file: enhancedFileInfo,
+    };
+
+    res.json(response);
+  } catch (error) {
+    logger.error('Error uploading avatar:', {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+      fileName: req.file?.originalname,
+      fileSize: req.file?.size,
+      mimeType: req.file?.mimetype,
+      userId: authenticatedReq.user?.id
+    });
+    
+    const errorResponse: UploadError = {
+      error: 'Failed to upload avatar',
+      message: process.env.NODE_ENV === 'development' ? (error as Error).message : 'Avatar upload failed'
+    };
+    
+    res.status(500).json(errorResponse);
+  }
+});
+
+/**
  * @route POST /api/uploads/presigned-download
  * @desc Generate presigned download URL
  * @access Private

@@ -236,7 +236,14 @@ router.post('/upload-attachments', authenticate, uploadMiddleware.classUpdates.a
       filesToUpload,
       'class-updates',
       {
-        processImage: false, // Disable image processing to speed up uploads
+        processImage: true, // Enable for class updates to create previews
+        imageOptions: {
+          maxWidth: 1200,
+          maxHeight: 800,
+          quality: 80,
+          createThumbnail: true,
+          thumbnailSize: 200, // Good size for class update previews
+        },
         customMetadata: {
           'uploaded-by': authReq.user.id,
           'class-id': class_id,

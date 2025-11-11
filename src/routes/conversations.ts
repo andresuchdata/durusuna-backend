@@ -252,12 +252,12 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
       const folder = getMediaFolder(file.mimetype);
       
       const uploadOptions = {
-        processImage: file.mimetype.startsWith('image/'),
+        processImage: false, // Disable for chat - prioritize speed over compression
         imageOptions: {
           maxWidth: 1920,
           maxHeight: 1080,
           quality: 85,
-          createThumbnail: true,
+          createThumbnail: false, // No thumbnails needed for chat messages
         },
         customMetadata: {
           'uploaded-by': authenticatedReq.user.id,
