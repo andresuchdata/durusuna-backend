@@ -282,8 +282,6 @@ const startOutboxProcessor = () => {
       }
 
       const batch = await outboxRepo.leaseNextBatch(50);
-      logger.debug(`🔄 Outbox processor: Found ${batch.length} jobs to process`);
-      
       for (const job of batch) {
         try {
           const raw = await db('notifications').where('id', job.notification_id).first();
