@@ -196,41 +196,49 @@ export class ConversationService {
     }
 
     // Format messages efficiently
-    const formattedMessages: MessageWithSender[] = messages.map(msg => ({
-      id: msg.id,
-      conversation_id: msg.conversation_id,
-      sender_id: msg.sender_id,
-      receiver_id: msg.receiver_id,
-      content: msg.content,
-      message_type: msg.message_type,
-      reply_to_id: msg.reply_to_id,
-      is_read: Boolean(msg.is_read),
-      is_edited: Boolean(msg.is_edited),
-      is_deleted: false,
-      edited_at: msg.edited_at,
-      read_status: msg.read_status || 'sent',
-      reactions: safeJsonParse(msg.reactions, {}),
-      created_at: msg.created_at,
-      updated_at: msg.updated_at,
-      sender: {
-        id: msg.sender_id,
-        first_name: msg.sender_first_name,
-        last_name: msg.sender_last_name,
-        email: msg.sender_email,
-        avatar_url: msg.sender_avatar,
-        user_type: msg.sender_user_type,
-        role: msg.sender_role,
-        is_active: Boolean(msg.sender_is_active)
-      },
-      reply_to: msg.reply_to_message_id ? {
-        id: msg.reply_to_message_id,
-        content: msg.reply_to_content,
-        sender_id: msg.reply_to_sender_id,
-        sender_name: `${msg.reply_to_sender_first_name} ${msg.reply_to_sender_last_name}`,
-        message_type: msg.reply_to_message_type
-      } : undefined,
-      is_from_me: Boolean(msg.sender_id === currentUser.id)
-    }));
+    const formattedMessages: MessageWithSender[] = messages.map(msg => {
+      // Extract attachments from metadata
+      const messageMetadata = safeJsonParse(msg.metadata, {});
+      const messageAttachments = messageMetadata.attachments || [];
+      
+      return {
+        id: msg.id,
+        conversation_id: msg.conversation_id,
+        sender_id: msg.sender_id,
+        receiver_id: msg.receiver_id,
+        content: msg.content,
+        message_type: msg.message_type,
+        reply_to_id: msg.reply_to_id,
+        attachments: messageAttachments,
+        metadata: messageMetadata,
+        is_read: Boolean(msg.is_read),
+        is_edited: Boolean(msg.is_edited),
+        is_deleted: false,
+        edited_at: msg.edited_at,
+        read_status: msg.read_status || 'sent',
+        reactions: safeJsonParse(msg.reactions, {}),
+        created_at: msg.created_at,
+        updated_at: msg.updated_at,
+        sender: {
+          id: msg.sender_id,
+          first_name: msg.sender_first_name,
+          last_name: msg.sender_last_name,
+          email: msg.sender_email,
+          avatar_url: msg.sender_avatar,
+          user_type: msg.sender_user_type,
+          role: msg.sender_role,
+          is_active: Boolean(msg.sender_is_active)
+        },
+        reply_to: msg.reply_to_message_id ? {
+          id: msg.reply_to_message_id,
+          content: msg.reply_to_content,
+          sender_id: msg.reply_to_sender_id,
+          sender_name: `${msg.reply_to_sender_first_name} ${msg.reply_to_sender_last_name}`,
+          message_type: msg.reply_to_message_type
+        } : undefined,
+        is_from_me: Boolean(msg.sender_id === currentUser.id)
+      };
+    });
 
     // Get conversation details and participants
     const [conversation, participants] = await Promise.all([
