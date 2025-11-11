@@ -1,15 +1,33 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import db from '../database/connection';
 import logger from '../utils/logger';
 import { AuthenticatedRequest } from '../../types/auth';
 
 // Import JWT utilities (keeping require for now due to CommonJS)
-const { verifyAccessToken, extractToken } = require('../../utils/jwt');
+import { verifyAccessToken, extractToken } from '../../utils/jwt';
 
 /**
  * Authentication middleware
  * Verifies JWT token and adds user to request object
  */
+// Type guard to check if a request is authenticated
+function isAuthenticatedRequest(req: Request): req is AuthenticatedRequest {
+  return !!(req as any).user;
+}
+
+// Middleware factory that ensures the request is authenticated
+export function requireAuth(): RequestHandler {
+  return (req, res, next) => {
+    if (!isAuthenticatedRequest(req)) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Authentication required'
+      });
+    }
+    next();
+  };
+}
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
