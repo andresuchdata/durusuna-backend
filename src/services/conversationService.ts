@@ -114,11 +114,21 @@ export class ConversationService {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         } : undefined,
-        last_message: conv.last_message_content ? {
-          content: conv.last_message_content,
+        last_message: conv.last_message_created_at ? {
+          id: conv.last_message_id,
+          content: conv.last_message_content || undefined,
+          text: conv.last_message_content || undefined, // Add text field for frontend compatibility
           message_type: conv.last_message_type,
           created_at: conv.last_message_created_at.toISOString(),
-          is_from_me: conv.last_message_sender_id === currentUser.id
+          is_from_me: conv.last_message_sender_id === currentUser.id,
+          attachments: conv.last_message_attachments ? (() => {
+            try {
+              return JSON.parse(conv.last_message_attachments);
+            } catch (error) {
+              console.warn('Failed to parse last_message_attachments:', error);
+              return [];
+            }
+          })() : []
         } : undefined,
         unread_count: parseInt(conv.unread_count) || 0,
         last_activity: conv.last_message_at ? conv.last_message_at.toISOString() : undefined

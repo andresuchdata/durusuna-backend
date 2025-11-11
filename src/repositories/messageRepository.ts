@@ -131,10 +131,12 @@ export class MessageRepository {
         'conversations.created_at as conversation_created_at',
         'conversations.created_by',
         // Add last message details by joining with messages table
+        'last_message.id as last_message_id',
         'last_message.content as last_message_content',
         'last_message.message_type as last_message_type',
         'last_message.created_at as last_message_created_at',
         'last_message.sender_id as last_message_sender_id',
+        'last_message.attachments as last_message_attachments',
         // Add unread count from conversation_participants
         'cp.unread_count'
       )
