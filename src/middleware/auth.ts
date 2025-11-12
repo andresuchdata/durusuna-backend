@@ -10,7 +10,7 @@ const { verifyAccessToken, extractToken } = require('../utils/jwt');
  * Authentication middleware
  * Verifies JWT token and adds user to request object
  */
-export const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     const token = extractToken(authHeader);
@@ -41,7 +41,7 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
     }
 
     // Add user to request object
-    req.user = user;
+    (req as AuthenticatedRequest).user = user;
     next();
   } catch (error) {
     logger.error('Authentication error:', error);
@@ -66,8 +66,18 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
  * Checks if user has required role or user type
  */
 export const authorize = (allowedRoles: string[] = [], allowedUserTypes: string[] = []) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const { role, user_type } = req.user;
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    if (!authenticatedReq.user) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Authentication required'
+      });
+      return;
+    }
+
+    const { role, user_type } = authenticatedReq.user;
 
     // Check role authorization
     if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {

@@ -1,104 +1,260 @@
 import { Knex } from 'knex';
-import { Lesson, CreateLessonRequest, UpdateLessonRequest } from '../types/lesson';
+import {
+  LessonInstance,
+  LessonInstanceQueryParams,
+  CreateLessonInstanceRequest,
+  UpdateLessonInstanceRequest,
+  ScheduleTemplate,
+  ScheduleTemplateSlot,
+} from '../types/lesson';
+
+type CreateLessonInstanceDBPayload = CreateLessonInstanceRequest & {
+  created_by?: string | null;
+};
+
+type UpdateLessonInstanceDBPayload = UpdateLessonInstanceRequest & {
+  updated_by?: string | null;
+};
 
 export class LessonRepository {
   constructor(private db: Knex) {}
 
-  async findAll(): Promise<Lesson[]> {
-    return await this.db('lessons')
-      .select('*')
-      .orderBy('start_time', 'desc');
+  async findLessonInstancesByClassId(
+    classId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .where('cs.class_id', classId);
+
+    return await query.select('li.*');
   }
 
-  async findBySchoolId(schoolId: string): Promise<Lesson[]> {
-    // Join with classes to filter by school_id since lessons don't have school_id directly
-    return await this.db('lessons')
-      .join('classes', 'lessons.class_id', 'classes.id')
-      .select('lessons.*')
-      .where('classes.school_id', schoolId)
-      .orderBy('lessons.start_time', 'desc');
+  async findLessonInstancesByClassSubjectId(
+    classSubjectId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .where('li.class_subject_id', classSubjectId);
+
+    return await query.select('li.*');
   }
 
-  async findByTeacherId(teacherId: string): Promise<Lesson[]> {
-    // Join with class_subjects to filter by teacher_id since lessons don't have teacher_id directly
-    return await this.db('lessons')
-      .join('class_subjects', 'lessons.class_id', 'class_subjects.class_id')
-      .select('lessons.*')
-      .where('class_subjects.teacher_id', teacherId)
-      .orderBy('lessons.start_time', 'desc');
+  async findLessonInstancesByTeacherId(
+    teacherId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .where(function () {
+        this.where('cs.teacher_id', teacherId)
+          .orWhereExists(function () {
+            this.select('*')
+              .from('class_offerings as co')
+              .whereRaw('co.id = cs.class_offering_id')
+              .where('co.primary_teacher_id', teacherId);
+          });
+      });
+
+    return await query.select('li.*');
   }
 
-  async findByClassId(classId: string): Promise<Lesson[]> {
-    return await this.db('lessons')
-      .select('*')
-      .where('class_id', classId)
-      .orderBy('start_time', 'desc');
+  async findLessonInstanceById(id: string): Promise<LessonInstance | null> {
+    const record = await this.db('lesson_instances as li')
+      .where('li.id', id)
+      .where('li.is_active', true)
+      .first('li.*');
+
+    return record || null;
   }
 
-  async findByClassSubjectId(classSubjectId: string): Promise<Lesson[]> {
-    // Since lessons table doesn't have class_subject_id, we need to find lessons
-    // by joining through class_subjects to get the class_id, then filter by subject
-    const result = await this.db('lessons')
-      .join('class_subjects', 'lessons.class_id', 'class_subjects.class_id')
-      .join('subjects', 'class_subjects.subject_id', 'subjects.id')
-      .select('lessons.*')
-      .where('class_subjects.id', classSubjectId)
-      .orderBy('lessons.start_time', 'desc');
-    
-    return result;
-  }
-
-  async findById(id: string): Promise<Lesson | null> {
-    const lesson = await this.db('lessons')
-      .where('id', id)
-      .first();
-    
-    return lesson || null;
-  }
-
-  async create(data: any): Promise<string> {
-    const [lesson] = await this.db('lessons')
+  async createLessonInstance(data: CreateLessonInstanceDBPayload): Promise<string> {
+    const [record] = await this.db('lesson_instances')
       .insert({
         id: this.generateUUID(),
-        class_id: data.class_id,
-        title: data.title,
-        description: data.description,
-        subject: data.subject || 'General',
-        start_time: data.start_time,
-        end_time: data.end_time,
-        location: data.location,
-        status: 'scheduled',
-        materials: data.materials || [],
-        settings: data.settings || {},
+        class_subject_id: data.class_subject_id,
+        schedule_slot_id: data.schedule_slot_id ?? null,
+        scheduled_start: data.scheduled_start,
+        scheduled_end: data.scheduled_end,
+        status: 'planned',
+        title: data.title ?? null,
+        description: data.description ?? null,
+        objectives: JSON.stringify(data.objectives ?? []),
+        materials: JSON.stringify(data.materials ?? []),
+        notes: data.notes ?? null,
+        cancellation_reason: null,
+        created_by: data.created_by ?? null,
+        updated_by: data.created_by ?? null,
+        is_active: true,
         created_at: new Date(),
-        updated_at: new Date()
+        updated_at: new Date(),
       })
       .returning('id');
-    
-    return lesson.id;
+
+    return record.id;
   }
 
-  async update(id: string, data: any): Promise<void> {
-    await this.db('lessons')
+  async updateLessonInstance(id: string, data: UpdateLessonInstanceDBPayload): Promise<void> {
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date(),
+    };
+
+    if (data.schedule_slot_id !== undefined) updatePayload.schedule_slot_id = data.schedule_slot_id;
+    if (data.scheduled_start !== undefined) updatePayload.scheduled_start = data.scheduled_start;
+    if (data.scheduled_end !== undefined) updatePayload.scheduled_end = data.scheduled_end;
+    if (data.actual_start !== undefined) updatePayload.actual_start = data.actual_start;
+    if (data.actual_end !== undefined) updatePayload.actual_end = data.actual_end;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.title !== undefined) updatePayload.title = data.title;
+    if (data.description !== undefined) updatePayload.description = data.description;
+    if (data.objectives !== undefined) updatePayload.objectives = JSON.stringify(data.objectives);
+    if (data.materials !== undefined) updatePayload.materials = JSON.stringify(data.materials);
+    if (data.notes !== undefined) updatePayload.notes = data.notes;
+    if (data.cancellation_reason !== undefined) updatePayload.cancellation_reason = data.cancellation_reason;
+    if (data.is_active !== undefined) updatePayload.is_active = data.is_active;
+    if (data.updated_by !== undefined) updatePayload.updated_by = data.updated_by;
+
+    await this.db('lesson_instances')
+      .where('id', id)
+      .update(updatePayload);
+  }
+
+  async softDeleteLessonInstance(id: string, updatedBy?: string | null): Promise<void> {
+    await this.db('lesson_instances')
       .where('id', id)
       .update({
-        ...data,
-        updated_at: new Date()
+        is_active: false,
+        updated_by: updatedBy ?? null,
+        updated_at: new Date(),
       });
   }
 
-  async delete(id: string): Promise<void> {
-    await this.db('lessons')
+  async getScheduleTemplateById(id: string): Promise<ScheduleTemplate | null> {
+    const record = await this.db('schedule_templates')
+      .where('id', id)
+      .first();
+
+    return record || null;
+  }
+
+  async listScheduleTemplatesByClassSubject(classSubjectId: string): Promise<ScheduleTemplate[]> {
+    return await this.db('schedule_templates')
+      .where('class_subject_id', classSubjectId)
+      .orderBy('effective_from', 'desc');
+  }
+
+  async createScheduleTemplate(data: Omit<ScheduleTemplate, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    const [record] = await this.db('schedule_templates')
+      .insert({
+        id: this.generateUUID(),
+        ...data,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning('id');
+
+    return record.id;
+  }
+
+  async updateScheduleTemplate(id: string, data: Partial<ScheduleTemplate>): Promise<void> {
+    const payload = { ...data, updated_at: new Date() } as Record<string, unknown>;
+    delete (payload as any).id;
+
+    await this.db('schedule_templates')
+      .where('id', id)
+      .update(payload);
+  }
+
+  async deleteScheduleTemplate(id: string): Promise<void> {
+    await this.db('schedule_templates')
       .where('id', id)
       .delete();
   }
 
+  async listTemplateSlots(templateId: string): Promise<ScheduleTemplateSlot[]> {
+    return await this.db('schedule_template_slots')
+      .where('template_id', templateId)
+      .orderBy(['weekday', 'start_time']);
+  }
+
+  async createTemplateSlot(data: Omit<ScheduleTemplateSlot, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    const [record] = await this.db('schedule_template_slots')
+      .insert({
+        id: this.generateUUID(),
+        ...data,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning('id');
+
+    return record.id;
+  }
+
+  async deleteTemplateSlot(id: string): Promise<void> {
+    await this.db('schedule_template_slots')
+      .where('id', id)
+      .delete();
+  }
+
+  async countLessonInstancesByClassId(
+    classId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .where('cs.class_id', classId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  async countLessonInstancesByClassSubjectId(
+    classSubjectId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .where('li.class_subject_id', classSubjectId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  private baseLessonInstanceQuery(params: LessonInstanceQueryParams = {}, includePagination: boolean = true) {
+    let query = this.db('lesson_instances as li')
+      .where('li.is_active', true);
+
+    if (params.status) {
+      query = query.where('li.status', params.status);
+    }
+
+    if (params.from) {
+      query = query.where('li.scheduled_start', '>=', params.from);
+    }
+
+    if (params.to) {
+      query = query.where('li.scheduled_end', '<=', params.to);
+    }
+
+    query = query.orderBy('li.scheduled_start', 'desc');
+
+    if (includePagination && params.limit) {
+      query = query.limit(params.limit);
+    }
+
+    if (includePagination && params.page && params.limit) {
+      const offset = (params.page - 1) * params.limit;
+      query = query.offset(offset);
+    }
+
+    return query;
+  }
+
   private generateUUID(): string {
-    // Simple UUID generation - in production, use a proper UUID library
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
   }
-} 
+}
+ 

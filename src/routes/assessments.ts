@@ -1,5 +1,5 @@
-import { Router, type RequestHandler } from 'express';
-import { authenticate } from '../shared/middleware/auth';
+import { Router } from 'express';
+import { authenticateMiddleware } from '../shared/middleware/authenticateMiddleware';
 import { validate } from '../utils/validation';
 import { 
   createAssessmentSchema,
@@ -10,10 +10,6 @@ import {
 } from '../schemas/assessmentSchemas';
 
 const router = Router();
-
-const authenticateMiddleware: RequestHandler = (req, res, next) => {
-  void authenticate(req, res, next);
-};
 
 // All routes require authentication
 router.use(authenticateMiddleware);

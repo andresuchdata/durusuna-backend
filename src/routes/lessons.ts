@@ -1,419 +1,267 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import db from '../config/database';
-import { authenticate } from '../middleware/auth';
 import logger from '../shared/utils/logger';
-import { AuthenticatedRequest } from '../types/auth';
+import { LessonService } from '../services/lessonService';
+import { LessonRepository } from '../repositories/lessonRepository';
+import db from '../config/database';
 import {
-  Lesson,
-  LessonWithClass,
-  LessonWithTeacher,
-  CreateLessonRequest,
-  UpdateLessonRequest,
-  LessonQueryParams,
-  LessonsResponse
+  CreateLessonInstanceRequest,
+  LessonInstanceQueryParams,
+  UpdateLessonInstanceRequest,
 } from '../types/lesson';
+import { authenticateMiddleware } from '../shared/middleware/authenticateMiddleware';
+import { isAuthenticatedRequest } from '../shared/middleware/auth';
+import type { AuthenticatedUser } from '../types/user';
 
 const router = express.Router();
+const lessonRepository = new LessonRepository(db);
+const lessonService = new LessonService(lessonRepository);
 
-interface UserClassAccess {
-  user_id: string;
-  class_id: string;
-  role: 'student' | 'teacher' | 'assistant';
-  is_active: boolean;
-}
+router.use(authenticateMiddleware);
 
-// Get lessons for a class
-router.get('/class/:classId', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+const parsePagination = (query: LessonInstanceQueryParams) => {
+  const page = query.page && query.page > 0 ? query.page : 1;
+  const limit = query.limit && query.limit > 0 ? query.limit : 20;
+  return { page, limit };
+};
+
+const requireCurrentUser = (req: Request, res: Response): AuthenticatedUser | undefined => {
+  if (!isAuthenticatedRequest(req)) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  return req.user;
+};
+
+router.get('/class/:classId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
-    const { page = '1', limit = '20', status, from_date, to_date } = req.query as LessonQueryParams & { page?: string; limit?: string };
-
-    // Check if user has access to this class
-    const userClass: UserClassAccess | undefined = await db('user_classes')
-      .where({
-        user_id: authenticatedReq.user.id,
-        class_id: classId,
-        is_active: true
-      })
-      .first();
-
-    if (!userClass) {
-      return res.status(403).json({ error: 'Access denied to this class' });
+    if (!classId) {
+      res.status(400).json({ error: 'Class ID is required' });
+      return;
     }
 
-    // Build query for lessons
-    let lessonsQuery = db('lessons')
-      .leftJoin('users as teacher', 'lessons.teacher_id', 'teacher.id')
-      .leftJoin('classes', 'lessons.class_id', 'classes.id')
-      .where('lessons.class_id', classId)
-      .where('lessons.is_active', true);
-
-    // Apply filters
-    if (status) {
-      lessonsQuery = lessonsQuery.where('lessons.status', status);
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
     }
 
-    if (from_date) {
-      lessonsQuery = lessonsQuery.where('lessons.lesson_date', '>=', new Date(from_date));
-    }
-
-    if (to_date) {
-      lessonsQuery = lessonsQuery.where('lessons.lesson_date', '<=', new Date(to_date));
-    }
-
-    // Get total count for pagination
-    const totalCount = await lessonsQuery.clone().count('* as count').first();
-    const total = parseInt(totalCount?.count as string) || 0;
-
-    // Apply pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const offset = (pageNum - 1) * limitNum;
-
-    const lessons = await lessonsQuery
-      .select(
-        'lessons.id',
-        'lessons.title',
-        'lessons.content',
-        'lessons.lesson_date',
-        'lessons.duration_minutes',
-        'lessons.materials',
-        'lessons.homework_assigned',
-        'lessons.learning_objectives',
-        'lessons.status',
-        'lessons.created_at',
-        'lessons.updated_at',
-        'teacher.id as teacher_id',
-        'teacher.first_name as teacher_first_name',
-        'teacher.last_name as teacher_last_name',
-        'teacher.email as teacher_email',
-        'teacher.avatar_url as teacher_avatar',
-        'classes.name as class_name',
-        'classes.subject as class_subject'
-      )
-      .orderBy('lessons.lesson_date', 'desc')
-      .limit(limitNum)
-      .offset(offset);
-
-    // Format lessons with additional data
-    const formattedLessons: LessonWithTeacher[] = lessons.map(lesson => ({
-      id: lesson.id,
-      title: lesson.title,
-      content: lesson.content,
-      lesson_date: lesson.lesson_date,
-      class_id: classId,
-      teacher_id: lesson.teacher_id,
-      duration_minutes: lesson.duration_minutes,
-      materials: lesson.materials,
-      homework_assigned: lesson.homework_assigned,
-      learning_objectives: lesson.learning_objectives ? JSON.parse(lesson.learning_objectives) : [],
-      status: lesson.status || 'planned',
-      is_active: true,
-      created_at: lesson.created_at,
-      updated_at: lesson.updated_at,
-      teacher: {
-        id: lesson.teacher_id,
-        first_name: lesson.teacher_first_name,
-        last_name: lesson.teacher_last_name,
-        email: lesson.teacher_email,
-        avatar_url: lesson.teacher_avatar
-      }
-    }));
-
-    const response: LessonsResponse = {
-      lessons: formattedLessons,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        hasMore: offset + limitNum < total
-      }
+    const status = typeof req.query.status === 'string' ? (req.query.status as LessonInstanceQueryParams['status']) : undefined;
+    const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+    const to = typeof req.query.to === 'string' ? req.query.to : undefined;
+    const pageQuery = typeof req.query.page === 'string' ? Number(req.query.page) : undefined;
+    const limitQuery = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const rawParams: LessonInstanceQueryParams = {
+      status,
+      from,
+      to,
+      page: pageQuery,
+      limit: limitQuery,
     };
+    const { page, limit } = parsePagination(rawParams);
+    const queryParams: LessonInstanceQueryParams = { ...rawParams, page, limit };
+    const lessons = await lessonService.listLessonInstancesForClass(
+      classId,
+      currentUser,
+      queryParams,
+    );
 
-    res.json(response);
+    const total = await lessonService.countLessonInstancesForClass(
+      classId,
+      currentUser,
+      queryParams,
+    );
+
+    res.json({
+      lessons,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: page * limit < total,
+      },
+    });
   } catch (error) {
     logger.error('Error fetching lessons:', error);
-    res.status(500).json({ error: 'Failed to fetch lessons' });
+    next(error);
   }
 });
 
-// Get lesson by ID
-router.get('/:id', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.params.id) {
+    res.status(400).json({ error: 'Lesson ID is required' });
+    return;
+  }
+
   try {
-    const { id } = req.params;
-
-    const lesson = await db('lessons')
-      .leftJoin('users as teacher', 'lessons.teacher_id', 'teacher.id')
-      .leftJoin('classes', 'lessons.class_id', 'classes.id')
-      .where('lessons.id', id)
-      .where('lessons.is_active', true)
-      .select(
-        'lessons.*',
-        'teacher.id as teacher_id',
-        'teacher.first_name as teacher_first_name',
-        'teacher.last_name as teacher_last_name',
-        'teacher.email as teacher_email',
-        'teacher.avatar_url as teacher_avatar',
-        'classes.name as class_name',
-        'classes.subject as class_subject',
-        'classes.school_id as class_school_id'
-      )
-      .first();
-
-    if (!lesson) {
-      return res.status(404).json({ error: 'Lesson not found' });
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
     }
 
-    // Check if user has access to this lesson's class
-    const userClass: UserClassAccess | undefined = await db('user_classes')
-      .where({
-        user_id: authenticatedReq.user.id,
-        class_id: lesson.class_id,
-        is_active: true
-      })
-      .first();
-
-    if (!userClass) {
-      return res.status(403).json({ error: 'Access denied to this lesson' });
-    }
-
-    // Format lesson with additional data
-    const formattedLesson: LessonWithTeacher & LessonWithClass = {
-      id: lesson.id,
-      title: lesson.title,
-      content: lesson.content,
-      lesson_date: lesson.lesson_date,
-      class_id: lesson.class_id,
-      teacher_id: lesson.teacher_id,
-      duration_minutes: lesson.duration_minutes,
-      materials: lesson.materials,
-      homework_assigned: lesson.homework_assigned,
-      learning_objectives: lesson.learning_objectives ? JSON.parse(lesson.learning_objectives) : [],
-      status: lesson.status || 'planned',
-      is_active: true,
-      created_at: lesson.created_at,
-      updated_at: lesson.updated_at,
-      teacher: {
-        id: lesson.teacher_id,
-        first_name: lesson.teacher_first_name,
-        last_name: lesson.teacher_last_name,
-        email: lesson.teacher_email,
-        avatar_url: lesson.teacher_avatar
-      },
-      class: {
-        id: lesson.class_id,
-        name: lesson.class_name,
-        subject: lesson.class_subject,
-        school_id: lesson.class_school_id
-      }
-    };
-
-    res.json(formattedLesson);
+    const lesson = await lessonService.getLessonInstanceById(
+      req.params.id,
+      currentUser,
+    );
+    res.json(lesson);
   } catch (error) {
-    logger.error('Error fetching lesson:', error);
-    res.status(500).json({ error: 'Failed to fetch lesson' });
+    if (error instanceof Error && error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error fetching lesson instance:', error);
+    next(error);
   }
 });
 
-// Create new lesson (teachers only)
 router.post('/', [
-  authenticate,
-  body('title').notEmpty().withMessage('Lesson title is required').trim(),
-  body('class_id').isUUID().withMessage('Valid class ID is required'),
-  body('lesson_date').isISO8601().withMessage('Valid lesson date is required'),
-  body('content').optional().trim(),
-  body('duration_minutes').optional().isInt({ min: 1, max: 480 }).withMessage('Duration must be between 1 and 480 minutes'),
-  body('materials').optional().trim(),
-  body('homework_assigned').optional().trim(),
-  body('learning_objectives').optional().isArray().withMessage('Learning objectives must be an array')
-], async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  body('class_subject_id').isUUID().withMessage('class_subject_id is required'),
+  body('scheduled_start').isISO8601().withMessage('scheduled_start must be ISO8601'),
+  body('scheduled_end').isISO8601().withMessage('scheduled_end must be ISO8601'),
+  body('schedule_slot_id').optional().isUUID(),
+  body('objectives').optional().isArray(),
+  body('materials').optional().isArray(),
+], async (req: Request, res: Response, next: NextFunction) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      res.status(400).json({ errors: errors.array() });
+      return;
     }
 
-    // Check if user is a teacher
-    if (authenticatedReq.user.user_type !== 'teacher') {
-      return res.status(403).json({ error: 'Only teachers can create lessons' });
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
     }
 
-    const {
-      title,
-      content,
-      lesson_date,
-      class_id,
-      duration_minutes,
-      materials,
-      homework_assigned,
-      learning_objectives
-    }: CreateLessonRequest = req.body;
-
-    // Verify teacher has access to this class
-    const userClass: UserClassAccess | undefined = await db('user_classes')
-      .where({
-        user_id: authenticatedReq.user.id,
-        class_id,
-        is_active: true
-      })
-      .first();
-
-    if (!userClass || userClass.role !== 'teacher') {
-      return res.status(403).json({ error: 'Access denied to this class' });
-    }
-
-    const [newLesson] = await db('lessons')
-      .insert({
-        title,
-        content,
-        lesson_date: new Date(lesson_date),
-        class_id,
-        teacher_id: authenticatedReq.user.id,
-        duration_minutes,
-        materials,
-        homework_assigned,
-        learning_objectives: learning_objectives ? JSON.stringify(learning_objectives) : null,
-        status: 'planned',
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      })
-      .returning('*');
-
-    res.status(201).json(newLesson);
+    const payload: CreateLessonInstanceRequest = req.body;
+    const lesson = await lessonService.createLessonInstance(payload, currentUser);
+    res.status(201).json(lesson);
   } catch (error) {
-    logger.error('Error creating lesson:', error);
-    res.status(500).json({ error: 'Failed to create lesson' });
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error creating lesson instance:', error);
+    next(error);
   }
 });
 
-// Update lesson (teachers only)
-router.put('/:id', [
-  authenticate,
-  body('title').optional().notEmpty().withMessage('Lesson title cannot be empty').trim(),
-  body('lesson_date').optional().isISO8601().withMessage('Valid lesson date is required'),
-  body('content').optional().trim(),
-  body('duration_minutes').optional().isInt({ min: 1, max: 480 }).withMessage('Duration must be between 1 and 480 minutes'),
-  body('materials').optional().trim(),
-  body('homework_assigned').optional().trim(),
-  body('learning_objectives').optional().isArray().withMessage('Learning objectives must be an array'),
-  body('status').optional().isIn(['planned', 'in_progress', 'completed', 'cancelled']).withMessage('Invalid status')
-], async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+router.patch('/:id', [
+  body('scheduled_start').optional().isISO8601(),
+  body('scheduled_end').optional().isISO8601(),
+  body('schedule_slot_id').optional({ nullable: true }).isUUID(),
+  body('status').optional().isIn(['planned', 'in_session', 'completed', 'cancelled']),
+  body('objectives').optional().isArray(),
+  body('materials').optional().isArray(),
+], async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.params.id) {
+      res.status(400).json({ error: 'Lesson ID is required' });
+      return;
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      res.status(400).json({ errors: errors.array() });
+      return;
     }
 
-    const { id } = req.params;
-    const updates: UpdateLessonRequest = req.body;
-
-    // Check if user is a teacher
-    if (authenticatedReq.user.user_type !== 'teacher') {
-      return res.status(403).json({ error: 'Only teachers can update lessons' });
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
     }
 
-    // Get the lesson to verify ownership
-    const lesson = await db('lessons')
-      .where('id', id)
-      .where('is_active', true)
-      .first();
-
-    if (!lesson) {
-      return res.status(404).json({ error: 'Lesson not found' });
-    }
-
-    // Verify teacher has access to this lesson's class
-    const userClass: UserClassAccess | undefined = await db('user_classes')
-      .where({
-        user_id: authenticatedReq.user.id,
-        class_id: lesson.class_id,
-        is_active: true
-      })
-      .first();
-
-    if (!userClass || userClass.role !== 'teacher') {
-      return res.status(403).json({ error: 'Access denied to this lesson' });
-    }
-
-    // Prepare update data
-    const updateData: any = {
-      ...updates,
-      updated_at: new Date()
-    };
-
-    if (updates.lesson_date) {
-      updateData.lesson_date = new Date(updates.lesson_date);
-    }
-
-    if (updates.learning_objectives) {
-      updateData.learning_objectives = JSON.stringify(updates.learning_objectives);
-    }
-
-    const [updatedLesson] = await db('lessons')
-      .where('id', id)
-      .update(updateData)
-      .returning('*');
-
-    res.json(updatedLesson);
+    const payload: UpdateLessonInstanceRequest = req.body;
+    const updated = await lessonService.updateLessonInstance(
+      req.params.id,
+      payload,
+      currentUser,
+    );
+    res.json(updated);
   } catch (error) {
-    logger.error('Error updating lesson:', error);
-    res.status(500).json({ error: 'Failed to update lesson' });
+    if (error instanceof Error && error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error updating lesson instance:', error);
+    next(error);
   }
 });
 
-// Delete lesson (soft delete - teachers only)
-router.delete('/:id', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+router.post('/:id/cancel', [
+  body('reason').optional().isString().isLength({ max: 500 }),
+], async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-
-    // Check if user is a teacher
-    if (authenticatedReq.user.user_type !== 'teacher') {
-      return res.status(403).json({ error: 'Only teachers can delete lessons' });
+    if (!req.params.id) {
+      res.status(400).json({ error: 'Lesson ID is required' });
+      return;
     }
 
-    // Get the lesson to verify ownership
-    const lesson = await db('lessons')
-      .where('id', id)
-      .where('is_active', true)
-      .first();
-
-    if (!lesson) {
-      return res.status(404).json({ error: 'Lesson not found' });
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
     }
 
-    // Verify teacher has access to this lesson's class
-    const userClass: UserClassAccess | undefined = await db('user_classes')
-      .where({
-        user_id: authenticatedReq.user.id,
-        class_id: lesson.class_id,
-        is_active: true
-      })
-      .first();
-
-    if (!userClass || userClass.role !== 'teacher') {
-      return res.status(403).json({ error: 'Access denied to this lesson' });
-    }
-
-    // Soft delete the lesson
-    await db('lessons')
-      .where('id', id)
-      .update({
-        is_active: false,
-        updated_at: new Date()
-      });
-
-    res.json({ message: 'Lesson deleted successfully' });
+    await lessonService.cancelLessonInstance(
+      req.params.id,
+      currentUser,
+      req.body.reason,
+    );
+    res.json({ message: 'Lesson instance cancelled' });
   } catch (error) {
-    logger.error('Error deleting lesson:', error);
-    res.status(500).json({ error: 'Failed to delete lesson' });
+    if (error instanceof Error && error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error cancelling lesson instance:', error);
+    next(error);
   }
 });
 
-export default router; 
+router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.params.id) {
+      res.status(400).json({ error: 'Lesson ID is required' });
+      return;
+    }
+
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    await lessonService.deleteLessonInstance(
+      req.params.id,
+      currentUser,
+    );
+    res.json({ message: 'Lesson instance deleted' });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error deleting lesson instance:', error);
+    next(error);
+  }
+});
+
+export default router;
+ 

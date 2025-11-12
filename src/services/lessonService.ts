@@ -1,64 +1,236 @@
 import { LessonRepository } from '../repositories/lessonRepository';
 import { AuthenticatedUser } from '../types/user';
-import { Lesson } from '../types/lesson';
-
-export interface CreateLessonData {
-  title: string;
-  description?: string;
-  content?: string;
-  class_id: string;
-  lesson_date?: Date;
-  duration_minutes?: number;
-  lesson_type?: string;
-  status?: 'draft' | 'published';
-  attachments?: any[];
-}
-
-export interface UpdateLessonData {
-  title?: string;
-  description?: string;
-  content?: string;
-  lesson_date?: Date;
-  duration_minutes?: number;
-  lesson_type?: string;
-  status?: 'draft' | 'published' | 'archived';
-  attachments?: any[];
-}
+import {
+  LessonInstance,
+  LessonInstanceQueryParams,
+  CreateLessonInstanceRequest,
+  UpdateLessonInstanceRequest,
+  ScheduleTemplate,
+  ScheduleTemplateSlot,
+} from '../types/lesson';
 
 export class LessonService {
   constructor(private lessonRepository: LessonRepository) {}
 
-  async getAllLessons(currentUser: AuthenticatedUser): Promise<Lesson[]> {
-    // Admins can see all lessons in their school
-    if (currentUser.role === 'admin') {
-      return await this.lessonRepository.findBySchoolId(currentUser.school_id);
-    }
-    
-    // Teachers see only their lessons
-    if (currentUser.user_type === 'teacher') {
-      return await this.lessonRepository.findByTeacherId(currentUser.id);
-    }
-    
-    // Students and other users see lessons in their school
-    return await this.lessonRepository.findBySchoolId(currentUser.school_id);
-  }
-
-  async getLessonsByClass(classId: string, currentUser: AuthenticatedUser): Promise<Lesson[]> {
-    // Verify user has access to this class
+  async listLessonInstancesForClass(
+    classId: string,
+    currentUser: AuthenticatedUser,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
     await this.verifyClassAccess(classId, currentUser);
-    return await this.lessonRepository.findByClassId(classId);
+    return await this.lessonRepository.findLessonInstancesByClassId(classId, params);
   }
 
-  async getLessonById(lessonId: string, currentUser: AuthenticatedUser): Promise<Lesson> {
-    const lesson = await this.lessonRepository.findById(lessonId);
-    if (!lesson) {
-      throw new Error('Lesson not found');
+  async listLessonInstancesForClassSubject(
+    classSubjectId: string,
+    currentUser: AuthenticatedUser,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    await this.verifyClassSubjectAccess(classSubjectId, currentUser);
+    return await this.lessonRepository.findLessonInstancesByClassSubjectId(classSubjectId, params);
+  }
+
+  async countLessonInstancesForClass(
+    classId: string,
+    currentUser: AuthenticatedUser,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    await this.verifyClassAccess(classId, currentUser);
+    const { page, limit, ...rest } = params;
+    return await this.lessonRepository.countLessonInstancesByClassId(classId, rest);
+  }
+
+  async countLessonInstancesForClassSubject(
+    classSubjectId: string,
+    currentUser: AuthenticatedUser,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    await this.verifyClassSubjectAccess(classSubjectId, currentUser);
+    const { page, limit, ...rest } = params;
+    return await this.lessonRepository.countLessonInstancesByClassSubjectId(classSubjectId, rest);
+  }
+
+  async getLessonInstanceById(
+    lessonInstanceId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<LessonInstance> {
+    const lessonInstance = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!lessonInstance) {
+      throw new Error('Lesson instance not found');
     }
 
-    // Verify user has access to the lesson's class
-    await this.verifyClassAccess(lesson.class_id, currentUser);
-    
-    return lesson;
+    await this.verifyClassSubjectAccess(lessonInstance.class_subject_id, currentUser);
+    return lessonInstance;
+  }
+
+  async createLessonInstance(
+    payload: CreateLessonInstanceRequest,
+    currentUser: AuthenticatedUser,
+  ): Promise<LessonInstance> {
+    await this.verifyClassSubjectAccess(payload.class_subject_id, currentUser, true);
+
+    const lessonInstanceId = await this.lessonRepository.createLessonInstance({
+      ...payload,
+      created_by: currentUser.id,
+    });
+
+    const lessonInstance = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!lessonInstance) {
+      throw new Error('Failed to create lesson instance');
+    }
+
+    return lessonInstance;
+  }
+
+  async updateLessonInstance(
+    lessonInstanceId: string,
+    payload: UpdateLessonInstanceRequest,
+    currentUser: AuthenticatedUser,
+  ): Promise<LessonInstance> {
+    const existing = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!existing) {
+      throw new Error('Lesson instance not found');
+    }
+
+    await this.verifyClassSubjectAccess(existing.class_subject_id, currentUser, true);
+
+    await this.lessonRepository.updateLessonInstance(lessonInstanceId, {
+      ...payload,
+      updated_by: currentUser.id,
+    });
+
+    const updated = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!updated) {
+      throw new Error('Failed to update lesson instance');
+    }
+
+    return updated;
+  }
+
+  async cancelLessonInstance(
+    lessonInstanceId: string,
+    currentUser: AuthenticatedUser,
+    reason?: string,
+  ): Promise<void> {
+    const existing = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!existing) {
+      throw new Error('Lesson instance not found');
+    }
+
+    await this.verifyClassSubjectAccess(existing.class_subject_id, currentUser, true);
+    await this.lessonRepository.updateLessonInstance(lessonInstanceId, {
+      status: 'cancelled',
+      cancellation_reason: reason ?? null,
+      updated_by: currentUser.id,
+    });
+  }
+
+  async deleteLessonInstance(
+    lessonInstanceId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<void> {
+    const existing = await this.lessonRepository.findLessonInstanceById(lessonInstanceId);
+    if (!existing) {
+      throw new Error('Lesson instance not found');
+    }
+
+    await this.verifyClassSubjectAccess(existing.class_subject_id, currentUser, true);
+    await this.lessonRepository.softDeleteLessonInstance(lessonInstanceId, currentUser.id);
+  }
+
+  async listScheduleTemplates(
+    classSubjectId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<ScheduleTemplate[]> {
+    await this.verifyClassSubjectAccess(classSubjectId, currentUser, true);
+    return await this.lessonRepository.listScheduleTemplatesByClassSubject(classSubjectId);
+  }
+
+  async createScheduleTemplate(
+    data: Omit<ScheduleTemplate, 'id' | 'created_at' | 'updated_at'>,
+    currentUser: AuthenticatedUser,
+  ): Promise<ScheduleTemplate> {
+    await this.verifyClassSubjectAccess(data.class_subject_id, currentUser, true);
+
+    const templateId = await this.lessonRepository.createScheduleTemplate({
+      ...data,
+      created_by: data.created_by ?? currentUser.id,
+    });
+
+    const template = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!template) {
+      throw new Error('Failed to create schedule template');
+    }
+
+    return template;
+  }
+
+  async updateScheduleTemplate(
+    templateId: string,
+    data: Partial<ScheduleTemplate>,
+    currentUser: AuthenticatedUser,
+  ): Promise<void> {
+    const existing = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!existing) {
+      throw new Error('Schedule template not found');
+    }
+
+    await this.verifyClassSubjectAccess(existing.class_subject_id, currentUser, true);
+    await this.lessonRepository.updateScheduleTemplate(templateId, data);
+  }
+
+  async deleteScheduleTemplate(
+    templateId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<void> {
+    const existing = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!existing) {
+      throw new Error('Schedule template not found');
+    }
+
+    await this.verifyClassSubjectAccess(existing.class_subject_id, currentUser, true);
+    await this.lessonRepository.deleteScheduleTemplate(templateId);
+  }
+
+  async listTemplateSlots(
+    templateId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<ScheduleTemplateSlot[]> {
+    const template = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!template) {
+      throw new Error('Schedule template not found');
+    }
+
+    await this.verifyClassSubjectAccess(template.class_subject_id, currentUser, true);
+    return await this.lessonRepository.listTemplateSlots(templateId);
+  }
+
+  async createTemplateSlot(
+    templateId: string,
+    data: Omit<ScheduleTemplateSlot, 'id' | 'created_at' | 'updated_at'>,
+    currentUser: AuthenticatedUser,
+  ): Promise<string> {
+    const template = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!template) {
+      throw new Error('Schedule template not found');
+    }
+
+    await this.verifyClassSubjectAccess(template.class_subject_id, currentUser, true);
+    return await this.lessonRepository.createTemplateSlot({ ...data, template_id: templateId });
+  }
+
+  async deleteTemplateSlot(
+    templateId: string,
+    slotId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<void> {
+    const template = await this.lessonRepository.getScheduleTemplateById(templateId);
+    if (!template) {
+      throw new Error('Schedule template not found');
+    }
+
+    await this.verifyClassSubjectAccess(template.class_subject_id, currentUser, true);
+    await this.lessonRepository.deleteTemplateSlot(slotId);
   }
 
   private async verifyClassAccess(classId: string, currentUser: AuthenticatedUser): Promise<void> {
@@ -89,76 +261,48 @@ export class LessonService {
     }
   }
 
-  async createLesson(data: CreateLessonData, currentUser: AuthenticatedUser): Promise<Lesson> {
-    // Only admins and teachers can create lessons
-    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
-      throw new Error('Only admins and teachers can create lessons');
+  private async verifyClassSubjectAccess(
+    classSubjectId: string,
+    currentUser: AuthenticatedUser,
+    requireTeachingPrivilege: boolean = false,
+  ): Promise<void> {
+    const db = await import('../config/database');
+
+    // Fetch the class subject details via raw query for now
+    const classSubject = await db.default('class_subjects')
+      .where('id', classSubjectId)
+      .where('is_active', true)
+      .first();
+
+    if (!classSubject) {
+      throw new Error('Class subject not found');
     }
 
-    // Verify access to the class
-    await this.verifyClassAccess(data.class_id, currentUser);
+    await this.verifyClassAccess(classSubject.class_id, currentUser);
 
-    // Convert the data to match database schema
-    const lessonData = {
-      class_id: data.class_id,
-      title: data.title,
-      description: data.description,
-      subject: data.lesson_type || 'General',
-      start_time: data.lesson_date || new Date(),
-      end_time: new Date(Date.now() + (data.duration_minutes || 60) * 60000),
-      location: '',
-      materials: data.attachments || [],
-      settings: {}
-    };
+    if (requireTeachingPrivilege) {
+      const isTeacher = currentUser.user_type === 'teacher';
+      const isAdmin = currentUser.role === 'admin';
 
-    const lessonId = await this.lessonRepository.create(lessonData);
-    
-    const lesson = await this.lessonRepository.findById(lessonId);
-    if (!lesson) {
-      throw new Error('Failed to create lesson');
+      if (!isAdmin) {
+        if (!isTeacher) {
+          throw new Error('Only teachers or admins can manage lesson schedules');
+        }
+
+        const isAssignedTeacher = classSubject.teacher_id === currentUser.id;
+        if (!isAssignedTeacher) {
+          const assignment = await db.default('class_offering_teachers')
+            .where('class_offering_id', classSubject.class_offering_id)
+            .where('teacher_id', currentUser.id)
+            .where('is_active', true)
+            .first();
+
+          if (!assignment) {
+            throw new Error('Access denied: not assigned to this subject');
+          }
+        }
+      }
     }
-
-    return lesson;
   }
-
-  async updateLesson(lessonId: string, data: UpdateLessonData, currentUser: AuthenticatedUser): Promise<Lesson> {
-    const existingLesson = await this.lessonRepository.findById(lessonId);
-    if (!existingLesson) {
-      throw new Error('Lesson not found');
-    }
-
-    // Verify access to the lesson's class
-    await this.verifyClassAccess(existingLesson.class_id, currentUser);
-
-    // Only admins and teachers can update lessons
-    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
-      throw new Error('Only admins and teachers can update lessons');
-    }
-
-    await this.lessonRepository.update(lessonId, data);
-    
-    const updatedLesson = await this.lessonRepository.findById(lessonId);
-    if (!updatedLesson) {
-      throw new Error('Failed to update lesson');
-    }
-
-    return updatedLesson;
-  }
-
-  async deleteLesson(lessonId: string, currentUser: AuthenticatedUser): Promise<void> {
-    const existingLesson = await this.lessonRepository.findById(lessonId);
-    if (!existingLesson) {
-      throw new Error('Lesson not found');
-    }
-
-    // Verify access to the lesson's class
-    await this.verifyClassAccess(existingLesson.class_id, currentUser);
-
-    // Only admins and teachers can delete lessons
-    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
-      throw new Error('Only admins and teachers can delete lessons');
-    }
-
-    await this.lessonRepository.delete(lessonId);
-  }
-} 
+}
+ 

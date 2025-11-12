@@ -31,6 +31,9 @@ export class ClassService {
   async getAllClasses(currentUser: AuthenticatedUser): Promise<Class[]> {
     // Admins can see all classes in their school
     if (currentUser.role === 'admin') {
+      if (!currentUser.school_id) {
+        throw new Error('Admin must be associated with a school');
+      }
       return await this.classRepository.findBySchoolId(currentUser.school_id);
     }
 
@@ -61,6 +64,9 @@ export class ClassService {
   async getUserClasses(currentUser: AuthenticatedUser): Promise<ClassWithDetails[]> {
     // Admins get all classes in their school, others get only enrolled classes
     if (currentUser.role === 'admin') {
+      if (!currentUser.school_id) {
+        throw new Error('Admin must be associated with a school');
+      }
       const allClasses = await this.classRepository.findBySchoolId(currentUser.school_id);
       
       // Get additional details for all classes
@@ -154,13 +160,12 @@ export class ClassService {
   }
 
   async getClassLessons(classId: string, currentUser: AuthenticatedUser) {
-    // Check access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
       throw new Error('Access denied');
     }
 
-    return await this.lessonRepository.findByClassId(classId);
+    return await this.lessonRepository.findLessonInstancesByClassId(classId);
   }
 
   async checkClassAccess(classId: string, currentUser: AuthenticatedUser): Promise<boolean> {
@@ -359,7 +364,7 @@ export class ClassService {
 
   private async mapSubjectsWithLessons(classSubjects: any[]) {
     return await Promise.all(classSubjects.map(async (cs) => {
-      const lessons = await this.lessonRepository.findByClassSubjectId(cs.class_subject_id);
+      const lessons = await this.lessonRepository.findLessonInstancesByClassSubjectId(cs.class_subject_id);
 
       return {
         subject_id: cs.subject_id,
