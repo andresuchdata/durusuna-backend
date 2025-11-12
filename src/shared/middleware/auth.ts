@@ -11,7 +11,7 @@ import { verifyAccessToken, extractToken } from '../../utils/jwt';
  * Verifies JWT token and adds user to request object
  */
 // Type guard to check if a request is authenticated
-function isAuthenticatedRequest(req: Request): req is AuthenticatedRequest {
+export function isAuthenticatedRequest(req: Request): req is AuthenticatedRequest {
   return !!(req as any).user;
 }
 

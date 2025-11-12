@@ -110,6 +110,13 @@ router.get('/user/:userId',
       const { user: currentUser } = authenticatedReq;
       const { userId } = req.params;
 
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'userId parameter is required'
+        });
+      }
+
       if (!currentUser) {
         return res.status(401).json({
           success: false,

@@ -686,6 +686,10 @@ router.get('/admin/teachers', authenticate, async (req: Request, res: Response) 
     const attendanceDate = date ? new Date(date as string) : new Date();
     attendanceDate.setHours(0, 0, 0, 0);
 
+    if (!authenticatedReq.user.school_id) {
+      return res.status(403).json({ error: 'Access denied - school access required' });
+    }
+
     const teachersAttendance = await attendanceService.getSchoolTeachersAttendance(
       authenticatedReq.user.school_id,
       attendanceDate
@@ -707,7 +711,7 @@ router.get('/admin/teachers/report', authenticate, async (req: Request, res: Res
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     // Verify user is an admin
-    if (authenticatedReq.user.role !== 'admin') {
+    if (authenticatedReq.user.role !== 'admin' || !authenticatedReq.user.school_id) {
       return res.status(403).json({ error: 'Access denied - admin access required' });
     }
 

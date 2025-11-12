@@ -44,6 +44,14 @@ export interface ChangePasswordData {
   new_password: string;
 }
 
+export interface UpdateProfileData {
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  date_of_birth?: Date;
+  avatar_url?: string;
+}
+
 export interface RefreshTokenData {
   refresh_token: string;
 }

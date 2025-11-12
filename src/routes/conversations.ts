@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import mime from 'mime-types';
 import { v4 as uuidv4 } from 'uuid';
 import { ConversationService } from '../services/conversationService';
@@ -7,11 +7,11 @@ import { MessageRepository } from '../repositories/messageRepository';
 import { AccessControlService } from '../services/accessControlService';
 import storageService from '../services/storageService';
 import db from '../config/database';
-import { authenticate, requireAuth } from '../shared/middleware/auth';
+import { authenticate, requireAuth, isAuthenticatedRequest } from '../shared/middleware/auth';
 import { validate, messageSchema } from '../utils/validation';
 import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
-import { uploadMiddleware, determineMessageType } from '../shared/middleware/upload';
+import { uploadMiddleware } from '../shared/middleware/upload';
 import {
   ConversationPaginationParams
 } from '../types/message';
@@ -24,14 +24,23 @@ const accessControlService = new AccessControlService(db);
 const conversationService = new ConversationService(messageRepository);
 const messageService = new MessageService(messageRepository);
 
+function ensureAuthenticated(req: Request, res: Response): req is AuthenticatedRequest {
+  if (!isAuthenticatedRequest(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * @route GET /api/conversations
  * @desc Get all conversations for the current user (optimized with caching)
  * @access Private
  */
 router.get('/', authenticate, requireAuth(), async (req: Request, res: Response) => {
-  if (!isAuthenticatedRequest(req)) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (!ensureAuthenticated(req, res)) {
+    return;
   }
   try {
     const { page = '1', limit = '15' } = req.query as { page?: string; limit?: string };
@@ -55,9 +64,16 @@ router.get('/', authenticate, requireAuth(), async (req: Request, res: Response)
  * @desc Get messages for a specific conversation (optimized for smooth loading)
  * @access Private
  */
-router.get('/:conversationId/messages', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:conversationId/messages', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
     const { 
       page = '1', 
       limit = '25',
@@ -66,7 +82,7 @@ router.get('/:conversationId/messages', authenticate, async (req: AuthenticatedR
     } = req.query as ConversationPaginationParams & { page?: string; limit?: string };
 
     const response = await conversationService.getConversationMessages(
-      conversationId!,
+      conversationId,
       req.user,
       {
         page: parseInt(page),
@@ -93,7 +109,10 @@ router.get('/:conversationId/messages', authenticate, async (req: AuthenticatedR
  * @desc Get conversation details including participants
  * @access Private
  */
-router.get('/:conversationId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -115,7 +134,7 @@ router.get('/:conversationId', authenticate, async (req: AuthenticatedRequest, r
     // Get one message to extract conversation and participant info
     const messagesResponse = await conversationService.getConversationMessages(
       conversationId,
-      authenticatedReq.user,
+      req.user,
       { page: 1, limit: 1 }
     );
 
@@ -148,7 +167,9 @@ router.get('/:conversationId', authenticate, async (req: AuthenticatedRequest, r
  * @access Private
  */
 router.get('/:conversationId/messages/load-more', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { 
@@ -163,7 +184,7 @@ router.get('/:conversationId/messages/load-more', authenticate, async (req: Requ
 
     const response = await conversationService.loadMoreMessages(
       conversationId!,
-      authenticatedReq.user,
+      req.user,
       cursor,
       direction,
       parseInt(limit)
@@ -187,7 +208,9 @@ router.get('/:conversationId/messages/load-more', authenticate, async (req: Requ
  * @access Private
  */
 router.post('/:conversationId/messages', authenticate, validate(messageSchema), async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -195,7 +218,7 @@ router.post('/:conversationId/messages', authenticate, validate(messageSchema), 
     const response = await conversationService.sendMessageToConversation(
       conversationId!,
       req.body,
-      authenticatedReq.user
+      req.user
     );
 
     res.status(201).json(response);
@@ -228,7 +251,10 @@ router.post('/:conversationId/messages', authenticate, validate(messageSchema), 
  * @desc Upload media files for a conversation
  * @access Private
  */
-router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat.array('files'), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat.array('files'), async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -301,7 +327,10 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
  * @desc Generate presigned URLs for direct client uploads (FAST upload method)
  * @access Private
  */
-router.post('/generate-presigned-urls', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/generate-presigned-urls', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversation_id, files }: { conversation_id: string; files: Array<{ name: string; type: string; size: number }> } = req.body;
 
@@ -441,7 +470,10 @@ function getFileType(mimeType: string): string {
  * @desc Mark all messages in a conversation as read (reset unread count)
  * @access Private
  */
-router.put('/:conversationId/mark-read', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:conversationId/mark-read', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
 
@@ -467,7 +499,10 @@ router.put('/:conversationId/mark-read', authenticate, async (req: Authenticated
  * @desc Delete a single message (soft delete)
  * @access Private
  */
-router.delete('/:conversationId/messages/:messageId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:conversationId/messages/:messageId', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { messageId } = req.params;
 
@@ -500,7 +535,10 @@ router.delete('/:conversationId/messages/:messageId', authenticate, async (req: 
  * @desc Delete multiple messages in batch (soft delete)
  * @access Private
  */
-router.delete('/:conversationId/messages/batch', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:conversationId/messages/batch', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { message_ids } = req.body;
 
@@ -539,7 +577,10 @@ router.delete('/:conversationId/messages/batch', authenticate, async (req: Authe
  * @desc Create a new conversation (direct or group)
  * @access Private
  */
-router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { type, participant_ids, name, description } = req.body as {
       type?: string;
@@ -616,7 +657,10 @@ router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) 
  * @desc Fetch reactions for multiple messages in a conversation
  * @access Private
  */
-router.post('/:conversationId/messages/reactions', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:conversationId/messages/reactions', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { messageIds } = req.body as { messageIds?: string[] };
@@ -660,7 +704,10 @@ router.post('/:conversationId/messages/reactions', authenticate, async (req: Aut
  * @desc Update conversation details (name, description, avatar) - for group conversations only
  * @access Private
  */
-router.put('/:conversationId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { name, description, avatar_url } = req.body as {
@@ -737,7 +784,10 @@ router.put('/:conversationId', authenticate, async (req: AuthenticatedRequest, r
  * @desc Leave a group conversation or delete a direct conversation from user's view
  * @access Private
  */
-router.delete('/:conversationId', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:conversationId', authenticate, async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
 
