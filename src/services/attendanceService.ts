@@ -248,6 +248,10 @@ export class AttendanceService {
       throw new Error('Access denied - not enrolled in this class');
     }
 
+    if(!user.school_id) {
+      throw new Error('Access denied - no school ID found');
+    }
+
     // Get school attendance settings
     const settings = await this.attendanceRepository.getSchoolAttendanceSettings(user.school_id);
     
