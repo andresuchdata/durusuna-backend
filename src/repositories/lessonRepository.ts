@@ -45,18 +45,24 @@ export class LessonRepository {
     params: LessonInstanceQueryParams = {},
   ): Promise<LessonInstance[]> {
     const query = this.baseLessonInstanceQuery(params)
-      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
-      .where(function () {
-        this.where('cs.teacher_id', teacherId)
-          .orWhereExists(function () {
-            this.select('*')
-              .from('class_offerings as co')
-              .whereRaw('co.id = cs.class_offering_id')
-              .where('co.primary_teacher_id', teacherId);
-          });
-      });
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id');
+
+    this.applyTeacherFilter(query, teacherId);
 
     return await query.select('li.*');
+  }
+
+  async countLessonInstancesByTeacherId(
+    teacherId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id');
+
+    this.applyTeacherFilter(query, teacherId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
   }
 
   async findLessonInstanceById(id: string): Promise<LessonInstance | null> {
@@ -254,6 +260,18 @@ export class LessonRepository {
       const r = (Math.random() * 16) | 0;
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
+    });
+  }
+
+  private applyTeacherFilter(query: Knex.QueryBuilder, teacherId: string): Knex.QueryBuilder {
+    return query.where(function () {
+      this.where('cs.teacher_id', teacherId)
+        .orWhereExists(function () {
+          this.select('*')
+            .from('class_offerings as co')
+            .whereRaw('co.id = cs.class_offering_id')
+            .where('co.primary_teacher_id', teacherId);
+        });
     });
   }
 }
