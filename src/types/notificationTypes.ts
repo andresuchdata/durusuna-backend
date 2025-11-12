@@ -63,15 +63,17 @@ export const ClassUpdateTypeToNotificationType: Record<string, NotificationType>
 };
 
 // Notification type categories for easier management
+export const CLASS_UPDATE_NOTIFICATION_TYPES: readonly NotificationType[] = [
+  NotificationTypes.CLASS_UPDATE_ANNOUNCEMENT,
+  NotificationTypes.CLASS_UPDATE_HOMEWORK,
+  NotificationTypes.CLASS_UPDATE_REMINDER,
+  NotificationTypes.CLASS_UPDATE_EVENT,
+  NotificationTypes.CLASS_UPDATE_COMMENT,
+  NotificationTypes.CLASS_UPDATE_REPLY,
+] as const;
+
 export const NotificationCategories = {
-  CLASS_UPDATES: [
-    NotificationTypes.CLASS_UPDATE_ANNOUNCEMENT,
-    NotificationTypes.CLASS_UPDATE_HOMEWORK,
-    NotificationTypes.CLASS_UPDATE_REMINDER,
-    NotificationTypes.CLASS_UPDATE_EVENT,
-    NotificationTypes.CLASS_UPDATE_COMMENT,
-    NotificationTypes.CLASS_UPDATE_REPLY,
-  ],
+  CLASS_UPDATES: CLASS_UPDATE_NOTIFICATION_TYPES,
   ASSIGNMENTS: [
     NotificationTypes.ASSIGNMENT_CREATED,
     NotificationTypes.ASSIGNMENT_UPDATED,
@@ -102,7 +104,7 @@ export const NotificationCategories = {
     NotificationTypes.EVENT,
     NotificationTypes.REMINDER,
   ],
-} as const;
+} as const satisfies Record<string, readonly NotificationType[]>;
 
 // Priority mapping for different notification types
 export const NotificationPriorities: Record<NotificationType, 'low' | 'normal' | 'high' | 'urgent'> = {
@@ -159,7 +161,7 @@ export const getDefaultPriority = (notificationType: NotificationType): 'low' | 
 };
 
 export const isClassUpdateNotification = (notificationType: NotificationType): boolean => {
-  return NotificationCategories.CLASS_UPDATES.includes(notificationType);
+  return CLASS_UPDATE_NOTIFICATION_TYPES.includes(notificationType);
 };
 
 export const isHighPriorityNotification = (notificationType: NotificationType): boolean => {

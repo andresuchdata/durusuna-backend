@@ -8,10 +8,39 @@ import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
 import { UserRepository } from '../repositories/userRepository';
 import { AuthenticatedRequest } from '../types/auth';
-import { getContactsSchema, type GetContactsInput } from '../schemas/userSchemas';
+import { getContactsSchema, type GetContactsInput, type ListUsersQueryInput } from '../schemas/userSchemas';
 
 const router = express.Router();
 const userService = new UserService(new UserRepository(db));
+
+const USER_TYPE_FILTERS = ['teacher', 'student', 'parent', 'admin', 'all'] as const;
+type UserTypeFilter = (typeof USER_TYPE_FILTERS)[number];
+
+const parseUserTypeFilter = (value: unknown): ListUsersQueryInput['userType'] => {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (typeof candidate !== 'string') {
+    return undefined;
+  }
+
+  return USER_TYPE_FILTERS.includes(candidate as UserTypeFilter)
+    ? (candidate as UserTypeFilter)
+    : undefined;
+};
+
+const parseDateFilter = (value: unknown): ListUsersQueryInput['dobFrom'] => {
+  const candidate = Array.isArray(value) ? value[0] : value;
+
+  if (candidate instanceof Date) {
+    return candidate;
+  }
+
+  if (typeof candidate !== 'string') {
+    return undefined;
+  }
+
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+};
 
 const handleUserRouteError = (error: unknown, res: Response, defaultMessage: string) => {
   if (error instanceof ZodError) {
@@ -64,10 +93,10 @@ router.get(
         page: req.query.page as any,
         limit: req.query.limit as any,
         search: req.query.search as string | undefined,
-        userType: req.query.userType as string | undefined,
+        userType: parseUserTypeFilter(req.query.userType),
         isActive: req.query.isActive as any,
-        dobFrom: req.query.dobFrom as string | undefined,
-        dobTo: req.query.dobTo as string | undefined,
+        dobFrom: parseDateFilter(req.query.dobFrom),
+        dobTo: parseDateFilter(req.query.dobTo),
       });
       res.json(result);
     } catch (error) {
@@ -274,6 +303,10 @@ router.put(
   '/:id',
   (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
   async (req: Request, res: Response) => {
+    if(!req.params.id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
       return res.status(405).json({ success: false, message: 'Method not allowed' });
     }
@@ -294,6 +327,10 @@ router.delete(
   '/:id',
   (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
   async (req: Request, res: Response) => {
+    if (!req.params.id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
       return res.status(405).json({ success: false, message: 'Method not allowed' });
     }
@@ -378,6 +415,10 @@ router.get(
   '/:id',
   (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
   async (req: Request, res: Response) => {
+    if (!req.params.id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
       return res.status(405).json({ success: false, message: 'Method not allowed' });
     }
