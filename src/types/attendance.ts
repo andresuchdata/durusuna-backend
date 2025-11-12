@@ -29,6 +29,7 @@ export interface AttendanceRecordWithStudent extends AttendanceRecord {
 export interface AttendanceSession {
   id: string;
   class_id: string;
+  lesson_instance_id?: string | null;
   teacher_id: string;
   session_date: Date;
   opened_at: Date;

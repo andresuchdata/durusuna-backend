@@ -152,7 +152,10 @@ router.post('/sessions/:classId/open', authenticate, async (req: Request, res: R
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
-    const { date } = req.body; // YYYY-MM-DD format
+    const { date, lesson_instance_id: lessonInstanceId } = req.body as {
+      date?: string;
+      lesson_instance_id?: string;
+    };
 
     if (!classId) {
       return res.status(400).json({ error: 'Class ID is required' });
@@ -168,7 +171,8 @@ router.post('/sessions/:classId/open', authenticate, async (req: Request, res: R
     const result = await attendanceService.openAttendanceSession(
       classId,
       sessionDate,
-      authenticatedReq.user
+      authenticatedReq.user,
+      lessonInstanceId
     );
 
     res.json({
