@@ -2,7 +2,12 @@ exports.up = function(knex) {
   return knex.schema.createTable('grades', function(table) {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').references('id').inTable('users').onDelete('CASCADE').notNullable();
-    table.uuid('lesson_id').references('id').inTable('lessons').onDelete('CASCADE').notNullable();
+    table
+      .uuid('lesson_instance_id')
+      .references('id')
+      .inTable('lesson_instances')
+      .onDelete('CASCADE')
+      .notNullable();
     table.uuid('teacher_id').references('id').inTable('users').onDelete('CASCADE').notNullable();
     table.string('assignment_name', 255).notNullable();
     table.enum('assignment_type', ['homework', 'quiz', 'exam', 'project', 'participation']).notNullable();
@@ -17,7 +22,7 @@ exports.up = function(knex) {
     
     // Indexes
     table.index(['student_id']);
-    table.index(['lesson_id']);
+    table.index(['lesson_instance_id']);
     table.index(['teacher_id']);
     table.index(['assignment_type']);
     table.index(['graded_date']);
