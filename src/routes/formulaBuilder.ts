@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth';
-import { validateRequest } from '../middleware/validateRequest';
+import { validate } from '../utils/validation';
+import { authenticateMiddleware } from '@/shared/middleware/authenticateMiddleware';
 import { 
   createFormulaTemplateSchema,
   updateFormulaTemplateSchema,
@@ -10,14 +10,30 @@ import {
 
 const router = Router();
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return 'An unexpected error occurred';
+}
+
+function handleError(res: any, error: unknown) {
+  res.status(500).json({ error: getErrorMessage(error) });
+}
+
 // All routes require authentication
-router.use(authenticateToken);
+router.use(authenticateMiddleware);
 
 // Formula Templates CRUD
 router.get('/templates', getFormulaTemplates);
-router.post('/templates', validateRequest(createFormulaTemplateSchema), createFormulaTemplate);
+router.post('/templates', validate(createFormulaTemplateSchema), createFormulaTemplate);
 router.get('/templates/:id', getFormulaTemplate);
-router.patch('/templates/:id', validateRequest(updateFormulaTemplateSchema), updateFormulaTemplate);
+router.patch('/templates/:id', validate(updateFormulaTemplateSchema), updateFormulaTemplate);
 router.delete('/templates/:id', deleteFormulaTemplate);
 
 // Template Operations
@@ -25,8 +41,8 @@ router.post('/templates/:id/duplicate', duplicateFormulaTemplate);
 router.post('/templates/:id/apply', applyTemplateToFormula);
 
 // Formula Conversion & Validation
-router.post('/validate', validateRequest(validateFormulaSchema), validateFormula);
-router.post('/convert', validateRequest(convertToExpressionSchema), convertToExpression);
+router.post('/validate', validate(validateFormulaSchema), validateFormula);
+router.post('/convert', validate(convertToExpressionSchema), convertToExpression);
 router.post('/preview', previewFormulaCalculation);
 
 // Component Library
@@ -47,7 +63,7 @@ async function getFormulaTemplates(req: any, res: any) {
     const result = await formulaBuilderService.getFormulaTemplates(req.query, req.user);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -57,7 +73,7 @@ async function createFormulaTemplate(req: any, res: any) {
     const template = await formulaBuilderService.createFormulaTemplate(req.body, req.user);
     res.status(201).json({ template });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -70,7 +86,7 @@ async function getFormulaTemplate(req: any, res: any) {
     }
     res.json({ template });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -80,7 +96,7 @@ async function updateFormulaTemplate(req: any, res: any) {
     const template = await formulaBuilderService.updateFormulaTemplate(req.params.id, req.body, req.user);
     res.json({ template });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -90,7 +106,7 @@ async function deleteFormulaTemplate(req: any, res: any) {
     await formulaBuilderService.deleteFormulaTemplate(req.params.id, req.user);
     res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -104,7 +120,7 @@ async function duplicateFormulaTemplate(req: any, res: any) {
     );
     res.status(201).json({ template: newTemplate });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -119,7 +135,7 @@ async function applyTemplateToFormula(req: any, res: any) {
     );
     res.json({ formula });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -129,7 +145,7 @@ async function validateFormula(req: any, res: any) {
     const validation = await formulaBuilderService.validateFormula(req.body, req.user);
     res.json(validation);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -139,7 +155,7 @@ async function convertToExpression(req: any, res: any) {
     const conversion = await formulaBuilderService.convertToExpression(req.body, req.user);
     res.json(conversion);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -149,7 +165,7 @@ async function previewFormulaCalculation(req: any, res: any) {
     const preview = await formulaBuilderService.previewFormulaCalculation(req.body, req.user);
     res.json(preview);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -159,7 +175,7 @@ async function getComponentLibrary(req: any, res: any) {
     const library = await formulaBuilderService.getComponentLibrary(req.query, req.user);
     res.json(library);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -169,7 +185,7 @@ async function getAvailableComponents(req: any, res: any) {
     const components = await formulaBuilderService.getAvailableComponents(req.query, req.user);
     res.json({ components });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -179,7 +195,7 @@ async function getIslamicTemplates(req: any, res: any) {
     const templates = await formulaBuilderService.getIslamicTemplates(req.user);
     res.json({ templates });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -189,7 +205,7 @@ async function getBasicTemplates(req: any, res: any) {
     const templates = await formulaBuilderService.getBasicTemplates(req.user);
     res.json({ templates });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -199,7 +215,7 @@ async function getUIConfiguration(req: any, res: any) {
     const config = await formulaBuilderService.getUIConfiguration(req.user);
     res.json(config);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 
@@ -209,7 +225,7 @@ async function getValidationRules(req: any, res: any) {
     const rules = await formulaBuilderService.getValidationRules(req.query, req.user);
     res.json(rules);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    handleError(res, error);
   }
 }
 

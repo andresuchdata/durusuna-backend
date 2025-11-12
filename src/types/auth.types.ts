@@ -5,11 +5,12 @@ export interface AuthUser extends Omit<User, 'password_hash' | 'created_at' | 'u
   exp?: number;
   aud?: string;
   iss?: string;
+  school_name?: string | null;
+  last_active_at: string;
 }
 
 export interface RegisterUserData {
   email: string;
-  password: string;
   first_name: string;
   last_name: string;
   user_type: 'student' | 'teacher' | 'parent' | 'admin';
