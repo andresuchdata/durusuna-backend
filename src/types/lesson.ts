@@ -118,4 +118,23 @@ export interface LessonInstanceResponse {
     hasMore: boolean;
   };
 }
+
+export interface TeacherLessonSummary extends LessonInstanceWithContext {
+  class_name?: string;
+  subject_name?: string;
+  attendance_session_id?: string | null;
+  attendance_status?: 'not_started' | 'in_progress' | 'finalized';
+}
+
+export interface TeacherLessonDashboardResponse {
+  date: string;
+  lessons: TeacherLessonSummary[];
+  total: number;
+}
+
+export interface UpdateLessonStatusRequest {
+  status: Extract<LessonInstanceStatus, 'in_session' | 'completed'>;
+  actual_start?: string | null;
+  actual_end?: string | null;
+}
  

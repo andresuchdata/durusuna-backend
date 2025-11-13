@@ -6,6 +6,7 @@ import {
   UpdateLessonInstanceRequest,
   ScheduleTemplate,
   ScheduleTemplateSlot,
+  TeacherLessonSummary,
 } from '../types/lesson';
 
 type CreateLessonInstanceDBPayload = CreateLessonInstanceRequest & {
@@ -63,6 +64,99 @@ export class LessonRepository {
 
     const result = await query.clone().count<{ count: string }>('li.id as count').first();
     return Number(result?.count ?? 0);
+  }
+
+  async findTeacherLessonsForDate(
+    teacherId: string,
+    startOfDay: Date,
+    endOfDay: Date,
+  ): Promise<TeacherLessonSummary[]> {
+    const lessons = await this.db('lesson_instances as li')
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .join('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('attendance_sessions as ats', 'li.id', 'ats.lesson_instance_id')
+      .where('li.is_active', true)
+      .andWhere('li.scheduled_start', '>=', startOfDay)
+      .andWhere('li.scheduled_start', '<', endOfDay)
+      .modify((query) => this.applyTeacherFilter(query, teacherId))
+      .select(
+        'li.*',
+        'cs.class_id as class_id',
+        'c.name as class_name',
+        'c.grade_level as class_grade_level',
+        'c.section as class_section',
+        'c.academic_year as class_academic_year',
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.category as subject_category',
+        'ats.id as attendance_session_id',
+        'ats.is_finalized as attendance_is_finalized',
+        'ats.opened_at as attendance_opened_at',
+        'ats.closed_at as attendance_closed_at',
+      )
+      .orderBy('li.scheduled_start', 'asc');
+
+    return lessons.map((lesson) => this.mapLessonSummaryRow(lesson));
+  }
+
+  async findTeacherLessonById(
+    teacherId: string,
+    lessonInstanceId: string,
+  ): Promise<TeacherLessonSummary | null> {
+    const row = await this.db('lesson_instances as li')
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .join('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('attendance_sessions as ats', 'li.id', 'ats.lesson_instance_id')
+      .where('li.is_active', true)
+      .andWhere('li.id', lessonInstanceId)
+      .modify((query) => this.applyTeacherFilter(query, teacherId))
+      .select(
+        'li.*',
+        'cs.class_id as class_id',
+        'c.name as class_name',
+        'c.grade_level as class_grade_level',
+        'c.section as class_section',
+        'c.academic_year as class_academic_year',
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.category as subject_category',
+        'ats.id as attendance_session_id',
+        'ats.is_finalized as attendance_is_finalized',
+        'ats.opened_at as attendance_opened_at',
+        'ats.closed_at as attendance_closed_at',
+      )
+      .first();
+
+    return row ? this.mapLessonSummaryRow(row) : null;
+  }
+
+  async getLessonAttendanceStatus(lessonInstanceId: string): Promise<{
+    attendance_session_id: string | null;
+    attendance_status: 'not_started' | 'in_progress' | 'finalized';
+  }> {
+    const attendance = await this.db('attendance_sessions')
+      .where('lesson_instance_id', lessonInstanceId)
+      .first('id', 'is_finalized', 'opened_at', 'closed_at');
+
+    if (!attendance) {
+      return {
+        attendance_session_id: null,
+        attendance_status: 'not_started',
+      };
+    }
+
+    return {
+      attendance_session_id: attendance.id,
+      attendance_status: attendance.is_finalized
+        ? 'finalized'
+        : attendance.closed_at
+          ? 'in_progress'
+          : 'in_progress',
+    };
   }
 
   async findLessonInstanceById(id: string): Promise<LessonInstance | null> {
@@ -268,11 +362,133 @@ export class LessonRepository {
       this.where('cs.teacher_id', teacherId)
         .orWhereExists(function () {
           this.select('*')
+            .from('class_offering_teachers as cot')
+            .whereRaw('cot.class_offering_id = cs.class_offering_id')
+            .andWhere('cot.teacher_id', teacherId)
+            .andWhere('cot.is_active', true);
+        })
+        .orWhereExists(function () {
+          this.select('*')
             .from('class_offerings as co')
             .whereRaw('co.id = cs.class_offering_id')
-            .where('co.primary_teacher_id', teacherId);
+            .andWhere('co.primary_teacher_id', teacherId);
         });
     });
+  }
+
+  private mapLessonSummaryRow(row: any): TeacherLessonSummary {
+    const attendanceStatus: 'not_started' | 'in_progress' | 'finalized' = row.attendance_session_id
+      ? row.attendance_is_finalized
+        ? 'finalized'
+        : 'in_progress'
+      : 'not_started';
+
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+    const actualStart = this.normalizeDateValue(row.actual_start);
+    const actualEnd = this.normalizeDateValue(row.actual_end);
+    const createdAt = this.ensureDateString(row.created_at);
+    const updatedAt = this.ensureDateString(row.updated_at);
+
+    return {
+      id: row.id,
+      class_subject_id: row.class_subject_id,
+      schedule_slot_id: row.schedule_slot_id,
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      actual_start: actualStart,
+      actual_end: actualEnd,
+      status: row.status,
+      title: row.title,
+      description: row.description,
+      objectives: this.parseStringArray(row.objectives),
+      materials: this.parseMaterialsArray(row.materials),
+      notes: row.notes,
+      cancellation_reason: row.cancellation_reason,
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+      is_active: row.is_active,
+      created_at: createdAt,
+      updated_at: updatedAt,
+      class: row.class_id
+        ? {
+            id: row.class_id,
+            name: row.class_name,
+            grade_level: row.class_grade_level,
+            section: row.class_section,
+            academic_year: row.class_academic_year,
+          }
+        : undefined,
+      subject: row.subject_id
+        ? {
+            id: row.subject_id,
+            name: row.subject_name,
+            code: row.subject_code,
+            category: row.subject_category,
+          }
+        : undefined,
+      class_name: row.class_name,
+      subject_name: row.subject_name,
+      attendance_session_id: row.attendance_session_id ?? null,
+      attendance_status: attendanceStatus,
+    };
+  }
+
+  private normalizeDateValue(value: unknown): string | null {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const parsed = new Date(trimmed);
+      if (Number.isNaN(parsed.getTime())) {
+        return trimmed;
+      }
+      return parsed.toISOString();
+    }
+    return null;
+  }
+
+  private ensureDateString(value: unknown): string {
+    const normalized = this.normalizeDateValue(value);
+    if (normalized) {
+      return normalized;
+    }
+    if (value) {
+      const parsed = new Date(value as string | number | Date);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+      return String(value);
+    }
+    // Fallback to current time; this should rarely happen but keeps return type consistent
+    return new Date().toISOString();
+  }
+
+  private parseJsonArray(value: unknown): unknown[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+      const parsed = JSON.parse(value as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  private parseStringArray(value: unknown): string[] {
+    return this.parseJsonArray(value)
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim());
+  }
+
+  private parseMaterialsArray(value: unknown): Record<string, unknown>[] {
+    return this.parseJsonArray(value)
+      .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object');
   }
 }
  

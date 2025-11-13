@@ -8,6 +8,7 @@ import {
   CreateLessonInstanceRequest,
   LessonInstanceQueryParams,
   UpdateLessonInstanceRequest,
+  UpdateLessonStatusRequest,
 } from '../types/lesson';
 import { authenticateMiddleware } from '../shared/middleware/authenticateMiddleware';
 import { isAuthenticatedRequest } from '../shared/middleware/auth';
@@ -84,6 +85,117 @@ router.get('/class/:classId', async (req: Request, res: Response, next: NextFunc
     });
   } catch (error) {
     logger.error('Error fetching lessons:', error);
+    next(error);
+  }
+});
+
+router.get('/teacher/dashboard', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const { date } = req.query;
+    if (date && typeof date !== 'string') {
+      res.status(400).json({ error: 'date must be a string in YYYY-MM-DD format' });
+      return;
+    }
+
+    const dashboard = await lessonService.getTeacherDailyLessons(currentUser, date);
+    res.json(dashboard);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Teacher access required')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Invalid date')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    logger.error('Error fetching teacher lesson dashboard:', error);
+    next(error);
+  }
+});
+
+router.get('/teacher/lessons/:lessonId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.params.lessonId) {
+      res.status(400).json({ error: 'Lesson ID is required' });
+      return;
+    }
+
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const lesson = await lessonService.getTeacherLessonSummary(req.params.lessonId, currentUser);
+    res.json(lesson);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes('Teacher access required')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error fetching teacher lesson summary:', error);
+    next(error);
+  }
+});
+
+router.post('/teacher/lessons/:lessonId/status', [
+  body('status').isIn(['in_session', 'completed']).withMessage('status must be in_session or completed'),
+  body('actual_start').optional().isISO8601().withMessage('actual_start must be ISO8601'),
+  body('actual_end').optional().isISO8601().withMessage('actual_end must be ISO8601'),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.params.lessonId) {
+      res.status(400).json({ error: 'Lesson ID is required' });
+      return;
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const payload: UpdateLessonStatusRequest = req.body;
+    const updated = await lessonService.updateTeacherLessonStatus(
+      req.params.lessonId,
+      payload,
+      currentUser,
+    );
+
+    res.json({
+      message: `Lesson status updated to ${payload.status}`,
+      lesson: updated,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Teacher access required')) {
+        res.status(403).json({ error: error.message });
+        return;
+      }
+      if (error.message.includes('not found')) {
+        res.status(404).json({ error: error.message });
+        return;
+      }
+      if (error.message.includes('Invalid date')) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+    }
+
+    logger.error('Error updating teacher lesson status:', error);
     next(error);
   }
 });

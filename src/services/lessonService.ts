@@ -7,6 +7,9 @@ import {
   UpdateLessonInstanceRequest,
   ScheduleTemplate,
   ScheduleTemplateSlot,
+  TeacherLessonDashboardResponse,
+  TeacherLessonSummary,
+  UpdateLessonStatusRequest,
 } from '../types/lesson';
 
 export class LessonService {
@@ -61,6 +64,94 @@ export class LessonService {
 
     await this.verifyClassSubjectAccess(lessonInstance.class_subject_id, currentUser);
     return lessonInstance;
+  }
+
+  async getTeacherDailyLessons(
+    currentUser: AuthenticatedUser,
+    dateInput?: string,
+  ): Promise<TeacherLessonDashboardResponse> {
+    this.ensureTeacherContext(currentUser);
+
+    const { startOfDay, endOfDay, isoDate } = this.getDateRange(dateInput);
+
+    const lessons = await this.lessonRepository.findTeacherLessonsForDate(
+      currentUser.id,
+      startOfDay,
+      endOfDay,
+    );
+
+    return {
+      date: isoDate,
+      lessons,
+      total: lessons.length,
+    };
+  }
+
+  async getTeacherLessonSummary(
+    lessonInstanceId: string,
+    currentUser: AuthenticatedUser,
+  ): Promise<TeacherLessonSummary> {
+    this.ensureTeacherContext(currentUser);
+
+    const lesson = await this.lessonRepository.findTeacherLessonById(
+      currentUser.id,
+      lessonInstanceId,
+    );
+
+    if (!lesson) {
+      throw new Error('Lesson instance not found');
+    }
+
+    return lesson;
+  }
+
+  async updateTeacherLessonStatus(
+    lessonInstanceId: string,
+    payload: UpdateLessonStatusRequest,
+    currentUser: AuthenticatedUser,
+  ): Promise<TeacherLessonSummary> {
+    this.ensureTeacherContext(currentUser);
+
+    const lesson = await this.lessonRepository.findTeacherLessonById(
+      currentUser.id,
+      lessonInstanceId,
+    );
+
+    if (!lesson) {
+      throw new Error('Lesson instance not found');
+    }
+
+    const updatePayload: UpdateLessonInstanceRequest = {
+      status: payload.status,
+    };
+
+    if (payload.status === 'in_session') {
+      updatePayload.actual_start = payload.actual_start ?? new Date().toISOString();
+      updatePayload.actual_end = null;
+    }
+
+    if (payload.status === 'completed') {
+      updatePayload.actual_end = payload.actual_end ?? new Date().toISOString();
+      if (!lesson.actual_start) {
+        updatePayload.actual_start = payload.actual_start ?? updatePayload.actual_end;
+      }
+    }
+
+    await this.lessonRepository.updateLessonInstance(lessonInstanceId, {
+      ...updatePayload,
+      updated_by: currentUser.id,
+    });
+
+    const updatedLesson = await this.lessonRepository.findTeacherLessonById(
+      currentUser.id,
+      lessonInstanceId,
+    );
+
+    if (!updatedLesson) {
+      throw new Error('Failed to update lesson status');
+    }
+
+    return updatedLesson;
   }
 
   async createLessonInstance(
@@ -303,6 +394,35 @@ export class LessonService {
         }
       }
     }
+  }
+
+  private ensureTeacherContext(currentUser: AuthenticatedUser): void {
+    if (currentUser.user_type !== 'teacher' && currentUser.role !== 'admin') {
+      throw new Error('Teacher access required');
+    }
+  }
+
+  private getDateRange(dateInput?: string): {
+    startOfDay: Date;
+    endOfDay: Date;
+    isoDate: string;
+  } {
+    const date = dateInput ? new Date(dateInput) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      throw new Error('Invalid date');
+    }
+
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return {
+      startOfDay,
+      endOfDay,
+      isoDate: startOfDay.toISOString().split('T')[0],
+    };
   }
 }
  
