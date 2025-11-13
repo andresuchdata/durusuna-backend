@@ -421,7 +421,7 @@ export class LessonService {
     return {
       startOfDay,
       endOfDay,
-      isoDate: startOfDay.toISOString().split('T')[0],
+      isoDate: startOfDay.toISOString().slice(0, 10),
     };
   }
 }
