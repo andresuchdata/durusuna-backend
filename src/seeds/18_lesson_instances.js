@@ -2,7 +2,15 @@ const { v4: uuidv4 } = require('uuid');
 
 const TARGET_TEACHER_EMAILS = ['teacher1@asdf.com', 'teacher2@asdf.com'];
 const SESSIONS_PER_SUBJECT = 2;
-const BASE_DATE = new Date('2025-02-03T00:00:00Z'); // Monday, Feb 3 2025
+
+function getUpcomingMondayUtc() {
+  const now = new Date();
+  const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const day = base.getUTCDay();
+  const daysUntilMonday = (8 - day) % 7 || 7;
+  base.setUTCDate(base.getUTCDate() + (day === 1 ? 0 : daysUntilMonday));
+  return base;
+}
 
 /**
  * @param { import('knex').Knex } knex
@@ -50,8 +58,9 @@ exports.seed = async function seedLessonInstances(knex) {
 
   const lessonInstances = [];
   let dayOffset = 0;
+  const baseDate = getUpcomingMondayUtc();
 
-  const createSessionDate = (baseDate, offsetDays, hour, minute) => {
+  const createSessionDate = (offsetDays, hour, minute) => {
     const date = new Date(baseDate.getTime());
     date.setUTCDate(date.getUTCDate() + offsetDays);
     date.setUTCHours(hour, minute, 0, 0);
@@ -62,8 +71,8 @@ exports.seed = async function seedLessonInstances(knex) {
     const teacher = teachers.find((t) => t.id === subject.teacher_id);
 
     for (let session = 0; session < SESSIONS_PER_SUBJECT; session += 1) {
-      const scheduledStart = createSessionDate(BASE_DATE, dayOffset, 7 + (session % 2) * 2, 0);
-      const scheduledEnd = createSessionDate(BASE_DATE, dayOffset, 8 + (session % 2) * 2, 30);
+      const scheduledStart = createSessionDate(dayOffset, 7 + (session % 2) * 2, 0);
+      const scheduledEnd = createSessionDate(dayOffset, 8 + (session % 2) * 2, 30);
 
       lessonInstances.push({
         id: uuidv4(),

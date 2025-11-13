@@ -407,22 +407,34 @@ export class LessonService {
     endOfDay: Date;
     isoDate: string;
   } {
-    const date = dateInput ? new Date(dateInput) : new Date();
-    if (Number.isNaN(date.getTime())) {
-      throw new Error('Invalid date');
-    }
+    const base = this.resolveRequestedDate(dateInput);
 
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(base);
+    startOfDay.setUTCHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const endOfDay = new Date(base);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    const isoDate = startOfDay.toISOString().slice(0, 10);
 
     return {
       startOfDay,
       endOfDay,
-      isoDate: startOfDay.toISOString().slice(0, 10),
+      isoDate,
     };
   }
+
+  private resolveRequestedDate(dateInput?: string): Date {
+    const now = new Date();
+    const requested = dateInput ? new Date(dateInput) : now;
+    if (!Number.isNaN(requested.getTime()) && requested >= now) {
+      return requested;
+    }
+
+    const upcomingMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const currentDay = upcomingMonday.getUTCDay();
+    const daysUntilMonday = (8 - currentDay) % 7 || 7;
+    upcomingMonday.setUTCDate(upcomingMonday.getUTCDate() + (currentDay === 1 ? 0 : daysUntilMonday));
+    return upcomingMonday;
+  }
 }
- 
