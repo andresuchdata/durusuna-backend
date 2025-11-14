@@ -367,6 +367,7 @@ export class ClassService {
       const lessons = await this.lessonRepository.findLessonInstancesByClassSubjectId(cs.class_subject_id);
 
       return {
+        class_subject_id: cs.class_subject_id,
         subject_id: cs.subject_id,
         subject_name: cs.subject_name,
         subject_code: cs.subject_code,
