@@ -10,6 +10,7 @@ import {
   TeacherLessonDashboardResponse,
   TeacherLessonSummary,
   UpdateLessonStatusRequest,
+  AdminLessonDashboardResponse,
 } from '../types/lesson';
 
 export class LessonService {
@@ -22,6 +23,13 @@ export class LessonService {
   ): Promise<LessonInstance[]> {
     await this.verifyClassAccess(classId, currentUser);
     return await this.lessonRepository.findLessonInstancesByClassId(classId, params);
+  }
+
+  private ensureAdminContext(currentUser: AuthenticatedUser): void {
+    const isAdmin = currentUser.role === 'admin' || currentUser.user_type === 'admin';
+    if (!isAdmin) {
+      throw new Error('Admin access required');
+    }
   }
 
   async listLessonInstancesForClassSubject(
@@ -72,13 +80,32 @@ export class LessonService {
   ): Promise<TeacherLessonDashboardResponse> {
     this.ensureTeacherContext(currentUser);
 
-    const { startOfDay, endOfDay, isoDate } = this.getDateRange(dateInput);
+    let { startOfDay, endOfDay, isoDate } = this.getDateRange(dateInput);
 
-    const lessons = await this.lessonRepository.findTeacherLessonsForDate(
+    let lessons = await this.lessonRepository.findTeacherLessonsForDate(
       currentUser.id,
       startOfDay,
       endOfDay,
     );
+
+    if (!dateInput && lessons.length === 0) {
+      const fallbackDate = this.getUpcomingMonday();
+      const fallbackRange = this.getDateRangeForDate(fallbackDate);
+
+      if (fallbackRange.isoDate !== isoDate) {
+        lessons = await this.lessonRepository.findTeacherLessonsForDate(
+          currentUser.id,
+          fallbackRange.startOfDay,
+          fallbackRange.endOfDay,
+        );
+
+        if (lessons.length > 0) {
+          startOfDay = fallbackRange.startOfDay;
+          endOfDay = fallbackRange.endOfDay;
+          isoDate = fallbackRange.isoDate;
+        }
+      }
+    }
 
     return {
       date: isoDate,
@@ -154,11 +181,48 @@ export class LessonService {
     return updatedLesson;
   }
 
+  async getAdminLessonsDashboard(
+    currentUser: AuthenticatedUser,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<AdminLessonDashboardResponse> {
+    this.ensureAdminContext(currentUser);
+
+    const schoolId = currentUser.school_id;
+    if (!schoolId) {
+      throw new Error('Admin school context required');
+    }
+
+    const page = params.page && params.page > 0 ? params.page : 1;
+    const limit = params.limit && params.limit > 0 ? params.limit : 20;
+    const queryParams: LessonInstanceQueryParams = { ...params, page, limit };
+
+    const lessons = await this.lessonRepository.findAdminLessonsForSchool(schoolId, queryParams);
+    const total = await this.lessonRepository.countAdminLessonsForSchool(schoolId, {
+      ...params,
+      page: undefined,
+      limit: undefined,
+    });
+
+    return {
+      lessons,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: page * limit < total,
+      },
+    };
+  }
+
   async createLessonInstance(
     payload: CreateLessonInstanceRequest,
     currentUser: AuthenticatedUser,
   ): Promise<LessonInstance> {
-    await this.verifyClassSubjectAccess(payload.class_subject_id, currentUser, true);
+    // Only school admins can create lesson instances
+    this.ensureAdminContext(currentUser);
+
+    // Still enforce that the target class_subject belongs to a class the admin can access
+    await this.verifyClassSubjectAccess(payload.class_subject_id, currentUser);
 
     const lessonInstanceId = await this.lessonRepository.createLessonInstance({
       ...payload,
@@ -408,19 +472,24 @@ export class LessonService {
     isoDate: string;
   } {
     const base = this.resolveRequestedDate(dateInput);
+    return this.getDateRangeForDate(base);
+  }
 
-    const startOfDay = new Date(base);
+  private getDateRangeForDate(date: Date): {
+    startOfDay: Date;
+    endOfDay: Date;
+    isoDate: string;
+  } {
+    const startOfDay = new Date(date);
     startOfDay.setUTCHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(base);
+    const endOfDay = new Date(date);
     endOfDay.setUTCHours(23, 59, 59, 999);
-
-    const isoDate = startOfDay.toISOString().slice(0, 10);
 
     return {
       startOfDay,
       endOfDay,
-      isoDate,
+      isoDate: startOfDay.toISOString().slice(0, 10),
     };
   }
 
@@ -431,10 +500,14 @@ export class LessonService {
       return requested;
     }
 
-    const upcomingMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const currentDay = upcomingMonday.getUTCDay();
-    const daysUntilMonday = (8 - currentDay) % 7 || 7;
-    upcomingMonday.setUTCDate(upcomingMonday.getUTCDate() + (currentDay === 1 ? 0 : daysUntilMonday));
-    return upcomingMonday;
+    return this.getUpcomingMonday(now);
+  }
+
+  private getUpcomingMonday(reference: Date = new Date()): Date {
+    const base = new Date(Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth(), reference.getUTCDate()));
+    const day = base.getUTCDay();
+    const daysUntilMonday = ((8 - day) % 7) || 7;
+    base.setUTCDate(base.getUTCDate() + daysUntilMonday);
+    return base;
   }
 }

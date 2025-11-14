@@ -132,6 +132,27 @@ export interface TeacherLessonDashboardResponse {
   total: number;
 }
 
+export interface AdminLessonSummary {
+  id: string;
+  title?: string | null;
+  subject_name?: string | null;
+  class_name?: string | null;
+  teacher_name?: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: LessonInstanceStatus;
+}
+
+export interface AdminLessonDashboardResponse {
+  lessons: AdminLessonSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
+
 export interface UpdateLessonStatusRequest {
   status: Extract<LessonInstanceStatus, 'in_session' | 'completed'>;
   actual_start?: string | null;

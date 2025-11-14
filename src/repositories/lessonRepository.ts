@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import {
+  AdminLessonSummary,
   LessonInstance,
   LessonInstanceQueryParams,
   CreateLessonInstanceRequest,
@@ -7,6 +8,7 @@ import {
   ScheduleTemplate,
   ScheduleTemplateSlot,
   TeacherLessonSummary,
+  LessonInstanceStatus,
 } from '../types/lesson';
 
 type CreateLessonInstanceDBPayload = CreateLessonInstanceRequest & {
@@ -29,6 +31,78 @@ export class LessonRepository {
       .where('cs.class_id', classId);
 
     return await query.select('li.*');
+  }
+
+  private mapAdminLessonRow(row: Record<string, unknown>): AdminLessonSummary {
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+
+    return {
+      id: String(row.id),
+      title: (row.title as string | null) ?? null,
+      subject_name: (row.subject_name as string | null) ?? null,
+      class_name: (row.class_name as string | null) ?? null,
+      teacher_name: this.buildTeacherName(
+        row.teacher_first_name as string | null,
+        row.teacher_last_name as string | null,
+      ),
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      status: row.status as LessonInstanceStatus,
+    };
+  }
+
+  private buildTeacherName(firstName?: string | null, lastName?: string | null): string | null {
+    const parts = [firstName, lastName]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return parts.join(' ');
+  }
+
+  async findAdminLessonsForSchool(
+    schoolId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<AdminLessonSummary[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .where('c.school_id', schoolId)
+      .select(
+        'li.id',
+        'li.title',
+        'li.status',
+        'li.scheduled_start',
+        'li.scheduled_end',
+        's.name as subject_name',
+        'c.name as class_name',
+        'u.first_name as teacher_first_name',
+        'u.last_name as teacher_last_name',
+      );
+
+    const rows = await query as Array<Record<string, unknown>>;
+
+    return rows.map((row) => this.mapAdminLessonRow(row));
+  }
+
+  async countAdminLessonsForSchool(
+    schoolId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const { page, limit, ...filters } = params;
+    const query = this.baseLessonInstanceQuery(filters, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .where('c.school_id', schoolId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
   }
 
   async findLessonInstancesByClassSubjectId(

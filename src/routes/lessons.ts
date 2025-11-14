@@ -89,6 +89,42 @@ router.get('/class/:classId', async (req: Request, res: Response, next: NextFunc
   }
 });
 
+router.get('/admin/lessons', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUser = requireCurrentUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const status = typeof req.query.status === 'string' ? (req.query.status as LessonInstanceQueryParams['status']) : undefined;
+    const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+    const to = typeof req.query.to === 'string' ? req.query.to : undefined;
+    const pageQuery = typeof req.query.page === 'string' ? Number(req.query.page) : undefined;
+    const limitQuery = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+
+    const rawParams: LessonInstanceQueryParams = {
+      status,
+      from,
+      to,
+      page: pageQuery,
+      limit: limitQuery,
+    };
+
+    const { page, limit } = parsePagination(rawParams);
+    const params: LessonInstanceQueryParams = { ...rawParams, page, limit };
+
+    const dashboard = await lessonService.getAdminLessonsDashboard(currentUser, params);
+    res.json(dashboard);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Admin access required')) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    logger.error('Error fetching admin lesson dashboard:', error);
+    next(error);
+  }
+});
+
 router.get('/teacher/dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const currentUser = requireCurrentUser(req, res);
@@ -255,9 +291,11 @@ router.post('/', [
     const lesson = await lessonService.createLessonInstance(payload, currentUser);
     res.status(201).json(lesson);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Access denied')) {
-      res.status(403).json({ error: error.message });
-      return;
+    if (error instanceof Error) {
+      if (error.message.includes('Admin access required') || error.message.includes('Access denied')) {
+        res.status(403).json({ error: error.message });
+        return;
+      }
     }
     logger.error('Error creating lesson instance:', error);
     next(error);
