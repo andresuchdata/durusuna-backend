@@ -409,15 +409,17 @@ export class LessonRepository {
       query = query.where('li.scheduled_end', '<=', params.to);
     }
 
-    query = query.orderBy('li.scheduled_start', 'desc');
+    if (includePagination) {
+      query = query.orderBy('li.scheduled_start', 'desc');
 
-    if (includePagination && params.limit) {
-      query = query.limit(params.limit);
-    }
+      if (params.limit) {
+        query = query.limit(params.limit);
+      }
 
-    if (includePagination && params.page && params.limit) {
-      const offset = (params.page - 1) * params.limit;
-      query = query.offset(offset);
+      if (params.page && params.limit) {
+        const offset = (params.page - 1) * params.limit;
+        query = query.offset(offset);
+      }
     }
 
     return query;
