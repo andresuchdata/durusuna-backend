@@ -107,6 +107,8 @@ export interface LessonInstanceQueryParams {
   class_id?: string;
   class_subject_id?: string;
   teacher_id?: string;
+  subject_id?: string;
+  search?: string;
 }
 
 export interface LessonInstanceResponse {
@@ -134,8 +136,11 @@ export interface TeacherLessonDashboardResponse {
 
 export interface AdminLessonSummary {
   id: string;
+  class_id?: string | null;
   title?: string | null;
+  subject_id?: string | null;
   subject_name?: string | null;
+  teacher_id?: string | null;
   class_name?: string | null;
   teacher_name?: string | null;
   scheduled_start: string;

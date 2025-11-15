@@ -99,6 +99,10 @@ router.get('/admin/lessons', async (req: Request, res: Response, next: NextFunct
     const status = typeof req.query.status === 'string' ? (req.query.status as LessonInstanceQueryParams['status']) : undefined;
     const from = typeof req.query.from === 'string' ? req.query.from : undefined;
     const to = typeof req.query.to === 'string' ? req.query.to : undefined;
+    const classId = typeof req.query.class_id === 'string' ? req.query.class_id : undefined;
+    const teacherId = typeof req.query.teacher_id === 'string' ? req.query.teacher_id : undefined;
+    const subjectId = typeof req.query.subject_id === 'string' ? req.query.subject_id : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const pageQuery = typeof req.query.page === 'string' ? Number(req.query.page) : undefined;
     const limitQuery = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
 
@@ -106,6 +110,10 @@ router.get('/admin/lessons', async (req: Request, res: Response, next: NextFunct
       status,
       from,
       to,
+      class_id: classId,
+      teacher_id: teacherId,
+      subject_id: subjectId,
+      search,
       page: pageQuery,
       limit: limitQuery,
     };

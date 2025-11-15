@@ -39,8 +39,11 @@ export class LessonRepository {
 
     return {
       id: String(row.id),
+      class_id: (row.class_id as string | null) ?? null,
       title: (row.title as string | null) ?? null,
+      subject_id: (row.subject_id as string | null) ?? null,
       subject_name: (row.subject_name as string | null) ?? null,
+      teacher_id: (row.teacher_id as string | null) ?? null,
       class_name: (row.class_name as string | null) ?? null,
       teacher_name: this.buildTeacherName(
         row.teacher_first_name as string | null,
@@ -74,14 +77,18 @@ export class LessonRepository {
       .leftJoin('subjects as s', 'cs.subject_id', 's.id')
       .leftJoin('users as u', 'cs.teacher_id', 'u.id')
       .where('c.school_id', schoolId)
+      .modify((qb) => this.applyLessonFilters(qb, params))
       .select(
         'li.id',
         'li.title',
         'li.status',
         'li.scheduled_start',
         'li.scheduled_end',
+        'c.id as class_id',
         's.name as subject_name',
+        's.id as subject_id',
         'c.name as class_name',
+        'u.id as teacher_id',
         'u.first_name as teacher_first_name',
         'u.last_name as teacher_last_name',
       );
@@ -99,10 +106,43 @@ export class LessonRepository {
     const query = this.baseLessonInstanceQuery(filters, false)
       .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
       .join('classes as c', 'cs.class_id', 'c.id')
-      .where('c.school_id', schoolId);
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .where('c.school_id', schoolId)
+      .modify((qb) => this.applyLessonFilters(qb, params));
 
     const result = await query.clone().count<{ count: string }>('li.id as count').first();
     return Number(result?.count ?? 0);
+  }
+
+  private applyLessonFilters(query: Knex.QueryBuilder, params: LessonInstanceQueryParams) {
+    if (params.class_id) {
+      query.where('c.id', params.class_id);
+    }
+
+    if (params.class_subject_id) {
+      query.where('cs.id', params.class_subject_id);
+    }
+
+    if (params.teacher_id) {
+      query.where('cs.teacher_id', params.teacher_id);
+    }
+
+    if (params.subject_id) {
+      query.where('cs.subject_id', params.subject_id);
+    }
+
+    if (params.search) {
+      const term = `%${params.search.toLowerCase()}%`;
+      query.andWhere(function () {
+        this.whereRaw('LOWER(li.title) LIKE ?', [term])
+          .orWhereRaw('LOWER(s.name) LIKE ?', [term])
+          .orWhereRaw('LOWER(c.name) LIKE ?', [term])
+          .orWhereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term]);
+      });
+    }
+
+    return query;
   }
 
   async findLessonInstancesByClassSubjectId(
@@ -172,7 +212,7 @@ export class LessonRepository {
       )
       .orderBy('li.scheduled_start', 'asc');
 
-    return lessons.map((lesson) => this.mapLessonSummaryRow(lesson));
+    return lessons.map((lesson: Record<string, unknown>) => this.mapLessonSummaryRow(lesson));
   }
 
   async findTeacherLessonById(
