@@ -175,7 +175,7 @@ export class ClassRepository {
   /**
    * Get class offerings (newer structure) for a specific class, optionally filtered by teacher
    */
-  async findClassOfferingsWithDetails(classId: string, teacherId?: string) {
+  async findClassOfferingsWithDetails(classId: string, teacherId?: string, academicPeriodId?: string) {
     let query = this.db('class_offerings as co')
       .join('subjects as s', 'co.subject_id', 's.id')
       .join('classes as c', 'co.class_id', 'c.id')
@@ -198,6 +198,10 @@ export class ClassRepository {
         'primary_teacher.email',
         'primary_teacher.avatar_url'
       ]);
+
+    if (academicPeriodId) {
+      query = query.where('co.academic_period_id', academicPeriodId);
+    }
 
     // If teacherId is provided, filter by teacher
     if (teacherId) {

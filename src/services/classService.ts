@@ -340,7 +340,7 @@ export class ClassService {
     return [];
   }
 
-  async getClassOfferings(classId: string, currentUser: AuthenticatedUser) {
+  async getClassOfferings(classId: string, currentUser: AuthenticatedUser, academicPeriodId?: string) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
@@ -353,10 +353,11 @@ export class ClassService {
       teacherFilterId = currentUser.id;
     }
 
-    // Get class offerings with their details, filtered by teacher if applicable
+    // Get class offerings with their details, filtered by teacher and academic period if applicable
     const offerings = await this.classRepository.findClassOfferingsWithDetails(
       classId,
-      teacherFilterId
+      teacherFilterId,
+      academicPeriodId
     );
 
     return offerings;

@@ -583,7 +583,8 @@ router.get('/:id/offerings', authenticate, async (req: Request, res: Response) =
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const offerings = await classService.getClassOfferings(id, authenticatedReq.user);
+    const { academic_period_id } = req.query as { academic_period_id?: string };
+    const offerings = await classService.getClassOfferings(id, authenticatedReq.user, academic_period_id);
     res.json({ offerings });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
