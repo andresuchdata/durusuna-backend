@@ -114,6 +114,7 @@ async function deleteGradingComponent(req: any, res: any) {
   try {
     const { gradingService } = req.services;
     await gradingService.deleteGradingComponent(req.params.id, req.user);
+
     res.status(204).send();
   } catch (error: unknown) {
     sendErrorResponse(res, error);
