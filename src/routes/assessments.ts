@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { authenticateMiddleware } from '../shared/middleware/authenticateMiddleware';
 import { validate } from '../utils/validation';
+import db from '../shared/database/connection';
 import { 
   createAssessmentSchema,
   updateAssessmentSchema,
   createAssessmentGradeSchema,
   updateAssessmentGradeSchema,
-  bulkUpdateGradesSchema
+  bulkUpdateGradesSchema,
+  assessmentQuerySchema
 } from '../schemas/assessmentSchemas';
 
 const router = Router();
@@ -45,9 +47,89 @@ router.post('/:id/copy', copyAssessmentToClasses);
 
 async function getAssessments(req: any, res: any) {
   try {
-    const { assessmentService } = req.services;
-    const result = await assessmentService.getAssessments(req.query, req.user);
-    res.json(result);
+    const { error, value } = assessmentQuerySchema.validate(req.query, {
+      abortEarly: false,
+      stripUnknown: true
+    });
+
+    if (error) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Invalid query parameters',
+        details: error.details.map((d: any) => ({
+          field: d.path.join('.'),
+          message: d.message
+        }))
+      });
+    }
+
+    const query = value || {};
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const offset = (page - 1) * limit;
+
+    const user = req.user;
+
+    const baseQuery = db('assessments')
+      .join('class_offerings', 'assessments.class_offering_id', 'class_offerings.id')
+      .join('classes', 'class_offerings.class_id', 'classes.id')
+      .where('classes.school_id', user.school_id);
+
+    if (query.class_offering_id) {
+      baseQuery.andWhere('assessments.class_offering_id', query.class_offering_id);
+    }
+    if (query.type) {
+      baseQuery.andWhere('assessments.type', query.type);
+    }
+    if (typeof query.is_published === 'boolean') {
+      baseQuery.andWhere('assessments.is_published', query.is_published);
+    }
+    if (query.search) {
+      baseQuery.andWhere('assessments.title', 'ilike', `%${query.search}%`);
+    }
+
+    const countRow = await baseQuery
+      .clone()
+      .countDistinct<{ count: string }>('assessments.id as count')
+      .first();
+
+    const total = countRow ? Number(countRow.count) : 0;
+
+    const rows = await baseQuery
+      .clone()
+      .leftJoin('assessment_grades as ag', 'ag.assessment_id', 'assessments.id')
+      .groupBy('assessments.id')
+      .select(
+        'assessments.*',
+        db.raw('COUNT(DISTINCT ag.id) as grades_count'),
+        db.raw("COUNT(DISTINCT CASE WHEN ag.status IN ('submitted','graded','returned') THEN ag.id END) as submitted_count"),
+        db.raw("COUNT(DISTINCT CASE WHEN ag.status = 'graded' THEN ag.id END) as graded_count"),
+        db.raw('AVG(ag.adjusted_score) as average_score')
+      )
+      .orderBy('assessments.due_date', 'asc')
+      .limit(limit)
+      .offset(offset);
+
+    const assessments = rows.map((row: any) => ({
+      ...row,
+      max_score: row.max_score != null ? Number(row.max_score) : null,
+      weight_override: row.weight_override != null ? Number(row.weight_override) : null,
+      late_penalty_per_day: row.late_penalty_per_day != null ? Number(row.late_penalty_per_day) : null,
+      grades_count: row.grades_count != null ? Number(row.grades_count) : 0,
+      submitted_count: row.submitted_count != null ? Number(row.submitted_count) : 0,
+      graded_count: row.graded_count != null ? Number(row.graded_count) : 0,
+      average_score: row.average_score != null ? Number(row.average_score) : null
+    }));
+
+    res.json({
+      assessments,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: page * limit < total
+      }
+    });
   } catch (error: unknown) {
     sendErrorResponse(res, error);
   }
