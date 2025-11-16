@@ -202,7 +202,9 @@ export class AssignmentService {
         type,
         status = 'published', // Default to published for students/parents
         search,
-        subject_id
+        subject_id,
+        class_id,
+        academic_period_id
       } = req.query;
 
       const userId = req.user?.id;
@@ -223,6 +225,8 @@ export class AssignmentService {
         status: status as string,
         search: search as string,
         subjectId: subject_id as string,
+        classId: class_id as string,
+        academicPeriodId: academic_period_id as string,
       });
 
       res.json(AssignmentPresenter.formatAssignmentListResponse({

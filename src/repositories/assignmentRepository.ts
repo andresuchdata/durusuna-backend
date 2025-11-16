@@ -35,6 +35,8 @@ interface GetUserAssignmentsOptions {
   status?: string;
   search?: string;
   subjectId?: string;
+  classId?: string;
+  academicPeriodId?: string;
 }
 
 interface AssignmentResult {
@@ -593,11 +595,43 @@ export class AssignmentRepository {
       throw new Error('User not found');
     }
 
-    // For teachers, check if they have access to this assignment
-    if (user.user_type === 'teacher') {
-      const hasAccess = assignment.created_by === userId || 
-                       await this.checkTeacherAssignmentAccess(userId, assignment.class_offering_id);
+    const isAdmin = user.role === 'admin';
+
+    // For teachers, check if they have access to this assignment.
+    // Admin teachers are allowed without additional checks.
+    if (user.user_type === 'teacher' && !isAdmin) {
+      const hasAccess = assignment.created_by === userId ||
+        await this.checkTeacherAssignmentAccess(userId, assignment.class_offering_id);
       if (!hasAccess) {
+        throw new Error('Access denied to this assignment');
+      }
+    }
+
+    // Students must be enrolled in the class offering and only see published assignments
+    if (user.user_type === 'student') {
+      const enrollment = await knex('enrollments')
+        .where('student_id', userId)
+        .where('class_offering_id', assignment.class_offering_id)
+        .where('is_active', true)
+        .where('status', 'active')
+        .first();
+
+      if (!enrollment || (!assignment.is_published && !isAdmin)) {
+        throw new Error('Access denied to this assignment');
+      }
+    }
+
+    // Parents must have at least one child enrolled in the class offering
+    if (user.user_type === 'parent') {
+      const hasChildEnrollment = await knex('enrollments as e')
+        .join('students as st', 'e.student_id', 'st.user_id')
+        .where('st.parent_id', userId)
+        .where('e.class_offering_id', assignment.class_offering_id)
+        .where('e.is_active', true)
+        .where('e.status', 'active')
+        .first();
+
+      if (!hasChildEnrollment || (!assignment.is_published && !isAdmin)) {
         throw new Error('Access denied to this assignment');
       }
     }
@@ -605,19 +639,30 @@ export class AssignmentRepository {
     // Get assignment attachments from instructions JSON
     const attachments = assignment.instructions?.attachments || [];
 
-    // Get all students enrolled in this class offering with their submission status
-    const studentSubmissions = await knex('enrollments as e')
+    // Get students enrolled in this class offering with their submission status.
+    // Teachers/admins see all students; students/parents see only themselves/their children.
+    let submissionsQuery = knex('enrollments as e')
       .join('users as u', 'e.student_id', 'u.id')
       .leftJoin('assessment_grades as ag', function() {
         this.on('ag.student_id', 'u.id')
-            .andOn('ag.assessment_id', knex.raw('?', [assignmentId]));
+          .andOn('ag.assessment_id', knex.raw('?', [assignmentId]));
       })
       .leftJoin('users as grader', 'ag.graded_by', 'grader.id')
       .where('e.class_offering_id', assignment.class_offering_id)
       .where('e.status', 'active')
       .where('e.is_active', true)
       .where('u.user_type', 'student')
-      .where('u.is_active', true)
+      .where('u.is_active', true);
+
+    if (user.user_type === 'student') {
+      submissionsQuery = submissionsQuery.where('u.id', userId);
+    } else if (user.user_type === 'parent') {
+      submissionsQuery = submissionsQuery
+        .join('students as st', 'u.id', 'st.user_id')
+        .where('st.parent_id', userId);
+    }
+
+    const studentSubmissions = await submissionsQuery
       .select([
         'u.id as student_id',
         'u.first_name',
@@ -639,15 +684,15 @@ export class AssignmentRepository {
       .orderBy('u.last_name', 'asc')
       .orderBy('u.first_name', 'asc');
 
-    // Calculate submission stats
+    // Calculate submission stats based on visible submissions
     const totalStudents = studentSubmissions.length;
-    const submittedCount = studentSubmissions.filter(s => 
+    const submittedCount = studentSubmissions.filter(s =>
       s.status && ['submitted', 'graded', 'returned'].includes(s.status)
     ).length;
-    const gradedCount = studentSubmissions.filter(s => 
+    const gradedCount = studentSubmissions.filter(s =>
       s.status && ['graded', 'returned'].includes(s.status)
     ).length;
-    const averageScore = gradedCount > 0 
+    const averageScore = gradedCount > 0
       ? studentSubmissions
           .filter(s => s.score !== null)
           .reduce((sum, s) => sum + (s.adjusted_score || s.score || 0), 0) / gradedCount
@@ -664,7 +709,7 @@ export class AssignmentRepository {
       max_score: assignment.max_score,
       submitted_at: s.submitted_at,
       graded_at: s.graded_at,
-      grader_name: s.grader_first_name && s.grader_last_name 
+      grader_name: s.grader_first_name && s.grader_last_name
         ? `${s.grader_first_name} ${s.grader_last_name}`.trim()
         : null,
       is_late: s.is_late || false,
@@ -733,7 +778,7 @@ export class AssignmentRepository {
   }
 
   async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
-    const { userId, page, limit, type, status, search, subjectId } = options;
+    const { userId, page, limit, type, status, search, subjectId, classId, academicPeriodId } = options;
     const offset = (page - 1) * limit;
 
     // Get user information
@@ -808,6 +853,16 @@ export class AssignmentRepository {
     // Filter by subject if specified (for independent subject filtering)
     if (subjectId && subjectId.trim() !== '') {
       query = query.where('co.subject_id', subjectId.trim());
+    }
+
+    // Filter by class if specified
+    if (classId && classId.trim() !== '') {
+      query = query.where('co.class_id', classId.trim());
+    }
+
+    // Filter by academic period if specified
+    if (academicPeriodId && academicPeriodId.trim() !== '') {
+      query = query.where('co.academic_period_id', academicPeriodId.trim());
     }
 
     // Filter by search query if specified
