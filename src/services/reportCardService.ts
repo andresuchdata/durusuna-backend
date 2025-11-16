@@ -237,8 +237,6 @@ export class ReportCardService {
     params: ListReportCardsQuery,
     currentUser: AuthenticatedUser,
   ): Promise<{ report_cards: ReportCardSummary[]; pagination: { page: number; limit: number; total: number; hasMore: boolean } }> {
-    this.ensureAdmin(currentUser);
-
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? params.limit : 20;
 
@@ -246,11 +244,51 @@ export class ReportCardService {
       throw new Error('class_id and academic_period_id are required');
     }
 
+    if (!currentUser) {
+      throw new Error('Authentication required');
+    }
+
     let query = this.db('report_cards as rc')
       .join('users as u', 'rc.student_id', 'u.id')
       .where('rc.class_id', params.class_id)
       .where('rc.academic_period_id', params.academic_period_id)
       .where('u.is_active', true);
+
+    if (currentUser.role === 'admin') {
+      // no additional filtering
+    } else if (currentUser.user_type === 'teacher') {
+      query = query.whereExists((qb) => {
+        qb.from('report_card_subjects as rcs')
+          .join('class_offerings as co', 'rcs.class_offering_id', 'co.id')
+          .whereRaw('rc.id = rcs.report_card_id')
+          .andWhere('co.primary_teacher_id', currentUser.id);
+      });
+    } else if (currentUser.user_type === 'student') {
+      query = query.where('rc.student_id', currentUser.id);
+    } else if (currentUser.user_type === 'parent') {
+      const relations = await this.db('parent_student_relationships')
+        .where('parent_id', currentUser.id)
+        .where('is_active', true)
+        .select('student_id');
+
+      const studentIds = relations.map((r: any) => r.student_id);
+
+      if (studentIds.length === 0) {
+        return {
+          report_cards: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            hasMore: false,
+          },
+        };
+      }
+
+      query = query.whereIn('rc.student_id', studentIds);
+    } else {
+      throw new Error('Access denied to report cards');
+    }
 
     if (params.student_id) {
       query = query.where('rc.student_id', params.student_id);
