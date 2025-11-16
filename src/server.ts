@@ -38,6 +38,8 @@ import academicRoutes from './routes/academic';
 import accessRoutes from './routes/access';
 import dashboardRoutes from './routes/dashboard';
 import reportCardRoutes from './routes/reportCards';
+import assessmentRoutes from './routes/assessments';
+import gradingRoutes from './routes/grading';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
@@ -197,6 +199,8 @@ app.use('/api/academic', academicRoutes);
 app.use('/api/access', accessRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/report-cards', reportCardRoutes);
+app.use('/api/assessments', assessmentRoutes);
+app.use('/api/grading', gradingRoutes);
 
 /**
  * @swagger
