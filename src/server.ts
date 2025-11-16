@@ -37,6 +37,7 @@ import classOfferingRoutes from './routes/classOfferings';
 import academicRoutes from './routes/academic';
 import accessRoutes from './routes/access';
 import dashboardRoutes from './routes/dashboard';
+import reportCardRoutes from './routes/reportCards';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
@@ -195,6 +196,7 @@ app.use('/api/class-offerings', classOfferingRoutes);
 app.use('/api/academic', academicRoutes);
 app.use('/api/access', accessRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/report-cards', reportCardRoutes);
 
 /**
  * @swagger
