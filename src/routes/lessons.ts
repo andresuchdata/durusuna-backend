@@ -133,35 +133,6 @@ router.get('/admin/lessons', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-router.get('/teacher/dashboard', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const currentUser = requireCurrentUser(req, res);
-    if (!currentUser) {
-      return;
-    }
-
-    const { date } = req.query;
-    if (date && typeof date !== 'string') {
-      res.status(400).json({ error: 'date must be a string in YYYY-MM-DD format' });
-      return;
-    }
-
-    const dashboard = await lessonService.getTeacherDailyLessons(currentUser, date);
-    res.json(dashboard);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Teacher access required')) {
-      res.status(403).json({ error: error.message });
-      return;
-    }
-    if (error instanceof Error && error.message.includes('Invalid date')) {
-      res.status(400).json({ error: error.message });
-      return;
-    }
-    logger.error('Error fetching teacher lesson dashboard:', error);
-    next(error);
-  }
-});
-
 router.get('/teacher/lessons/:lessonId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.params.lessonId) {
