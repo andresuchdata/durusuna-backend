@@ -32,4 +32,23 @@ export class AcademicService {
       },
     };
   }
+
+  async getAcademicPeriodsForSchool(schoolId: string) {
+    const rows = await this.repository.listPeriodsWithYearBySchoolId(schoolId);
+
+    return rows.map((row) => ({
+      id: row.period_id,
+      name: row.period_name,
+      sequence: row.sequence,
+      start_date: row.period_start,
+      end_date: row.period_end,
+      is_current: row.is_current,
+      academic_year: {
+        id: row.year_id,
+        name: row.year_name,
+        start_date: row.year_start,
+        end_date: row.year_end,
+      },
+    }));
+  }
 }

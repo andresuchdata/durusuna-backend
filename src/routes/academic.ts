@@ -39,4 +39,24 @@ router.get('/current-period', authenticate, async (req: Request, res: Response) 
   }
 });
 
+router.get('/periods', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const schoolId = authenticatedReq.user.school_id;
+
+    if (!schoolId) {
+      return res.status(400).json({
+        error: 'User has no school assigned',
+      });
+    }
+
+    const periods = await academicService.getAcademicPeriodsForSchool(schoolId);
+
+    res.json({ academic_periods: periods });
+  } catch (error) {
+    logger.error('Error listing academic periods:', error);
+    res.status(500).json({ error: 'Failed to list academic periods' });
+  }
+});
+
 export default router;
