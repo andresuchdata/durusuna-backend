@@ -883,10 +883,10 @@ export class AssignmentRepository {
 
     // Filter by due date range if specified
     if (dueDateFrom && dueDateFrom.trim() !== '') {
-      query = query.where('a.due_date', '>=', dueDateFrom.trim());
+      query = query.whereRaw('a.due_date::date >= ?', [dueDateFrom.trim()]);
     }
     if (dueDateTo && dueDateTo.trim() !== '') {
-      query = query.where('a.due_date', '<=', dueDateTo.trim());
+      query = query.whereRaw('a.due_date::date <= ?', [dueDateTo.trim()]);
     }
 
     // Filter by search query if specified

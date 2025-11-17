@@ -6,8 +6,12 @@ export class SubjectService {
   constructor(private subjectRepository: SubjectRepository) {}
 
   private ensureAdmin(currentUser: AuthenticatedUser): void {
-    const isAdmin = currentUser.role === 'admin' || currentUser.user_type === 'admin';
-    if (!isAdmin) {
+    const isAdminOrTeacher =
+      currentUser.role === 'admin' ||
+      currentUser.user_type === 'admin' ||
+      currentUser.user_type === 'teacher';
+
+    if (!isAdminOrTeacher) {
       throw new Error('Admin access required');
     }
   }
