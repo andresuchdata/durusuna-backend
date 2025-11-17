@@ -37,6 +37,8 @@ interface GetUserAssignmentsOptions {
   subjectId?: string;
   classId?: string;
   academicPeriodId?: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
 }
 
 interface AssignmentResult {
@@ -130,6 +132,8 @@ export class AssignmentRepository {
     const assignments = await query
       .select([
         'a.*',
+        'co.subject_id as subject_id',
+        'co.class_id as class_id',
         's.name as subject_name',
         's.code as subject_code',
         'c.name as class_name',
@@ -778,7 +782,19 @@ export class AssignmentRepository {
   }
 
   async getUserAssignments(options: GetUserAssignmentsOptions): Promise<AssignmentResult> {
-    const { userId, page, limit, type, status, search, subjectId, classId, academicPeriodId } = options;
+    const {
+      userId,
+      page,
+      limit,
+      type,
+      status,
+      search,
+      subjectId,
+      classId,
+      academicPeriodId,
+      dueDateFrom,
+      dueDateTo,
+    } = options;
     const offset = (page - 1) * limit;
 
     // Get user information
@@ -865,6 +881,14 @@ export class AssignmentRepository {
       query = query.where('co.academic_period_id', academicPeriodId.trim());
     }
 
+    // Filter by due date range if specified
+    if (dueDateFrom && dueDateFrom.trim() !== '') {
+      query = query.where('a.due_date', '>=', dueDateFrom.trim());
+    }
+    if (dueDateTo && dueDateTo.trim() !== '') {
+      query = query.where('a.due_date', '<=', dueDateTo.trim());
+    }
+
     // Filter by search query if specified
     // When subject filter is active, don't search in subject name to avoid conflicts
     if (search && search.trim() !== '') {
@@ -919,8 +943,10 @@ export class AssignmentRepository {
       created_by: row.created_by,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      subject_id: row.subject_id,
       subject_name: row.subject_name,
       subject_code: row.subject_code,
+      class_id: row.class_id,
       class_name: row.class_name,
       creator_first_name: row.creator_first_name,
       creator_last_name: row.creator_last_name,

@@ -204,7 +204,9 @@ export class AssignmentService {
         search,
         subject_id,
         class_id,
-        academic_period_id
+        academic_period_id,
+        due_date_from,
+        due_date_to,
       } = req.query;
 
       const userId = req.user?.id;
@@ -227,6 +229,8 @@ export class AssignmentService {
         subjectId: subject_id as string,
         classId: class_id as string,
         academicPeriodId: academic_period_id as string,
+        dueDateFrom: due_date_from as string,
+        dueDateTo: due_date_to as string,
       });
 
       res.json(AssignmentPresenter.formatAssignmentListResponse({

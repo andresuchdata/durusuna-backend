@@ -32,10 +32,12 @@ export class AssignmentPresenter {
       updated_at: assignment.updated_at,
       
       // Subject information
+      subject_id: assignment.subject_id || null,
       subject_name: assignment.subject_name || null,
       subject_code: assignment.subject_code || null,
       
       // Class information
+      class_id: assignment.class_id || null,
       class_name: assignment.class_name || null,
       
       // Creator information
