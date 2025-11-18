@@ -1,5 +1,6 @@
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { UserRepository } from '../repositories/userRepository';
 import {
   AttendanceRecord,
   AttendanceSession,
@@ -23,7 +24,8 @@ type AuthenticatedUser = AuthenticatedRequest['user'];
 export class AttendanceService {
   constructor(
     private attendanceRepository: AttendanceRepository,
-    private userClassRepository: UserClassRepository
+    private userClassRepository: UserClassRepository,
+    private userRepository: UserRepository
   ) {}
 
   // School settings management
@@ -446,9 +448,18 @@ export class AttendanceService {
     classId: string,
     user: AuthenticatedUser
   ): Promise<AttendanceRecord[]> {
-    // Verify access - either the student themselves, their teacher, or admin
+    // Verify access - either the student themselves, their teacher, admin, or parent
     if (user.id !== studentId) {
-      await this.verifyClassAccess(classId, user);
+      // Parents can access their children's attendance
+      if (user.user_type === 'parent') {
+        const isParent = await this.userRepository.isParentOfStudent(user.id, studentId);
+        if (!isParent) {
+          throw new Error('Access denied - not a parent of this student');
+        }
+      } else {
+        // Teachers and admins need class access
+        await this.verifyClassAccess(classId, user);
+      }
     }
 
     return await this.attendanceRepository.getStudentAttendanceRecords(studentId, classId);

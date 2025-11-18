@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { AttendanceService } from '../services/attendanceService';
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { UserRepository } from '../repositories/userRepository';
 import { authenticate } from '../shared/middleware/auth';
 import { AuthenticatedRequest } from '../types/auth';
 import {
@@ -23,7 +24,8 @@ const router = express.Router();
 // Initialize service layer
 const attendanceRepository = new AttendanceRepository(db);
 const userClassRepository = new UserClassRepository(db);
-const attendanceService = new AttendanceService(attendanceRepository, userClassRepository);
+const userRepository = new UserRepository(db);
+const attendanceService = new AttendanceService(attendanceRepository, userClassRepository, userRepository);
 
 /**
  * @route GET /api/attendance/settings/:schoolId

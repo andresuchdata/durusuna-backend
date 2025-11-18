@@ -366,4 +366,16 @@ export class UserRepository {
       .orderBy('students.first_name', 'asc')
       .orderBy('students.last_name', 'asc');
   }
-} 
+
+  async isParentOfStudent(parentId: string, studentId: string): Promise<boolean> {
+    const relationship = await this.db('parent_student_relationships')
+      .where({
+        parent_id: parentId,
+        student_id: studentId,
+        is_active: true
+      })
+      .first();
+
+    return !!relationship;
+  }
+}
