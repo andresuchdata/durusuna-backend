@@ -410,30 +410,6 @@ router.get(
   }
 );
 
-// Get user detail (all roles read access)
-router.get(
-  '/:id',
-  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
-  async (req: Request, res: Response) => {
-    if (!req.params.id) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
-      return res.status(405).json({ success: false, message: 'Method not allowed' });
-    }
-
-    try {
-      const { user: currentUser } = req as AuthenticatedRequest;
-      const user = await userService.getUserById(currentUser, req.params.id);
-      res.json({ success: true, user });
-    } catch (error) {
-      logger.error(`Failed to fetch user ${req.params.id}:`, error);
-      handleUserRouteError(error, res, 'Failed to fetch user');
-    }
-  }
-);
-
 /**
  * @route GET /api/users/children
  * @desc Get parent's children
@@ -489,6 +465,30 @@ router.get(
         success: false, 
         message: 'Failed to fetch children' 
       });
+    }
+  }
+);
+
+// Get user detail (all roles read access)
+router.get(
+  '/:id',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    if (!req.params.id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    if (req.params.id === 'profile' || req.params.id === 'contacts' || req.params.id === 'batch') {
+      return res.status(405).json({ success: false, message: 'Method not allowed' });
+    }
+
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      const user = await userService.getUserById(currentUser, req.params.id);
+      res.json({ success: true, user });
+    } catch (error) {
+      logger.error(`Failed to fetch user ${req.params.id}:`, error);
+      handleUserRouteError(error, res, 'Failed to fetch user');
     }
   }
 );
