@@ -78,7 +78,7 @@ export class LessonRepository {
       'u.last_name as teacher_last_name',
       'u.email as teacher_email',
       'u.avatar_url as teacher_avatar_url',
-      'sts.day_of_week',
+      'sts.weekday',
       'sts.start_time as slot_start_time',
       'sts.end_time as slot_end_time',
       'ar.status as attendance_status'
