@@ -434,4 +434,63 @@ router.get(
   }
 );
 
+/**
+ * @route GET /api/users/children
+ * @desc Get parent's children
+ * @access Private (Parents only)
+ */
+router.get(
+  '/children',
+  (req: Request, res: Response, next: NextFunction) => authenticate(req as any, res, next),
+  async (req: Request, res: Response) => {
+    try {
+      const { user: currentUser } = req as AuthenticatedRequest;
+      
+      if (!currentUser) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'User not authenticated' 
+        });
+      }
+
+      // Only parents can access this endpoint
+      if (currentUser.user_type !== 'parent') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Access denied: Only parents can access this endpoint' 
+        });
+      }
+
+      // Get parent's children from parent_student_relationships
+      const children = await db('parent_student_relationships as psr')
+        .join('users as students', 'psr.student_id', 'students.id')
+        .where({
+          'psr.parent_id': currentUser.id,
+          'psr.is_active': true,
+          'students.is_active': true
+        })
+        .select(
+          'students.id',
+          'students.first_name',
+          'students.last_name',
+          'students.email',
+          'students.avatar_url'
+        )
+        .orderBy('students.first_name', 'asc')
+        .orderBy('students.last_name', 'asc');
+
+      res.json({
+        success: true,
+        children
+      });
+    } catch (error) {
+      logger.error('Error fetching parent children:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to fetch children' 
+      });
+    }
+  }
+);
+
 export default router;
