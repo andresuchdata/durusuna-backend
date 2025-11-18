@@ -121,8 +121,8 @@ export class LessonRepository {
       status: row.status as LessonInstanceStatus,
       title: row.title as string | null,
       description: row.description as string | null,
-      objectives: row.objectives ? JSON.parse(row.objectives) : [],
-      materials: row.materials ? JSON.parse(row.materials) : [],
+      objectives: this.parseStringArray(row.objectives),
+      materials: this.parseMaterials(row.materials),
       notes: row.notes as string | null,
       cancellation_reason: row.cancellation_reason as string | null,
       created_by: row.created_by ? String(row.created_by) : null,
@@ -618,7 +618,7 @@ export class LessonRepository {
       title: row.title,
       description: row.description,
       objectives: this.parseStringArray(row.objectives),
-      materials: this.parseMaterialsArray(row.materials),
+      materials: this.parseMaterials(row.materials),
       notes: row.notes,
       cancellation_reason: row.cancellation_reason,
       created_by: row.created_by,
@@ -702,9 +702,23 @@ export class LessonRepository {
       .map((item) => item.trim());
   }
 
-  private parseMaterialsArray(value: unknown): Record<string, unknown>[] {
-    return this.parseJsonArray(value)
-      .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object');
+  private parseMaterials(value: unknown): Record<string, unknown>[] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is Record<string, unknown> => 
+        typeof item === 'object' && item !== null
+      );
+    }
+    try {
+      const parsed = JSON.parse(value as string);
+      return Array.isArray(parsed) 
+        ? parsed.filter((item): item is Record<string, unknown> => 
+            typeof item === 'object' && item !== null
+          )
+        : [];
+    } catch (error) {
+      return [];
+    }
   }
 }
  
