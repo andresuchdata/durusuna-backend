@@ -429,31 +429,8 @@ router.get(
         });
       }
 
-      // Only parents can access this endpoint
-      if (currentUser.user_type !== 'parent') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Access denied: Only parents can access this endpoint' 
-        });
-      }
-
-      // Get parent's children from parent_student_relationships
-      const children = await db('parent_student_relationships as psr')
-        .join('users as students', 'psr.student_id', 'students.id')
-        .where({
-          'psr.parent_id': currentUser.id,
-          'psr.is_active': true,
-          'students.is_active': true
-        })
-        .select(
-          'students.id',
-          'students.first_name',
-          'students.last_name',
-          'students.email',
-          'students.avatar_url'
-        )
-        .orderBy('students.first_name', 'asc')
-        .orderBy('students.last_name', 'asc');
+      // Get parent's children using the service layer
+      const children = await userService.getParentChildren(currentUser);
 
       res.json({
         success: true,

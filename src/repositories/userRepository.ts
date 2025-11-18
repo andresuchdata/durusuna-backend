@@ -341,4 +341,29 @@ export class UserRepository {
         updated_at: new Date()
       });
   }
+
+  async getParentChildren(parentId: string): Promise<Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    avatar_url: string | null;
+  }>> {
+    return await this.db('parent_student_relationships as psr')
+      .join('users as students', 'psr.student_id', 'students.id')
+      .where({
+        'psr.parent_id': parentId,
+        'psr.is_active': true,
+        'students.is_active': true
+      })
+      .select(
+        'students.id',
+        'students.first_name',
+        'students.last_name',
+        'students.email',
+        'students.avatar_url'
+      )
+      .orderBy('students.first_name', 'asc')
+      .orderBy('students.last_name', 'asc');
+  }
 } 
