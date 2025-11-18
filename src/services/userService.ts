@@ -449,13 +449,7 @@ export class UserService {
     await this.fcmTokenRepository.removeToken(userId);
   }
 
-  async getParentChildren(currentUser: AuthenticatedUser): Promise<Array<{
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    avatar_url: string | null;
-  }>> {
+  async getParentChildren(currentUser: AuthenticatedUser) {
     // Only parents can access this endpoint
     if (currentUser.user_type !== 'parent') {
       throw new Error('Access denied: Only parents can access this endpoint');
