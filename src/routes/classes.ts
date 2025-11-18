@@ -663,4 +663,77 @@ router.get('/:id/lessons', authenticate, async (req: Request, res: Response) => 
   }
 });
 
+/**
+ * @route GET /api/classes/:id/lessons/instances
+ * @desc Get lesson instances for a class
+ * @access Private
+ */
+router.get('/:id/lessons/instances', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { from, to, status } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    const params: any = {};
+    if (from) params.from = from as string;
+    if (to) params.to = to as string;
+    if (status) params.status = status as string;
+    
+    const lessonInstances = await lessonRepository.findLessonInstancesByClassId(id, params);
+    res.json(lessonInstances);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching lesson instances:', error);
+    res.status(500).json({ error: 'Failed to fetch lesson instances' });
+  }
+});
+
+/**
+ * @route GET /api/classes/:id/lessons/instances/attendance
+ * @desc Get lesson instances for a class with attendance data
+ * @access Private
+ */
+router.get('/:id/lessons/instances/attendance', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { user_id, user_role, from, to, status } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    if (!user_id || !user_role) {
+      return res.status(400).json({ error: 'User ID and user role are required' });
+    }
+    
+    const params: any = {};
+    if (from) params.from = from as string;
+    if (to) params.to = to as string;
+    if (status) params.status = status as string;
+    
+    const lessonInstances = await lessonRepository.findLessonInstancesByClassIdWithAttendance(
+      id,
+      user_id as string,
+      user_role as string,
+      params
+    );
+    res.json(lessonInstances);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching lesson instances with attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch lesson instances with attendance' });
+  }
+});
+
 export default router; 
