@@ -2,6 +2,7 @@ import { ClassRepository } from '../repositories/classRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import { EnrollmentRepository } from '../repositories/enrollmentRepository';
+import { UserService } from './userService';
 import { AuthenticatedRequest } from '../types/auth';
 
 type AuthenticatedUser = AuthenticatedRequest['user'];
@@ -16,16 +17,19 @@ export class ClassService {
   private lessonRepository: LessonRepository;
   private userClassRepository: UserClassRepository;
   private enrollmentRepository: EnrollmentRepository;
+  private userService: UserService;
 
   constructor(
     private classRepository: ClassRepository,
     lessonRepository: LessonRepository,
     userClassRepository: UserClassRepository,
-    enrollmentRepository: EnrollmentRepository
+    enrollmentRepository: EnrollmentRepository,
+    userService: UserService
   ) {
     this.lessonRepository = lessonRepository;
     this.userClassRepository = userClassRepository;
     this.enrollmentRepository = enrollmentRepository;
+    this.userService = userService;
   }
 
   async getAllClasses(currentUser: AuthenticatedUser): Promise<Class[]> {
@@ -260,6 +264,34 @@ export class ClassService {
         hasMore: (page * limit) < totalCount
       }
     };
+  }
+
+  async checkStudentsEnrollment(classId: string, currentUser: AuthenticatedUser, studentIds: string[]) {
+    // Check class access first
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // For parents, verify they can only check their own children
+    if (currentUser.user_type === 'parent') {
+      // Get parent's children to validate the requested student IDs
+      const parentChildren = await this.userService.getParentChildren(currentUser);
+      const parentChildIds = new Set(parentChildren.map((child: { id: string }) => child.id));
+      
+      // Filter to only include children of this parent
+      const validStudentIds = studentIds.filter(id => parentChildIds.has(id));
+      if (validStudentIds.length === 0) {
+        return { enrolled_students: [] };
+      }
+      
+      studentIds = validStudentIds;
+    }
+
+    // Check enrollment for the specified students
+    const enrolledStudents = await this.userClassRepository.checkStudentsEnrollment(classId, studentIds);
+    
+    return { enrolled_students: enrolledStudents };
   }
 
   async getClassTeachers(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20) {

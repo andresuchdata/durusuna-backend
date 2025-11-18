@@ -316,6 +316,27 @@ export class UserClassRepository {
     return parseInt(String(result?.count || '0'), 10);
   }
 
+  async checkStudentsEnrollment(classId: string, studentIds: string[]): Promise<Array<{
+    student_id: string;
+    class_id: string;
+    role_in_class: string;
+    enrolled_at: string;
+  }>> {
+    return await this.db('user_classes')
+      .join('users', 'user_classes.user_id', 'users.id')
+      .where('user_classes.class_id', classId)
+      .where('user_classes.is_active', true)
+      .where('users.is_active', true)
+      .where('user_classes.role_in_class', 'student')
+      .whereIn('user_classes.user_id', studentIds)
+      .select(
+        'user_classes.user_id as student_id',
+        'user_classes.class_id',
+        'user_classes.role_in_class',
+        'user_classes.created_at as enrolled_at'
+      );
+  }
+
   async getSchoolTeachers(schoolId: string): Promise<any[]> {
     const results = await this.db('users')
       .where('school_id', schoolId)

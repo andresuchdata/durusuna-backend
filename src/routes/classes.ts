@@ -2,11 +2,13 @@ import express, { Request, Response, NextFunction, RequestHandler } from 'expres
 import { ZodError } from 'zod';
 import { ClassService } from '../services/classService';
 import { ClassUpdatesService } from '../services/classUpdatesService';
+import { UserService } from '../services/userService';
 import { ClassRepository } from '../repositories/classRepository';
 import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import { EnrollmentRepository } from '../repositories/enrollmentRepository';
+import { UserRepository } from '../repositories/userRepository';
 import { authenticate, authorize } from '../shared/middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
@@ -32,7 +34,9 @@ const classUpdatesRepository = new ClassUpdatesRepository(db);
 const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
 const enrollmentRepository = new EnrollmentRepository(db);
-const classService = new ClassService(classRepository, lessonRepository, userClassRepository, enrollmentRepository);
+const userRepository = new UserRepository(db);
+const userService = new UserService(userRepository);
+const classService = new ClassService(classRepository, lessonRepository, userClassRepository, enrollmentRepository, userService);
 const classUpdatesService = new ClassUpdatesService(classUpdatesRepository);
 
 const createClassHandler: RequestHandler = async (req, res) => {
@@ -470,6 +474,42 @@ router.get('/:id/students', authenticate, async (req: Request, res: Response) =>
     
     logger.error('Error fetching class students:', error);
     res.status(500).json({ error: 'Failed to fetch class students' });
+  }
+});
+
+/**
+ * @route POST /api/classes/:id/students/check
+ * @desc Check if specific students are enrolled in a class
+ * @access Private (parents can check their children's enrollment)
+ * @body student_ids: string[] - Array of student IDs to check
+ */
+router.post('/:id/students/check', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { student_ids } = req.body as { student_ids: string[] };
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.status(400).json({ error: 'Student IDs array is required' });
+    }
+    
+    const response = await classService.checkStudentsEnrollment(id, authenticatedReq.user, student_ids);
+    res.json(response);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error checking students enrollment:', error);
+    res.status(500).json({ error: 'Failed to check students enrollment' });
   }
 });
 
