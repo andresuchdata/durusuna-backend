@@ -128,6 +128,10 @@ export interface TeacherLessonSummary extends LessonInstanceWithContext {
   attendance_status?: 'not_started' | 'in_progress' | 'finalized';
 }
 
+export interface LessonInstanceWithAttendance extends LessonInstanceWithContext {
+  attendance_status?: 'present' | 'absent' | 'late' | 'excused' | 'not_taken';
+}
+
 export interface TeacherLessonDashboardResponse {
   date: string;
   lessons: TeacherLessonSummary[];

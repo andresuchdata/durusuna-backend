@@ -2,6 +2,7 @@ import { Knex } from 'knex';
 import {
   AdminLessonSummary,
   LessonInstance,
+  LessonInstanceWithAttendance,
   LessonInstanceQueryParams,
   CreateLessonInstanceRequest,
   UpdateLessonInstanceRequest,
@@ -31,6 +32,100 @@ export class LessonRepository {
       .where('cs.class_id', classId);
 
     return await query.select('li.*');
+  }
+
+  async findLessonInstancesByClassIdWithAttendance(
+    classId: string,
+    userId: string,
+    userRole: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstanceWithAttendance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .leftJoin('classes as c', 'cs.class_id', 'c.id')
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .leftJoin('schedule_template_slots as sts', 'li.schedule_slot_id', 'sts.id')
+      .where('cs.class_id', classId);
+
+    // Join attendance records for students/parents
+    if (userRole === 'student') {
+      query.leftJoin('attendance_records as ar', function() {
+        this.on('li.id', '=', 'ar.lesson_instance_id')
+             .andOn('ar.student_id', '=', this.db.raw('?', [userId]));
+      });
+    } else if (userRole === 'parent') {
+      // For parents, we'll handle multiple children in the service layer
+      query.leftJoin('attendance_records as ar', 'li.id', 'ar.lesson_instance_id');
+    }
+
+    const results = await query.select(
+      'li.*',
+      'c.name as class_name',
+      'c.grade_level as class_grade_level',
+      'c.section as class_section',
+      'c.academic_year as class_academic_year',
+      's.name as subject_name',
+      's.code as subject_code',
+      's.category as subject_category',
+      'u.id as teacher_id',
+      'u.first_name as teacher_first_name',
+      'u.last_name as teacher_last_name',
+      'u.email as teacher_email',
+      'u.avatar_url as teacher_avatar_url',
+      'sts.day_of_week',
+      'sts.start_time as slot_start_time',
+      'sts.end_time as slot_end_time',
+      'ar.status as attendance_status'
+    );
+
+    return results.map(row => this.mapLessonInstanceWithAttendanceRow(row, userRole));
+  }
+
+  private mapLessonInstanceWithAttendanceRow(row: any, userRole: string): LessonInstanceWithAttendance {
+    const baseInstance = this.mapLessonInstanceRow(row);
+    
+    // Map attendance status
+    let attendanceStatus: 'present' | 'absent' | 'late' | 'excused' | 'not_taken' = 'not_taken';
+    if (row.attendance_status) {
+      attendanceStatus = row.attendance_status as any;
+    }
+
+    return {
+      ...baseInstance,
+      attendance_status: attendanceStatus,
+    };
+  }
+
+  private mapLessonInstanceRow(row: any): LessonInstance {
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+    const actualStart = this.normalizeDateValue(row.actual_start);
+    const actualEnd = this.normalizeDateValue(row.actual_end);
+    const createdAt = this.ensureDateString(row.created_at);
+    const updatedAt = this.ensureDateString(row.updated_at);
+
+    return {
+      id: String(row.id),
+      class_subject_id: String(row.class_subject_id),
+      schedule_slot_id: row.schedule_slot_id ? String(row.schedule_slot_id) : null,
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      actual_start: actualStart,
+      actual_end: actualEnd,
+      status: row.status as LessonInstanceStatus,
+      title: row.title as string | null,
+      description: row.description as string | null,
+      objectives: row.objectives ? JSON.parse(row.objectives) : [],
+      materials: row.materials ? JSON.parse(row.materials) : [],
+      notes: row.notes as string | null,
+      cancellation_reason: row.cancellation_reason as string | null,
+      created_by: row.created_by ? String(row.created_by) : null,
+      updated_by: row.updated_by ? String(row.updated_by) : null,
+      is_active: Boolean(row.is_active),
+      created_at: createdAt,
+      updated_at: updatedAt,
+    };
   }
 
   private mapAdminLessonRow(row: Record<string, unknown>): AdminLessonSummary {
