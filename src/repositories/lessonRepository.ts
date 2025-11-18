@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import knex from '../config/database'
 import {
   AdminLessonSummary,
   LessonInstance,
@@ -51,12 +52,16 @@ export class LessonRepository {
     // Join attendance records for students/parents
     if (userRole === 'student') {
       query.leftJoin('attendance_records as ar', function() {
-        this.on('li.id', '=', 'ar.lesson_instance_id')
-             .andOn('ar.student_id', '=', this.db.raw('?', [userId]));
+        this.on('ar.class_id', '=', 'cs.class_id')
+             .andOn('ar.student_id', '=', knex.raw('?', [userId]))
+             .andOn('ar.attendance_date', '=', knex.raw('DATE(li.scheduled_start)'));
       });
     } else if (userRole === 'parent') {
       // For parents, we'll handle multiple children in the service layer
-      query.leftJoin('attendance_records as ar', 'li.id', 'ar.lesson_instance_id');
+      query.leftJoin('attendance_records as ar', function() {
+        this.on('ar.class_id', '=', 'cs.class_id')
+             .andOn('ar.attendance_date', '=', knex.raw('DATE(li.scheduled_start)'));
+      });
     }
 
     const results = await query.select(
