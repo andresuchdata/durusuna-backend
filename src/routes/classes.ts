@@ -513,6 +513,36 @@ router.post('/:id/students/check', authenticate, async (req: Request, res: Respo
   }
 });
 
+router.post('/:id/students', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { student_ids } = req.body as { student_ids: string[] };
+
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.status(400).json({ error: 'Student IDs array is required' });
+    }
+
+    const result = await classService.addStudentsToClass(id, student_ids, authenticatedReq.user);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error adding students to class:', error);
+    res.status(500).json({ error: 'Failed to add students to class' });
+  }
+});
+
 /**
  * @route GET /api/classes/:id/teachers
  * @desc Get teachers in a class with pagination

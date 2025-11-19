@@ -299,6 +299,63 @@ export class ClassService {
     return { enrolled_students: enrolledStudents };
   }
 
+  async addStudentsToClass(classId: string, studentIds: string[], currentUser: AuthenticatedUser) {
+    if (!studentIds || studentIds.length === 0) {
+      throw new Error('Student IDs array is required');
+    }
+
+    const classItem = await this.classRepository.findById(classId);
+    if (!classItem) {
+      throw new Error('Class not found');
+    }
+
+    // Only admins and teachers can add students
+    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
+      throw new Error('Access denied');
+    }
+
+    // Admins must belong to the same school
+    if (currentUser.role === 'admin') {
+      if (!currentUser.school_id || currentUser.school_id !== classItem.school_id) {
+        throw new Error('Access denied');
+      }
+    } else {
+      const hasAccess = await this.checkClassAccess(classId, currentUser);
+      if (!hasAccess) {
+        throw new Error('Access denied');
+      }
+    }
+
+    const uniqueStudentIds = Array.from(new Set(studentIds));
+    const added: string[] = [];
+    const alreadyEnrolled: string[] = [];
+    const invalid: string[] = [];
+
+    for (const studentId of uniqueStudentIds) {
+      const student = await this.userClassRepository.getUserById(studentId);
+
+      if (!student || student.user_type !== 'student' || student.school_id !== classItem.school_id) {
+        invalid.push(studentId);
+        continue;
+      }
+
+      const existing = await this.userClassRepository.getUserClass(studentId, classId);
+      if (existing) {
+        alreadyEnrolled.push(studentId);
+        continue;
+      }
+
+      await this.userClassRepository.addUserToClass(studentId, classId, 'student');
+      added.push(studentId);
+    }
+
+    return {
+      added,
+      already_enrolled: alreadyEnrolled,
+      invalid
+    };
+  }
+
   async getClassTeachers(classId: string, currentUser: AuthenticatedUser, page: number = 1, limit: number = 20) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
