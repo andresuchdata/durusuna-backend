@@ -642,6 +642,41 @@ router.get('/:id/subjects', authenticate, async (req: Request, res: Response) =>
 });
 
 /**
+ * @route POST /api/classes/:id/subjects
+ * @desc Add subjects to a class
+ * @access Private (teachers and admins only)
+ */
+router.post('/:id/subjects', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { subject_ids } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    if (!subject_ids || !Array.isArray(subject_ids) || subject_ids.length === 0) {
+      return res.status(400).json({ error: 'Subject IDs array is required' });
+    }
+
+    const result = await classService.addSubjectsToClass(id, subject_ids, authenticatedReq.user);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error adding subjects to class:', error);
+    res.status(500).json({ error: 'Failed to add subjects to class' });
+  }
+});
+
+/**
  * @route GET /api/classes/:id/offerings
  * @desc Get class offerings (subject-classes) for a class, optionally filtered by current teacher
  * @access Private

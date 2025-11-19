@@ -4,6 +4,7 @@ import { UserClassRepository } from '../repositories/userClassRepository';
 import { EnrollmentRepository } from '../repositories/enrollmentRepository';
 import { UserService } from './userService';
 import { AuthenticatedRequest } from '../types/auth';
+import knex from '../shared/database/connection';
 
 type AuthenticatedUser = AuthenticatedRequest['user'];
 import {
@@ -432,6 +433,67 @@ export class ClassService {
     }
 
     return [];
+  }
+
+  async addSubjectsToClass(classId: string, subjectIds: string[], currentUser: AuthenticatedUser) {
+    // Check class access first - only teachers and admins can add subjects
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // Only teachers and admins can add subjects
+    if (currentUser.user_type !== 'teacher' && currentUser.role !== 'admin') {
+      throw new Error('Access denied');
+    }
+
+    const added: string[] = [];
+    const alreadyAdded: string[] = [];
+    const invalid: string[] = [];
+
+    // Check which subjects exist and which are already added to the class
+    const existingSubjects = await knex('subjects')
+      .select('id', 'name')
+      .whereIn('id', subjectIds);
+
+    const existingSubjectIds = existingSubjects.map(s => s.id);
+    const invalidSubjectIds = subjectIds.filter(id => !existingSubjectIds.includes(id));
+
+    if (invalidSubjectIds.length > 0) {
+      invalid.push(...invalidSubjectIds);
+    }
+
+    // Check which subjects are already added to this class
+    const existingClassSubjects = await knex('class_subjects')
+      .select('subject_id')
+      .where('class_id', classId)
+      .whereIn('subject_id', existingSubjectIds);
+
+    const existingClassSubjectIds = existingClassSubjects.map(cs => cs.subject_id);
+    const newSubjectIds = existingSubjectIds.filter(id => !existingClassSubjectIds.includes(id));
+
+    // Add new subjects to the class
+    if (newSubjectIds.length > 0) {
+      const classSubjectsToAdd = newSubjectIds.map(subjectId => ({
+        class_id: classId,
+        subject_id: subjectId,
+        teacher_id: currentUser.user_type === 'teacher' ? currentUser.id : null,
+        hours_per_week: 4, // Default value
+        is_active: true
+      }));
+
+      await knex('class_subjects').insert(classSubjectsToAdd);
+      added.push(...newSubjectIds);
+    }
+
+    // Track already added subjects
+    alreadyAdded.push(...existingClassSubjectIds);
+
+    return {
+      added,
+      already_added: alreadyAdded,
+      invalid
+    };
   }
 
   async getClassOfferings(classId: string, currentUser: AuthenticatedUser, academicPeriodId?: string) {
