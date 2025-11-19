@@ -209,6 +209,11 @@ export class ClassService {
       throw new Error('Failed to create class');
     }
 
+    // If a teacher created the class, automatically assign them as a teacher
+    if (currentUser.user_type === 'teacher' && currentUser.role === 'user') {
+      await this.userClassRepository.addUserToClass(currentUser.id, classId, 'teacher');
+    }
+
     return classItem;
   }
 
