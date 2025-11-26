@@ -2,7 +2,9 @@ import { ClassRepository } from '../repositories/classRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import { EnrollmentRepository } from '../repositories/enrollmentRepository';
+import { UserService } from './userService';
 import { AuthenticatedRequest } from '../types/auth';
+import knex from '../shared/database/connection';
 
 type AuthenticatedUser = AuthenticatedRequest['user'];
 import {
@@ -16,21 +18,27 @@ export class ClassService {
   private lessonRepository: LessonRepository;
   private userClassRepository: UserClassRepository;
   private enrollmentRepository: EnrollmentRepository;
+  private userService: UserService;
 
   constructor(
     private classRepository: ClassRepository,
     lessonRepository: LessonRepository,
     userClassRepository: UserClassRepository,
-    enrollmentRepository: EnrollmentRepository
+    enrollmentRepository: EnrollmentRepository,
+    userService: UserService
   ) {
     this.lessonRepository = lessonRepository;
     this.userClassRepository = userClassRepository;
     this.enrollmentRepository = enrollmentRepository;
+    this.userService = userService;
   }
 
   async getAllClasses(currentUser: AuthenticatedUser): Promise<Class[]> {
     // Admins can see all classes in their school
     if (currentUser.role === 'admin') {
+      if (!currentUser.school_id) {
+        throw new Error('Admin must be associated with a school');
+      }
       return await this.classRepository.findBySchoolId(currentUser.school_id);
     }
 
@@ -61,6 +69,9 @@ export class ClassService {
   async getUserClasses(currentUser: AuthenticatedUser): Promise<ClassWithDetails[]> {
     // Admins get all classes in their school, others get only enrolled classes
     if (currentUser.role === 'admin') {
+      if (!currentUser.school_id) {
+        throw new Error('Admin must be associated with a school');
+      }
       const allClasses = await this.classRepository.findBySchoolId(currentUser.school_id);
       
       // Get additional details for all classes
@@ -154,13 +165,12 @@ export class ClassService {
   }
 
   async getClassLessons(classId: string, currentUser: AuthenticatedUser) {
-    // Check access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
       throw new Error('Access denied');
     }
 
-    return await this.lessonRepository.findByClassId(classId);
+    return await this.lessonRepository.findLessonInstancesByClassId(classId);
   }
 
   async checkClassAccess(classId: string, currentUser: AuthenticatedUser): Promise<boolean> {
@@ -198,6 +208,11 @@ export class ClassService {
     const classItem = await this.classRepository.findById(classId);
     if (!classItem) {
       throw new Error('Failed to create class');
+    }
+
+    // If a teacher created the class, automatically assign them as a teacher
+    if (currentUser.user_type === 'teacher' && currentUser.role === 'user') {
+      await this.userClassRepository.addUserToClass(currentUser.id, classId, 'teacher');
     }
 
     return classItem;
@@ -254,6 +269,91 @@ export class ClassService {
         total: totalCount,
         hasMore: (page * limit) < totalCount
       }
+    };
+  }
+
+  async checkStudentsEnrollment(classId: string, currentUser: AuthenticatedUser, studentIds: string[]) {
+    // Check class access first
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // For parents, verify they can only check their own children
+    if (currentUser.user_type === 'parent') {
+      // Get parent's children to validate the requested student IDs
+      const parentChildren = await this.userService.getParentChildren(currentUser);
+      const parentChildIds = new Set(parentChildren.map((child: { id: string }) => child.id));
+      
+      // Filter to only include children of this parent
+      const validStudentIds = studentIds.filter(id => parentChildIds.has(id));
+      if (validStudentIds.length === 0) {
+        return { enrolled_students: [] };
+      }
+      
+      studentIds = validStudentIds;
+    }
+
+    // Check enrollment for the specified students
+    const enrolledStudents = await this.userClassRepository.checkStudentsEnrollment(classId, studentIds);
+    
+    return { enrolled_students: enrolledStudents };
+  }
+
+  async addStudentsToClass(classId: string, studentIds: string[], currentUser: AuthenticatedUser) {
+    if (!studentIds || studentIds.length === 0) {
+      throw new Error('Student IDs array is required');
+    }
+
+    const classItem = await this.classRepository.findById(classId);
+    if (!classItem) {
+      throw new Error('Class not found');
+    }
+
+    // Only admins and teachers can add students
+    if (currentUser.role !== 'admin' && currentUser.user_type !== 'teacher') {
+      throw new Error('Access denied');
+    }
+
+    // Admins must belong to the same school
+    if (currentUser.role === 'admin') {
+      if (!currentUser.school_id || currentUser.school_id !== classItem.school_id) {
+        throw new Error('Access denied');
+      }
+    } else {
+      const hasAccess = await this.checkClassAccess(classId, currentUser);
+      if (!hasAccess) {
+        throw new Error('Access denied');
+      }
+    }
+
+    const uniqueStudentIds = Array.from(new Set(studentIds));
+    const added: string[] = [];
+    const alreadyEnrolled: string[] = [];
+    const invalid: string[] = [];
+
+    for (const studentId of uniqueStudentIds) {
+      const student = await this.userClassRepository.getUserById(studentId);
+
+      if (!student || student.user_type !== 'student' || student.school_id !== classItem.school_id) {
+        invalid.push(studentId);
+        continue;
+      }
+
+      const existing = await this.userClassRepository.getUserClass(studentId, classId);
+      if (existing) {
+        alreadyEnrolled.push(studentId);
+        continue;
+      }
+
+      await this.userClassRepository.addUserToClass(studentId, classId, 'student');
+      added.push(studentId);
+    }
+
+    return {
+      added,
+      already_enrolled: alreadyEnrolled,
+      invalid
     };
   }
 
@@ -335,7 +435,68 @@ export class ClassService {
     return [];
   }
 
-  async getClassOfferings(classId: string, currentUser: AuthenticatedUser) {
+  async addSubjectsToClass(classId: string, subjectIds: string[], currentUser: AuthenticatedUser) {
+    // Check class access first - only teachers and admins can add subjects
+    const hasAccess = await this.checkClassAccess(classId, currentUser);
+    if (!hasAccess) {
+      throw new Error('Access denied');
+    }
+
+    // Only teachers and admins can add subjects
+    if (currentUser.user_type !== 'teacher' && currentUser.role !== 'admin') {
+      throw new Error('Access denied');
+    }
+
+    const added: string[] = [];
+    const alreadyAdded: string[] = [];
+    const invalid: string[] = [];
+
+    // Check which subjects exist and which are already added to the class
+    const existingSubjects = await knex('subjects')
+      .select('id', 'name')
+      .whereIn('id', subjectIds);
+
+    const existingSubjectIds = existingSubjects.map(s => s.id);
+    const invalidSubjectIds = subjectIds.filter(id => !existingSubjectIds.includes(id));
+
+    if (invalidSubjectIds.length > 0) {
+      invalid.push(...invalidSubjectIds);
+    }
+
+    // Check which subjects are already added to this class
+    const existingClassSubjects = await knex('class_subjects')
+      .select('subject_id')
+      .where('class_id', classId)
+      .whereIn('subject_id', existingSubjectIds);
+
+    const existingClassSubjectIds = existingClassSubjects.map(cs => cs.subject_id);
+    const newSubjectIds = existingSubjectIds.filter(id => !existingClassSubjectIds.includes(id));
+
+    // Add new subjects to the class
+    if (newSubjectIds.length > 0) {
+      const classSubjectsToAdd = newSubjectIds.map(subjectId => ({
+        class_id: classId,
+        subject_id: subjectId,
+        teacher_id: currentUser.user_type === 'teacher' ? currentUser.id : null,
+        hours_per_week: 4, // Default value
+        is_active: true
+      }));
+
+      await knex('class_subjects').insert(classSubjectsToAdd);
+      added.push(...newSubjectIds);
+    }
+
+    // Track already added subjects
+    alreadyAdded.push(...existingClassSubjectIds);
+
+    return {
+      added,
+      already_added: alreadyAdded,
+      invalid
+    };
+  }
+
+  async getClassOfferings(classId: string, currentUser: AuthenticatedUser, academicPeriodId?: string) {
     // Check class access first
     const hasAccess = await this.checkClassAccess(classId, currentUser);
     if (!hasAccess) {
@@ -348,10 +509,11 @@ export class ClassService {
       teacherFilterId = currentUser.id;
     }
 
-    // Get class offerings with their details, filtered by teacher if applicable
+    // Get class offerings with their details, filtered by teacher and academic period if applicable
     const offerings = await this.classRepository.findClassOfferingsWithDetails(
       classId,
-      teacherFilterId
+      teacherFilterId,
+      academicPeriodId
     );
 
     return offerings;
@@ -359,9 +521,10 @@ export class ClassService {
 
   private async mapSubjectsWithLessons(classSubjects: any[]) {
     return await Promise.all(classSubjects.map(async (cs) => {
-      const lessons = await this.lessonRepository.findByClassSubjectId(cs.class_subject_id);
+      const lessons = await this.lessonRepository.findLessonInstancesByClassSubjectId(cs.class_subject_id);
 
       return {
+        class_subject_id: cs.class_subject_id,
         subject_id: cs.subject_id,
         subject_name: cs.subject_name,
         subject_code: cs.subject_code,

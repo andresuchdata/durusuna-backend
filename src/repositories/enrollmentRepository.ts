@@ -54,7 +54,7 @@ export class EnrollmentRepository {
    */
   async getChildrenEnrollments(parentId: string): Promise<any[]> {
     const query = `
-      SELECT DISTINCT
+      SELECT
         e.id as enrollment_id,
         e.enrolled_at,
         e.status as enrollment_status,

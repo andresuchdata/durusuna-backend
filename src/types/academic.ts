@@ -92,3 +92,19 @@ export interface AcademicPeriodsResponse {
     hasMore: boolean;
   };
 }
+
+export interface CurrentAcademicPeriodResponse {
+  academic_year: {
+    id: string;
+    name: string;
+    start_date: Date;
+    end_date: Date;
+  };
+  current_period: {
+    id: string;
+    name: string;
+    sequence: number;
+    start_date: Date;
+    end_date: Date;
+  };
+}

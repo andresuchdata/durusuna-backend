@@ -1,5 +1,6 @@
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { UserRepository } from '../repositories/userRepository';
 import {
   AttendanceRecord,
   AttendanceSession,
@@ -23,7 +24,8 @@ type AuthenticatedUser = AuthenticatedRequest['user'];
 export class AttendanceService {
   constructor(
     private attendanceRepository: AttendanceRepository,
-    private userClassRepository: UserClassRepository
+    private userClassRepository: UserClassRepository,
+    private userRepository: UserRepository
   ) {}
 
   // School settings management
@@ -60,19 +62,44 @@ export class AttendanceService {
   async openAttendanceSession(
     classId: string,
     sessionDate: Date,
-    user: AuthenticatedUser
+    user: AuthenticatedUser,
+    lessonInstanceId?: string
   ): Promise<{ session: AttendanceSession; students: any[] }> {
     // Verify teacher has access to this class
     await this.verifyTeacherClassAccess(classId, user);
 
-    // Check if session already exists
-    let session = await this.attendanceRepository.getAttendanceSession(classId, sessionDate);
-    
+    // If lesson instance provided, ensure it belongs to class and reuse existing session if any
+    if (lessonInstanceId) {
+      const lessonContext = await this.attendanceRepository.getLessonInstanceContext(lessonInstanceId);
+      if (!lessonContext) {
+        throw new Error('Lesson instance not found');
+      }
+
+      if (lessonContext.class_id !== classId) {
+        throw new Error('Lesson instance does not belong to this class');
+      }
+    }
+
+    let session: AttendanceSession | null = null;
+
+    if (lessonInstanceId) {
+      session = await this.attendanceRepository.getAttendanceSessionByLessonInstance(lessonInstanceId);
+    }
+
+    if (!session) {
+      session = await this.attendanceRepository.getAttendanceSession(classId, sessionDate);
+    }
+
+    if (session && lessonInstanceId && !session.lesson_instance_id) {
+      session = await this.attendanceRepository.attachLessonInstanceToSession(session.id, lessonInstanceId);
+    }
+
     if (!session) {
       session = await this.attendanceRepository.createAttendanceSession(
         classId,
         user.id,
-        sessionDate
+        sessionDate,
+        lessonInstanceId ?? null
       );
     }
 
@@ -248,6 +275,10 @@ export class AttendanceService {
       throw new Error('Access denied - not enrolled in this class');
     }
 
+    if(!user.school_id) {
+      throw new Error('Access denied - no school ID found');
+    }
+
     // Get school attendance settings
     const settings = await this.attendanceRepository.getSchoolAttendanceSettings(user.school_id);
     
@@ -417,9 +448,18 @@ export class AttendanceService {
     classId: string,
     user: AuthenticatedUser
   ): Promise<AttendanceRecord[]> {
-    // Verify access - either the student themselves, their teacher, or admin
+    // Verify access - either the student themselves, their teacher, admin, or parent
     if (user.id !== studentId) {
-      await this.verifyClassAccess(classId, user);
+      // Parents can access their children's attendance
+      if (user.user_type === 'parent') {
+        const isParent = await this.userRepository.isParentOfStudent(user.id, studentId);
+        if (!isParent) {
+          throw new Error('Access denied - not a parent of this student');
+        }
+      } else {
+        // Teachers and admins need class access
+        await this.verifyClassAccess(classId, user);
+      }
     }
 
     return await this.attendanceRepository.getStudentAttendanceRecords(studentId, classId);

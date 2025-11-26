@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { AttendanceService } from '../services/attendanceService';
 import { AttendanceRepository } from '../repositories/attendanceRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
+import { UserRepository } from '../repositories/userRepository';
 import { authenticate } from '../shared/middleware/auth';
 import { AuthenticatedRequest } from '../types/auth';
 import {
@@ -23,7 +24,8 @@ const router = express.Router();
 // Initialize service layer
 const attendanceRepository = new AttendanceRepository(db);
 const userClassRepository = new UserClassRepository(db);
-const attendanceService = new AttendanceService(attendanceRepository, userClassRepository);
+const userRepository = new UserRepository(db);
+const attendanceService = new AttendanceService(attendanceRepository, userClassRepository, userRepository);
 
 /**
  * @route GET /api/attendance/settings/:schoolId
@@ -152,7 +154,10 @@ router.post('/sessions/:classId/open', authenticate, async (req: Request, res: R
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     const { classId } = req.params;
-    const { date } = req.body; // YYYY-MM-DD format
+    const { date, lesson_instance_id: lessonInstanceId } = req.body as {
+      date?: string;
+      lesson_instance_id?: string;
+    };
 
     if (!classId) {
       return res.status(400).json({ error: 'Class ID is required' });
@@ -168,7 +173,8 @@ router.post('/sessions/:classId/open', authenticate, async (req: Request, res: R
     const result = await attendanceService.openAttendanceSession(
       classId,
       sessionDate,
-      authenticatedReq.user
+      authenticatedReq.user,
+      lessonInstanceId
     );
 
     res.json({
@@ -686,6 +692,10 @@ router.get('/admin/teachers', authenticate, async (req: Request, res: Response) 
     const attendanceDate = date ? new Date(date as string) : new Date();
     attendanceDate.setHours(0, 0, 0, 0);
 
+    if (!authenticatedReq.user.school_id) {
+      return res.status(403).json({ error: 'Access denied - school access required' });
+    }
+
     const teachersAttendance = await attendanceService.getSchoolTeachersAttendance(
       authenticatedReq.user.school_id,
       attendanceDate
@@ -707,7 +717,7 @@ router.get('/admin/teachers/report', authenticate, async (req: Request, res: Res
   const authenticatedReq = req as AuthenticatedRequest;
   try {
     // Verify user is an admin
-    if (authenticatedReq.user.role !== 'admin') {
+    if (authenticatedReq.user.role !== 'admin' || !authenticatedReq.user.school_id) {
       return res.status(403).json({ error: 'Access denied - admin access required' });
     }
 

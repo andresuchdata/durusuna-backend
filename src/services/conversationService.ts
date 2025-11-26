@@ -121,14 +121,15 @@ export class ConversationService {
           message_type: conv.last_message_type,
           created_at: conv.last_message_created_at.toISOString(),
           is_from_me: conv.last_message_sender_id === currentUser.id,
-          attachments: conv.last_message_attachments ? (() => {
+          attachments: (() => {
             try {
-              return JSON.parse(conv.last_message_attachments);
+              const metadata = conv.last_message_metadata ? safeJsonParse(conv.last_message_metadata, {}) : {};
+              return Array.isArray(metadata.attachments) ? metadata.attachments : [];
             } catch (error) {
-              console.warn('Failed to parse last_message_attachments:', error);
+              logger.warn('Failed to parse message metadata for attachments:', error);
               return [];
             }
-          })() : []
+          })()
         } : undefined,
         unread_count: parseInt(conv.unread_count) || 0,
         last_activity: conv.last_message_at ? conv.last_message_at.toISOString() : undefined

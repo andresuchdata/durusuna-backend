@@ -2,11 +2,13 @@ import express, { Request, Response, NextFunction, RequestHandler } from 'expres
 import { ZodError } from 'zod';
 import { ClassService } from '../services/classService';
 import { ClassUpdatesService } from '../services/classUpdatesService';
+import { UserService } from '../services/userService';
 import { ClassRepository } from '../repositories/classRepository';
 import { ClassUpdatesRepository } from '../repositories/classUpdatesRepository';
 import { LessonRepository } from '../repositories/lessonRepository';
 import { UserClassRepository } from '../repositories/userClassRepository';
 import { EnrollmentRepository } from '../repositories/enrollmentRepository';
+import { UserRepository } from '../repositories/userRepository';
 import { authenticate, authorize } from '../shared/middleware/auth';
 import logger from '../shared/utils/logger';
 import db from '../shared/database/connection';
@@ -32,7 +34,9 @@ const classUpdatesRepository = new ClassUpdatesRepository(db);
 const lessonRepository = new LessonRepository(db);
 const userClassRepository = new UserClassRepository(db);
 const enrollmentRepository = new EnrollmentRepository(db);
-const classService = new ClassService(classRepository, lessonRepository, userClassRepository, enrollmentRepository);
+const userRepository = new UserRepository(db);
+const userService = new UserService(userRepository);
+const classService = new ClassService(classRepository, lessonRepository, userClassRepository, enrollmentRepository, userService);
 const classUpdatesService = new ClassUpdatesService(classUpdatesRepository);
 
 const createClassHandler: RequestHandler = async (req, res) => {
@@ -474,6 +478,72 @@ router.get('/:id/students', authenticate, async (req: Request, res: Response) =>
 });
 
 /**
+ * @route POST /api/classes/:id/students/check
+ * @desc Check if specific students are enrolled in a class
+ * @access Private (parents can check their children's enrollment)
+ * @body student_ids: string[] - Array of student IDs to check
+ */
+router.post('/:id/students/check', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { student_ids } = req.body as { student_ids: string[] };
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.status(400).json({ error: 'Student IDs array is required' });
+    }
+    
+    const response = await classService.checkStudentsEnrollment(id, authenticatedReq.user, student_ids);
+    res.json(response);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error checking students enrollment:', error);
+    res.status(500).json({ error: 'Failed to check students enrollment' });
+  }
+});
+
+router.post('/:id/students', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { student_ids } = req.body as { student_ids: string[] };
+
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.status(400).json({ error: 'Student IDs array is required' });
+    }
+
+    const result = await classService.addStudentsToClass(id, student_ids, authenticatedReq.user);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    logger.error('Error adding students to class:', error);
+    res.status(500).json({ error: 'Failed to add students to class' });
+  }
+});
+
+/**
  * @route GET /api/classes/:id/teachers
  * @desc Get teachers in a class with pagination
  * @access Private
@@ -572,6 +642,41 @@ router.get('/:id/subjects', authenticate, async (req: Request, res: Response) =>
 });
 
 /**
+ * @route POST /api/classes/:id/subjects
+ * @desc Add subjects to a class
+ * @access Private (teachers and admins only)
+ */
+router.post('/:id/subjects', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { subject_ids } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+
+    if (!subject_ids || !Array.isArray(subject_ids) || subject_ids.length === 0) {
+      return res.status(400).json({ error: 'Subject IDs array is required' });
+    }
+
+    const result = await classService.addSubjectsToClass(id, subject_ids, authenticatedReq.user);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Class not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error adding subjects to class:', error);
+    res.status(500).json({ error: 'Failed to add subjects to class' });
+  }
+});
+
+/**
  * @route GET /api/classes/:id/offerings
  * @desc Get class offerings (subject-classes) for a class, optionally filtered by current teacher
  * @access Private
@@ -583,7 +688,8 @@ router.get('/:id/offerings', authenticate, async (req: Request, res: Response) =
     if (!id) {
       return res.status(400).json({ error: 'Class ID is required' });
     }
-    const offerings = await classService.getClassOfferings(id, authenticatedReq.user);
+    const { academic_period_id } = req.query as { academic_period_id?: string };
+    const offerings = await classService.getClassOfferings(id, authenticatedReq.user, academic_period_id);
     res.json({ offerings });
   } catch (error) {
     if (error instanceof Error && error.message === 'Class not found') {
@@ -619,6 +725,79 @@ router.get('/:id/lessons', authenticate, async (req: Request, res: Response) => 
     
     logger.error('Error fetching class lessons:', error);
     res.status(500).json({ error: 'Failed to fetch class lessons' });
+  }
+});
+
+/**
+ * @route GET /api/classes/:id/lessons/instances
+ * @desc Get lesson instances for a class
+ * @access Private
+ */
+router.get('/:id/lessons/instances', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { from, to, status } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    const params: any = {};
+    if (from) params.from = from as string;
+    if (to) params.to = to as string;
+    if (status) params.status = status as string;
+    
+    const lessonInstances = await lessonRepository.findLessonInstancesByClassId(id, params);
+    res.json(lessonInstances);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching lesson instances:', error);
+    res.status(500).json({ error: 'Failed to fetch lesson instances' });
+  }
+});
+
+/**
+ * @route GET /api/classes/:id/lessons/instances/attendance
+ * @desc Get lesson instances for a class with attendance data
+ * @access Private
+ */
+router.get('/:id/lessons/instances/attendance', authenticate, async (req: Request, res: Response) => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params;
+    const { user_id, user_role, from, to, status } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Class ID is required' });
+    }
+    
+    if (!user_id || !user_role) {
+      return res.status(400).json({ error: 'User ID and user role are required' });
+    }
+    
+    const params: any = {};
+    if (from) params.from = from as string;
+    if (to) params.to = to as string;
+    if (status) params.status = status as string;
+    
+    const lessonInstances = await lessonRepository.findLessonInstancesByClassIdWithAttendance(
+      id,
+      user_id as string,
+      user_role as string,
+      params
+    );
+    res.json(lessonInstances);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Access denied') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    logger.error('Error fetching lesson instances with attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch lesson instances with attendance' });
   }
 });
 

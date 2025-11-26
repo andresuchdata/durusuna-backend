@@ -85,6 +85,10 @@ router.post('/', authenticate, authorize(['admin']), async (req: Request, res: R
  */
 router.put('/:id', authenticate, authorize(['admin']), async (req: Request, res: Response) => {
   try {
+    if(!req.params.id) {
+      return res.status(400).json({ error: 'School ID is required' });
+    }
+
     const school = await schoolService.updateSchool(req.params.id, req.body);
     res.json({
       message: 'School updated successfully',

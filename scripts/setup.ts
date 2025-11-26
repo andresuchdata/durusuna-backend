@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import knex from 'knex';
 import config from '../src/knexfile';
+import { seedLessons } from './seed-lessons';
 
 const environment = process.env.NODE_ENV || 'development';
 const knexConfig = config[environment];

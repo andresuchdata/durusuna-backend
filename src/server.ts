@@ -23,6 +23,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import schoolRoutes from './routes/schools';
 import classRoutes from './routes/classes';
+import subjectRoutes from './routes/subjects';
 import lessonRoutes from './routes/lessons';
 import messageRoutes from './routes/messages';
 import conversationRoutes from './routes/conversations';
@@ -35,6 +36,10 @@ import enrollmentRoutes from './routes/enrollments';
 import classOfferingRoutes from './routes/classOfferings';
 import academicRoutes from './routes/academic';
 import accessRoutes from './routes/access';
+import dashboardRoutes from './routes/dashboard';
+import reportCardRoutes from './routes/reportCards';
+import assessmentRoutes from './routes/assessments';
+import gradingRoutes from './routes/grading';
 import socketHandler, { getWebsocketStatus, logWebsocketStatus } from './services/socketService';
 import { NotificationOutboxRepository } from './repositories/notificationOutboxRepository';
 import { NotificationDeliveryRepository } from './repositories/notificationDeliveryRepository';
@@ -179,6 +184,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/schools', schoolRoutes);
 app.use('/api/classes', classRoutes);
+app.use('/api/subjects', subjectRoutes);
 app.use('/api/lessons', lessonRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
@@ -191,6 +197,10 @@ app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/class-offerings', classOfferingRoutes);
 app.use('/api/academic', academicRoutes);
 app.use('/api/access', accessRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/report-cards', reportCardRoutes);
+app.use('/api/assessments', assessmentRoutes);
+app.use('/api/grading', gradingRoutes);
 
 /**
  * @swagger
@@ -282,8 +292,6 @@ const startOutboxProcessor = () => {
       }
 
       const batch = await outboxRepo.leaseNextBatch(50);
-      logger.debug(`🔄 Outbox processor: Found ${batch.length} jobs to process`);
-      
       for (const job of batch) {
         try {
           const raw = await db('notifications').where('id', job.notification_id).first();

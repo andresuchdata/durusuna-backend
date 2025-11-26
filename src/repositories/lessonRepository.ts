@@ -1,104 +1,724 @@
 import { Knex } from 'knex';
-import { Lesson, CreateLessonRequest, UpdateLessonRequest } from '../types/lesson';
+import knex from '../config/database'
+import {
+  AdminLessonSummary,
+  LessonInstance,
+  LessonInstanceWithAttendance,
+  LessonInstanceQueryParams,
+  CreateLessonInstanceRequest,
+  UpdateLessonInstanceRequest,
+  ScheduleTemplate,
+  ScheduleTemplateSlot,
+  TeacherLessonSummary,
+  LessonInstanceStatus,
+} from '../types/lesson';
+
+type CreateLessonInstanceDBPayload = CreateLessonInstanceRequest & {
+  created_by?: string | null;
+};
+
+type UpdateLessonInstanceDBPayload = UpdateLessonInstanceRequest & {
+  updated_by?: string | null;
+};
 
 export class LessonRepository {
   constructor(private db: Knex) {}
 
-  async findAll(): Promise<Lesson[]> {
-    return await this.db('lessons')
-      .select('*')
-      .orderBy('start_time', 'desc');
+  async findLessonInstancesByClassId(
+    classId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .where('cs.class_id', classId);
+
+    return await query.select('li.*');
   }
 
-  async findBySchoolId(schoolId: string): Promise<Lesson[]> {
-    // Join with classes to filter by school_id since lessons don't have school_id directly
-    return await this.db('lessons')
-      .join('classes', 'lessons.class_id', 'classes.id')
-      .select('lessons.*')
-      .where('classes.school_id', schoolId)
-      .orderBy('lessons.start_time', 'desc');
+  async findLessonInstancesByClassIdWithAttendance(
+    classId: string,
+    userId: string,
+    userRole: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstanceWithAttendance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .leftJoin('classes as c', 'cs.class_id', 'c.id')
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .leftJoin('schedule_template_slots as sts', 'li.schedule_slot_id', 'sts.id')
+      .where('cs.class_id', classId);
+
+    // Join attendance records for students/parents
+    if (userRole === 'student') {
+      query.leftJoin('attendance_records as ar', function() {
+        this.on('ar.class_id', '=', 'cs.class_id')
+             .andOn('ar.student_id', '=', knex.raw('?', [userId]))
+             .andOn('ar.attendance_date', '=', knex.raw('DATE(li.scheduled_start)'));
+      });
+    } else if (userRole === 'parent') {
+      // For parents, we'll handle multiple children in the service layer
+      query.leftJoin('attendance_records as ar', function() {
+        this.on('ar.class_id', '=', 'cs.class_id')
+             .andOn('ar.attendance_date', '=', knex.raw('DATE(li.scheduled_start)'));
+      });
+    }
+
+    const results = await query.select(
+      'li.*',
+      'c.name as class_name',
+      'c.grade_level as class_grade_level',
+      'c.section as class_section',
+      'c.academic_year as class_academic_year',
+      's.name as subject_name',
+      's.code as subject_code',
+      's.category as subject_category',
+      'u.id as teacher_id',
+      'u.first_name as teacher_first_name',
+      'u.last_name as teacher_last_name',
+      'u.email as teacher_email',
+      'u.avatar_url as teacher_avatar_url',
+      'sts.weekday',
+      'sts.start_time as slot_start_time',
+      'sts.end_time as slot_end_time',
+      'ar.status as attendance_status'
+    );
+
+    return results.map(row => this.mapLessonInstanceWithAttendanceRow(row, userRole));
   }
 
-  async findByTeacherId(teacherId: string): Promise<Lesson[]> {
-    // Join with class_subjects to filter by teacher_id since lessons don't have teacher_id directly
-    return await this.db('lessons')
-      .join('class_subjects', 'lessons.class_id', 'class_subjects.class_id')
-      .select('lessons.*')
-      .where('class_subjects.teacher_id', teacherId)
-      .orderBy('lessons.start_time', 'desc');
-  }
-
-  async findByClassId(classId: string): Promise<Lesson[]> {
-    return await this.db('lessons')
-      .select('*')
-      .where('class_id', classId)
-      .orderBy('start_time', 'desc');
-  }
-
-  async findByClassSubjectId(classSubjectId: string): Promise<Lesson[]> {
-    // Since lessons table doesn't have class_subject_id, we need to find lessons
-    // by joining through class_subjects to get the class_id, then filter by subject
-    const result = await this.db('lessons')
-      .join('class_subjects', 'lessons.class_id', 'class_subjects.class_id')
-      .join('subjects', 'class_subjects.subject_id', 'subjects.id')
-      .select('lessons.*')
-      .where('class_subjects.id', classSubjectId)
-      .orderBy('lessons.start_time', 'desc');
+  private mapLessonInstanceWithAttendanceRow(row: any, userRole: string): LessonInstanceWithAttendance {
+    const baseInstance = this.mapLessonInstanceRow(row);
     
-    return result;
+    // Map attendance status
+    let attendanceStatus: 'present' | 'absent' | 'late' | 'excused' | 'not_taken' = 'not_taken';
+    if (row.attendance_status) {
+      attendanceStatus = row.attendance_status as any;
+    }
+
+    return {
+      ...baseInstance,
+      attendance_status: attendanceStatus,
+    };
   }
 
-  async findById(id: string): Promise<Lesson | null> {
-    const lesson = await this.db('lessons')
-      .where('id', id)
+  private mapLessonInstanceRow(row: any): LessonInstance {
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+    const actualStart = this.normalizeDateValue(row.actual_start);
+    const actualEnd = this.normalizeDateValue(row.actual_end);
+    const createdAt = this.ensureDateString(row.created_at);
+    const updatedAt = this.ensureDateString(row.updated_at);
+
+    return {
+      id: String(row.id),
+      class_subject_id: String(row.class_subject_id),
+      schedule_slot_id: row.schedule_slot_id ? String(row.schedule_slot_id) : null,
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      actual_start: actualStart,
+      actual_end: actualEnd,
+      status: row.status as LessonInstanceStatus,
+      title: row.title as string | null,
+      description: row.description as string | null,
+      objectives: this.parseStringArray(row.objectives),
+      materials: this.parseMaterials(row.materials),
+      notes: row.notes as string | null,
+      cancellation_reason: row.cancellation_reason as string | null,
+      created_by: row.created_by ? String(row.created_by) : null,
+      updated_by: row.updated_by ? String(row.updated_by) : null,
+      is_active: Boolean(row.is_active),
+      created_at: createdAt,
+      updated_at: updatedAt,
+    };
+  }
+
+  private mapAdminLessonRow(row: Record<string, unknown>): AdminLessonSummary {
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+
+    return {
+      id: String(row.id),
+      class_id: (row.class_id as string | null) ?? null,
+      title: (row.title as string | null) ?? null,
+      subject_id: (row.subject_id as string | null) ?? null,
+      subject_name: (row.subject_name as string | null) ?? null,
+      teacher_id: (row.teacher_id as string | null) ?? null,
+      class_name: (row.class_name as string | null) ?? null,
+      teacher_name: this.buildTeacherName(
+        row.teacher_first_name as string | null,
+        row.teacher_last_name as string | null,
+      ),
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      status: row.status as LessonInstanceStatus,
+    };
+  }
+
+  private buildTeacherName(firstName?: string | null, lastName?: string | null): string | null {
+    const parts = [firstName, lastName]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return parts.join(' ');
+  }
+
+  async findAdminLessonsForSchool(
+    schoolId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<AdminLessonSummary[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .where('c.school_id', schoolId)
+      .modify((qb) => this.applyLessonFilters(qb, params))
+      .select(
+        'li.id',
+        'li.title',
+        'li.status',
+        'li.scheduled_start',
+        'li.scheduled_end',
+        'c.id as class_id',
+        's.name as subject_name',
+        's.id as subject_id',
+        'c.name as class_name',
+        'u.id as teacher_id',
+        'u.first_name as teacher_first_name',
+        'u.last_name as teacher_last_name',
+      );
+
+    const rows = await query as Array<Record<string, unknown>>;
+
+    return rows.map((row) => this.mapAdminLessonRow(row));
+  }
+
+  async countAdminLessonsForSchool(
+    schoolId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const { page, limit, ...filters } = params;
+    const query = this.baseLessonInstanceQuery(filters, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .leftJoin('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('users as u', 'cs.teacher_id', 'u.id')
+      .where('c.school_id', schoolId)
+      .modify((qb) => this.applyLessonFilters(qb, params));
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  private applyLessonFilters(query: Knex.QueryBuilder, params: LessonInstanceQueryParams) {
+    if (params.class_id) {
+      query.where('c.id', params.class_id);
+    }
+
+    if (params.class_subject_id) {
+      query.where('cs.id', params.class_subject_id);
+    }
+
+    if (params.teacher_id) {
+      query.where('cs.teacher_id', params.teacher_id);
+    }
+
+    if (params.subject_id) {
+      query.where('cs.subject_id', params.subject_id);
+    }
+
+    if (params.search) {
+      const term = `%${params.search.toLowerCase()}%`;
+      query.andWhere(function () {
+        this.whereRaw('LOWER(li.title) LIKE ?', [term])
+          .orWhereRaw('LOWER(s.name) LIKE ?', [term])
+          .orWhereRaw('LOWER(c.name) LIKE ?', [term])
+          .orWhereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term]);
+      });
+    }
+
+    return query;
+  }
+
+  async findLessonInstancesByClassSubjectId(
+    classSubjectId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .where('li.class_subject_id', classSubjectId);
+
+    return await query.select('li.*');
+  }
+
+  async findLessonInstancesByTeacherId(
+    teacherId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<LessonInstance[]> {
+    const query = this.baseLessonInstanceQuery(params)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id');
+
+    this.applyTeacherFilter(query, teacherId);
+
+    return await query.select('li.*');
+  }
+
+  async countLessonInstancesByTeacherId(
+    teacherId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id');
+
+    this.applyTeacherFilter(query, teacherId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  async findTeacherLessonsForDate(
+    teacherId: string,
+    startOfDay: Date,
+    endOfDay: Date,
+  ): Promise<TeacherLessonSummary[]> {
+    const lessons = await this.db('lesson_instances as li')
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .join('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('attendance_sessions as ats', 'li.id', 'ats.lesson_instance_id')
+      .where('li.is_active', true)
+      .andWhere('li.scheduled_start', '>=', startOfDay)
+      .andWhere('li.scheduled_start', '<', endOfDay)
+      .modify((query) => this.applyTeacherFilter(query, teacherId))
+      .select(
+        'li.*',
+        'cs.class_id as class_id',
+        'c.name as class_name',
+        'c.grade_level as class_grade_level',
+        'c.section as class_section',
+        'c.academic_year as class_academic_year',
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.category as subject_category',
+        'ats.id as attendance_session_id',
+        'ats.is_finalized as attendance_is_finalized',
+        'ats.opened_at as attendance_opened_at',
+        'ats.closed_at as attendance_closed_at',
+      )
+      .orderBy('li.scheduled_start', 'asc');
+
+    return lessons.map((lesson: Record<string, unknown>) => this.mapLessonSummaryRow(lesson));
+  }
+
+  async findTeacherLessonById(
+    teacherId: string,
+    lessonInstanceId: string,
+  ): Promise<TeacherLessonSummary | null> {
+    const row = await this.db('lesson_instances as li')
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .join('classes as c', 'cs.class_id', 'c.id')
+      .join('subjects as s', 'cs.subject_id', 's.id')
+      .leftJoin('attendance_sessions as ats', 'li.id', 'ats.lesson_instance_id')
+      .where('li.is_active', true)
+      .andWhere('li.id', lessonInstanceId)
+      .modify((query) => this.applyTeacherFilter(query, teacherId))
+      .select(
+        'li.*',
+        'cs.class_id as class_id',
+        'c.name as class_name',
+        'c.grade_level as class_grade_level',
+        'c.section as class_section',
+        'c.academic_year as class_academic_year',
+        's.id as subject_id',
+        's.name as subject_name',
+        's.code as subject_code',
+        's.category as subject_category',
+        'ats.id as attendance_session_id',
+        'ats.is_finalized as attendance_is_finalized',
+        'ats.opened_at as attendance_opened_at',
+        'ats.closed_at as attendance_closed_at',
+      )
       .first();
-    
-    return lesson || null;
+
+    return row ? this.mapLessonSummaryRow(row) : null;
   }
 
-  async create(data: any): Promise<string> {
-    const [lesson] = await this.db('lessons')
+  async getLessonAttendanceStatus(lessonInstanceId: string): Promise<{
+    attendance_session_id: string | null;
+    attendance_status: 'not_started' | 'in_progress' | 'finalized';
+  }> {
+    const attendance = await this.db('attendance_sessions')
+      .where('lesson_instance_id', lessonInstanceId)
+      .first('id', 'is_finalized', 'opened_at', 'closed_at');
+
+    if (!attendance) {
+      return {
+        attendance_session_id: null,
+        attendance_status: 'not_started',
+      };
+    }
+
+    return {
+      attendance_session_id: attendance.id,
+      attendance_status: attendance.is_finalized
+        ? 'finalized'
+        : attendance.closed_at
+          ? 'in_progress'
+          : 'in_progress',
+    };
+  }
+
+  async findLessonInstanceById(id: string): Promise<LessonInstance | null> {
+    const record = await this.db('lesson_instances as li')
+      .where('li.id', id)
+      .where('li.is_active', true)
+      .first('li.*');
+
+    return record || null;
+  }
+
+  async createLessonInstance(data: CreateLessonInstanceDBPayload): Promise<string> {
+    const [record] = await this.db('lesson_instances')
       .insert({
         id: this.generateUUID(),
-        class_id: data.class_id,
-        title: data.title,
-        description: data.description,
-        subject: data.subject || 'General',
-        start_time: data.start_time,
-        end_time: data.end_time,
-        location: data.location,
-        status: 'scheduled',
-        materials: data.materials || [],
-        settings: data.settings || {},
+        class_subject_id: data.class_subject_id,
+        schedule_slot_id: data.schedule_slot_id ?? null,
+        scheduled_start: data.scheduled_start,
+        scheduled_end: data.scheduled_end,
+        status: 'planned',
+        title: data.title ?? null,
+        description: data.description ?? null,
+        objectives: JSON.stringify(data.objectives ?? []),
+        materials: JSON.stringify(data.materials ?? []),
+        notes: data.notes ?? null,
+        cancellation_reason: null,
+        created_by: data.created_by ?? null,
+        updated_by: data.created_by ?? null,
+        is_active: true,
         created_at: new Date(),
-        updated_at: new Date()
+        updated_at: new Date(),
       })
       .returning('id');
-    
-    return lesson.id;
+
+    return record.id;
   }
 
-  async update(id: string, data: any): Promise<void> {
-    await this.db('lessons')
+  async updateLessonInstance(id: string, data: UpdateLessonInstanceDBPayload): Promise<void> {
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date(),
+    };
+
+    if (data.schedule_slot_id !== undefined) updatePayload.schedule_slot_id = data.schedule_slot_id;
+    if (data.scheduled_start !== undefined) updatePayload.scheduled_start = data.scheduled_start;
+    if (data.scheduled_end !== undefined) updatePayload.scheduled_end = data.scheduled_end;
+    if (data.actual_start !== undefined) updatePayload.actual_start = data.actual_start;
+    if (data.actual_end !== undefined) updatePayload.actual_end = data.actual_end;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.title !== undefined) updatePayload.title = data.title;
+    if (data.description !== undefined) updatePayload.description = data.description;
+    if (data.objectives !== undefined) updatePayload.objectives = JSON.stringify(data.objectives);
+    if (data.materials !== undefined) updatePayload.materials = JSON.stringify(data.materials);
+    if (data.notes !== undefined) updatePayload.notes = data.notes;
+    if (data.cancellation_reason !== undefined) updatePayload.cancellation_reason = data.cancellation_reason;
+    if (data.is_active !== undefined) updatePayload.is_active = data.is_active;
+    if (data.updated_by !== undefined) updatePayload.updated_by = data.updated_by;
+
+    await this.db('lesson_instances')
+      .where('id', id)
+      .update(updatePayload);
+  }
+
+  async softDeleteLessonInstance(id: string, updatedBy?: string | null): Promise<void> {
+    await this.db('lesson_instances')
       .where('id', id)
       .update({
-        ...data,
-        updated_at: new Date()
+        is_active: false,
+        updated_by: updatedBy ?? null,
+        updated_at: new Date(),
       });
   }
 
-  async delete(id: string): Promise<void> {
-    await this.db('lessons')
+  async getScheduleTemplateById(id: string): Promise<ScheduleTemplate | null> {
+    const record = await this.db('schedule_templates')
+      .where('id', id)
+      .first();
+
+    return record || null;
+  }
+
+  async listScheduleTemplatesByClassSubject(classSubjectId: string): Promise<ScheduleTemplate[]> {
+    return await this.db('schedule_templates')
+      .where('class_subject_id', classSubjectId)
+      .orderBy('effective_from', 'desc');
+  }
+
+  async createScheduleTemplate(data: Omit<ScheduleTemplate, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    const [record] = await this.db('schedule_templates')
+      .insert({
+        id: this.generateUUID(),
+        ...data,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning('id');
+
+    return record.id;
+  }
+
+  async updateScheduleTemplate(id: string, data: Partial<ScheduleTemplate>): Promise<void> {
+    const payload = { ...data, updated_at: new Date() } as Record<string, unknown>;
+    delete (payload as any).id;
+
+    await this.db('schedule_templates')
+      .where('id', id)
+      .update(payload);
+  }
+
+  async deleteScheduleTemplate(id: string): Promise<void> {
+    await this.db('schedule_templates')
       .where('id', id)
       .delete();
   }
 
+  async listTemplateSlots(templateId: string): Promise<ScheduleTemplateSlot[]> {
+    return await this.db('schedule_template_slots')
+      .where('template_id', templateId)
+      .orderBy(['weekday', 'start_time']);
+  }
+
+  async createTemplateSlot(data: Omit<ScheduleTemplateSlot, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    const [record] = await this.db('schedule_template_slots')
+      .insert({
+        id: this.generateUUID(),
+        ...data,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning('id');
+
+    return record.id;
+  }
+
+  async deleteTemplateSlot(id: string): Promise<void> {
+    await this.db('schedule_template_slots')
+      .where('id', id)
+      .delete();
+  }
+
+  async countLessonInstancesByClassId(
+    classId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .where('cs.class_id', classId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  async countLessonInstancesByClassSubjectId(
+    classSubjectId: string,
+    params: LessonInstanceQueryParams = {},
+  ): Promise<number> {
+    const query = this.baseLessonInstanceQuery(params, false)
+      .where('li.class_subject_id', classSubjectId);
+
+    const result = await query.clone().count<{ count: string }>('li.id as count').first();
+    return Number(result?.count ?? 0);
+  }
+
+  private baseLessonInstanceQuery(params: LessonInstanceQueryParams = {}, includePagination: boolean = true) {
+    let query = this.db('lesson_instances as li')
+      .where('li.is_active', true);
+
+    if (params.status) {
+      query = query.where('li.status', params.status);
+    }
+
+    if (params.from) {
+      query = query.where('li.scheduled_start', '>=', params.from);
+    }
+
+    if (params.to) {
+      query = query.where('li.scheduled_end', '<=', params.to);
+    }
+
+    if (includePagination) {
+      query = query.orderBy('li.scheduled_start', 'desc');
+
+      if (params.limit) {
+        query = query.limit(params.limit);
+      }
+
+      if (params.page && params.limit) {
+        const offset = (params.page - 1) * params.limit;
+        query = query.offset(offset);
+      }
+    }
+
+    return query;
+  }
+
   private generateUUID(): string {
-    // Simple UUID generation - in production, use a proper UUID library
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
   }
-} 
+
+  private applyTeacherFilter(query: Knex.QueryBuilder, teacherId: string): Knex.QueryBuilder {
+    return query.where(function () {
+      this.where('cs.teacher_id', teacherId)
+        .orWhereExists(function () {
+          this.select('*')
+            .from('class_offering_teachers as cot')
+            .whereRaw('cot.class_offering_id = cs.class_offering_id')
+            .andWhere('cot.teacher_id', teacherId)
+            .andWhere('cot.is_active', true);
+        })
+        .orWhereExists(function () {
+          this.select('*')
+            .from('class_offerings as co')
+            .whereRaw('co.id = cs.class_offering_id')
+            .andWhere('co.primary_teacher_id', teacherId);
+        });
+    });
+  }
+
+  private mapLessonSummaryRow(row: any): TeacherLessonSummary {
+    const attendanceStatus: 'not_started' | 'in_progress' | 'finalized' = row.attendance_session_id
+      ? row.attendance_is_finalized
+        ? 'finalized'
+        : 'in_progress'
+      : 'not_started';
+
+    const scheduledStart = this.ensureDateString(row.scheduled_start);
+    const scheduledEnd = this.ensureDateString(row.scheduled_end);
+    const actualStart = this.normalizeDateValue(row.actual_start);
+    const actualEnd = this.normalizeDateValue(row.actual_end);
+    const createdAt = this.ensureDateString(row.created_at);
+    const updatedAt = this.ensureDateString(row.updated_at);
+
+    return {
+      id: row.id,
+      class_subject_id: row.class_subject_id,
+      schedule_slot_id: row.schedule_slot_id,
+      scheduled_start: scheduledStart,
+      scheduled_end: scheduledEnd,
+      actual_start: actualStart,
+      actual_end: actualEnd,
+      status: row.status,
+      title: row.title,
+      description: row.description,
+      objectives: this.parseStringArray(row.objectives),
+      materials: this.parseMaterials(row.materials),
+      notes: row.notes,
+      cancellation_reason: row.cancellation_reason,
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+      is_active: row.is_active,
+      created_at: createdAt,
+      updated_at: updatedAt,
+      class: row.class_id
+        ? {
+            id: row.class_id,
+            name: row.class_name,
+            grade_level: row.class_grade_level,
+            section: row.class_section,
+            academic_year: row.class_academic_year,
+          }
+        : undefined,
+      subject: row.subject_id
+        ? {
+            id: row.subject_id,
+            name: row.subject_name,
+            code: row.subject_code,
+            category: row.subject_category,
+          }
+        : undefined,
+      class_name: row.class_name,
+      subject_name: row.subject_name,
+      attendance_session_id: row.attendance_session_id ?? null,
+      attendance_status: attendanceStatus,
+    };
+  }
+
+  private normalizeDateValue(value: unknown): string | null {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const parsed = new Date(trimmed);
+      if (Number.isNaN(parsed.getTime())) {
+        return trimmed;
+      }
+      return parsed.toISOString();
+    }
+    return null;
+  }
+
+  private ensureDateString(value: unknown): string {
+    const normalized = this.normalizeDateValue(value);
+    if (normalized) {
+      return normalized;
+    }
+    if (value) {
+      const parsed = new Date(value as string | number | Date);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+      return String(value);
+    }
+    // Fallback to current time; this should rarely happen but keeps return type consistent
+    return new Date().toISOString();
+  }
+
+  private parseJsonArray(value: unknown): unknown[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+      const parsed = JSON.parse(value as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  private parseStringArray(value: unknown): string[] {
+    return this.parseJsonArray(value)
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim());
+  }
+
+  private parseMaterials(value: unknown): Record<string, unknown>[] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is Record<string, unknown> => 
+        typeof item === 'object' && item !== null
+      );
+    }
+    try {
+      const parsed = JSON.parse(value as string);
+      return Array.isArray(parsed) 
+        ? parsed.filter((item): item is Record<string, unknown> => 
+            typeof item === 'object' && item !== null
+          )
+        : [];
+    } catch (error) {
+      return [];
+    }
+  }
+}
+ 

@@ -220,6 +220,9 @@ export class UserService {
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
     }
+    if(!currentUser.school_id) {
+      throw new Error('Access denied: No school ID found');
+    }
 
     return await this.userRepository.findStudentsBySchoolId(currentUser.school_id);
   }
@@ -229,6 +232,9 @@ export class UserService {
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
     }
+    if(!currentUser.school_id) {
+      throw new Error('Access denied: No school ID found');
+    }
 
     return await this.userRepository.findTeachersBySchoolId(currentUser.school_id);
   }
@@ -237,6 +243,9 @@ export class UserService {
     // Only admins can get users by type
     if (currentUser.role !== 'admin') {
       throw new Error('Access denied: Admin role required');
+    }
+    if(!currentUser.school_id) {
+      throw new Error('Access denied: No school ID found');
     }
 
     const validUserTypes = ['student', 'teacher', 'parent', 'admin'];
@@ -438,5 +447,14 @@ export class UserService {
 
   async clearFCMToken(userId: string): Promise<void> {
     await this.fcmTokenRepository.removeToken(userId);
+  }
+
+  async getParentChildren(currentUser: AuthenticatedUser) {
+    // Only parents can access this endpoint
+    if (currentUser.user_type !== 'parent') {
+      throw new Error('Access denied: Only parents can access this endpoint');
+    }
+
+    return await this.userRepository.getParentChildren(currentUser.id);
   }
 } 

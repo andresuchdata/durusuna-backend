@@ -156,14 +156,16 @@ export class AttendanceRepository {
 
   // Attendance session methods
   async createAttendanceSession(
-    classId: string, 
-    teacherId: string, 
-    sessionDate: Date
+    classId: string,
+    teacherId: string,
+    sessionDate: Date,
+    lessonInstanceId: string | null = null
   ): Promise<AttendanceSession> {
     const [session] = await this.db('attendance_sessions')
       .insert({
         id: uuidv4(),
         class_id: classId,
+        lesson_instance_id: lessonInstanceId,
         teacher_id: teacherId,
         session_date: sessionDate,
         opened_at: new Date(),
@@ -173,7 +175,7 @@ export class AttendanceRepository {
         updated_at: new Date()
       })
       .returning('*');
-    
+
     if (session.settings && typeof session.settings === 'string') {
       session.settings = JSON.parse(session.settings);
     }
@@ -181,7 +183,7 @@ export class AttendanceRepository {
   }
 
   async getAttendanceSession(
-    classId: string, 
+    classId: string,
     sessionDate: Date
   ): Promise<AttendanceSession | null> {
     const session = await this.db('attendance_sessions')
@@ -190,14 +192,69 @@ export class AttendanceRepository {
         session_date: sessionDate
       })
       .first();
-    
+
     if (session && session.settings) {
       if (typeof session.settings === 'string') {
         session.settings = JSON.parse(session.settings);
       }
     }
-    
+
     return session || null;
+  }
+
+  async getAttendanceSessionByLessonInstance(
+    lessonInstanceId: string
+  ): Promise<AttendanceSession | null> {
+    const session = await this.db('attendance_sessions')
+      .where({ lesson_instance_id: lessonInstanceId })
+      .first();
+
+    if (session && session.settings && typeof session.settings === 'string') {
+      session.settings = JSON.parse(session.settings);
+    }
+
+    return session || null;
+  }
+
+  async attachLessonInstanceToSession(
+    sessionId: string,
+    lessonInstanceId: string
+  ): Promise<AttendanceSession> {
+    const [session] = await this.db('attendance_sessions')
+      .where('id', sessionId)
+      .update({
+        lesson_instance_id: lessonInstanceId,
+        updated_at: new Date()
+      })
+      .returning('*');
+
+    if (session.settings && typeof session.settings === 'string') {
+      session.settings = JSON.parse(session.settings);
+    }
+
+    return session;
+  }
+
+  async getLessonInstanceContext(lessonInstanceId: string): Promise<{
+    lesson_instance_id: string;
+    class_id: string;
+    class_subject_id: string;
+    scheduled_start: Date;
+    scheduled_end: Date;
+  } | null> {
+    const record = await this.db('lesson_instances as li')
+      .join('class_subjects as cs', 'li.class_subject_id', 'cs.id')
+      .select(
+        'li.id as lesson_instance_id',
+        'cs.class_id',
+        'li.class_subject_id',
+        'li.scheduled_start',
+        'li.scheduled_end'
+      )
+      .where('li.id', lessonInstanceId)
+      .first();
+
+    return record || null;
   }
 
   async finalizeAttendanceSession(sessionId: string): Promise<AttendanceSession> {

@@ -1,6 +1,9 @@
 import { Notification } from '../../types/notification';
 import { NotificationOutboxRepository } from '../../repositories/notificationOutboxRepository';
-import { NotificationDeliveryRepository } from '../../repositories/notificationDeliveryRepository';
+import {
+  NotificationDeliveryRepository,
+  type DeliveryChannel,
+} from '../../repositories/notificationDeliveryRepository';
 import logger from '../../shared/utils/logger';
 
 export type NotificationChannel = 'socket' | 'email' | 'firebase';
@@ -9,6 +12,9 @@ export interface ChannelProvider {
   channel: NotificationChannel;
   send(input: { userId: string; notification: Notification }): Promise<'sent' | 'skipped'>;
 }
+
+const isDeliveryChannel = (channel: NotificationChannel): channel is DeliveryChannel =>
+  channel === 'socket' || channel === 'email';
 
 export class NotificationDispatcher {
   constructor(
@@ -19,9 +25,10 @@ export class NotificationDispatcher {
 
   async enqueue(notification: Notification, userIds: string[], channels: NotificationChannel[] = ['socket', 'email', 'firebase']) {
     logger.info(`🔔 Enqueue request: notif=${notification.id} users=${userIds.length} channels=${channels.join(',')}`);
+    const deliveryChannels = channels.filter(isDeliveryChannel);
     for (const userId of userIds) {
       // Create delivery records up-front for dedupe/observability
-      for (const channel of channels) {
+      for (const channel of deliveryChannels) {
         await this.deliveryRepo.upsertQueued({ notificationId: notification.id, userId, channel });
       }
       await this.outboxRepo.enqueue({ notificationId: notification.id, userId, channels });
@@ -36,7 +43,9 @@ export class NotificationDispatcher {
         if (!provider) continue;
         const result = await provider.send({ userId, notification });
         if (result === 'sent') {
-          await this.deliveryRepo.markSentByComposite({ notificationId: notification.id, userId, channel: channel as any });
+          if (isDeliveryChannel(channel)) {
+            await this.deliveryRepo.markSentByComposite({ notificationId: notification.id, userId, channel });
+          }
         }
       }
       await this.outboxRepo.markSent(outboxId);

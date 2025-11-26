@@ -499,11 +499,12 @@ router.post('/', authenticate, validate(classUpdateSchema), async (req: Request,
   const authReq = req as AuthenticatedRequest;
   try {
     const { class_id, title, content, update_type, attachments }: CreateClassUpdateRequest = req.body;
+    const updateType = update_type ?? 'announcement';
 
     // Use service to create class update
     const newUpdate = await classUpdatesService.createClassUpdate(
       class_id,
-      { title, content, update_type, attachments },
+      { title, content, update_type: updateType, attachments },
       authReq.user
     );
 
@@ -517,7 +518,7 @@ router.post('/', authenticate, validate(classUpdateSchema), async (req: Request,
         authorId: authReq.user.id,
         title,
         content,
-        updateType: update_type
+        updateType
       });
 
       logger.info(`🔔 Successfully sent notifications for class update ${newUpdate.id}`);

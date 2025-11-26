@@ -184,10 +184,7 @@ export class AuthService {
       employee_id: user.employee_id,
       avatar_url: user.avatar_url,
       is_active: user.is_active,
-      is_verified: user.is_verified,
-      last_active_at: new Date(),
-      created_at: user.created_at,
-      updated_at: user.updated_at
+      last_active_at: new Date().toISOString(),
     };
 
     return {

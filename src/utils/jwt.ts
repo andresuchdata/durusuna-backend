@@ -11,7 +11,7 @@ export interface JWTUser {
   email: string;
   user_type: 'student' | 'teacher' | 'parent' | 'admin';
   role: 'user' | 'admin';
-  school_id: string;
+  school_id: string | null;
 }
 
 export interface TokenPair {

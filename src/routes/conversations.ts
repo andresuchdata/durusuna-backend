@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import mime from 'mime-types';
 import { v4 as uuidv4 } from 'uuid';
 import { ConversationService } from '../services/conversationService';
@@ -7,11 +7,11 @@ import { MessageRepository } from '../repositories/messageRepository';
 import { AccessControlService } from '../services/accessControlService';
 import storageService from '../services/storageService';
 import db from '../config/database';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuth, isAuthenticatedRequest } from '../shared/middleware/auth';
 import { validate, messageSchema } from '../utils/validation';
 import logger from '../shared/utils/logger';
 import { AuthenticatedRequest } from '../types/auth';
-import { uploadMiddleware, determineMessageType } from '../shared/middleware/upload';
+import { uploadMiddleware } from '../shared/middleware/upload';
 import {
   ConversationPaginationParams
 } from '../types/message';
@@ -24,18 +24,29 @@ const accessControlService = new AccessControlService(db);
 const conversationService = new ConversationService(messageRepository);
 const messageService = new MessageService(messageRepository);
 
+function ensureAuthenticated(req: Request, res: Response): req is AuthenticatedRequest {
+  if (!isAuthenticatedRequest(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * @route GET /api/conversations
  * @desc Get all conversations for the current user (optimized with caching)
  * @access Private
  */
-router.get('/', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+router.get('/', authenticate, requireAuth(), async (req: Request, res: Response) => {
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { page = '1', limit = '15' } = req.query as { page?: string; limit?: string };
     
     const response = await conversationService.getConversations(
-      authenticatedReq.user,
+      req.user,
       parseInt(page),
       parseInt(limit)
     );
@@ -54,9 +65,15 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
  * @access Private
  */
 router.get('/:conversationId/messages', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
     const { 
       page = '1', 
       limit = '25',
@@ -65,8 +82,8 @@ router.get('/:conversationId/messages', authenticate, async (req: Request, res: 
     } = req.query as ConversationPaginationParams & { page?: string; limit?: string };
 
     const response = await conversationService.getConversationMessages(
-      conversationId!,
-      authenticatedReq.user,
+      conversationId,
+      req.user,
       {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -93,7 +110,9 @@ router.get('/:conversationId/messages', authenticate, async (req: Request, res: 
  * @access Private
  */
 router.get('/:conversationId', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -102,7 +121,7 @@ router.get('/:conversationId', authenticate, async (req: Request, res: Response)
     }
 
     // Verify user is a participant of the conversation
-    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    const isParticipant = await conversationService.isUserParticipant(conversationId, req.user.id);
     if (!isParticipant) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -115,7 +134,7 @@ router.get('/:conversationId', authenticate, async (req: Request, res: Response)
     // Get one message to extract conversation and participant info
     const messagesResponse = await conversationService.getConversationMessages(
       conversationId,
-      authenticatedReq.user,
+      req.user,
       { page: 1, limit: 1 }
     );
 
@@ -148,7 +167,9 @@ router.get('/:conversationId', authenticate, async (req: Request, res: Response)
  * @access Private
  */
 router.get('/:conversationId/messages/load-more', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { 
@@ -163,7 +184,7 @@ router.get('/:conversationId/messages/load-more', authenticate, async (req: Requ
 
     const response = await conversationService.loadMoreMessages(
       conversationId!,
-      authenticatedReq.user,
+      req.user,
       cursor,
       direction,
       parseInt(limit)
@@ -187,7 +208,9 @@ router.get('/:conversationId/messages/load-more', authenticate, async (req: Requ
  * @access Private
  */
 router.post('/:conversationId/messages', authenticate, validate(messageSchema), async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -195,7 +218,7 @@ router.post('/:conversationId/messages', authenticate, validate(messageSchema), 
     const response = await conversationService.sendMessageToConversation(
       conversationId!,
       req.body,
-      authenticatedReq.user
+      req.user
     );
 
     res.status(201).json(response);
@@ -229,7 +252,9 @@ router.post('/:conversationId/messages', authenticate, validate(messageSchema), 
  * @access Private
  */
 router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat.array('files'), async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     
@@ -240,7 +265,7 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
     // Check if user is a participant in this conversation
     const participant = await messageRepository.findConversationParticipant(
       conversationId!, 
-      authenticatedReq.user.id
+      req.user.id
     );
     
     if (!participant) {
@@ -260,7 +285,7 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
           createThumbnail: false, // No thumbnails needed for chat messages
         },
         customMetadata: {
-          'uploaded-by': authenticatedReq.user.id,
+          'uploaded-by': req.user.id,
           'conversation-id': conversationId!,
           'upload-context': 'chat-media',
         },
@@ -303,7 +328,9 @@ router.post('/:conversationId/upload-media', authenticate, uploadMiddleware.chat
  * @access Private
  */
 router.post('/generate-presigned-urls', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversation_id, files }: { conversation_id: string; files: Array<{ name: string; type: string; size: number }> } = req.body;
 
@@ -323,7 +350,7 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
     // Check if user is a participant in this conversation
     const participant = await messageRepository.findConversationParticipant(
       conversation_id, 
-      authenticatedReq.user.id
+      req.user.id
     );
     
     if (!participant) {
@@ -397,7 +424,7 @@ router.post('/generate-presigned-urls', authenticate, async (req: Request, res: 
       error: errorMessage,
       stack: (error as Error).stack,
       conversationId: req.body?.conversation_id,
-      userId: authenticatedReq.user?.id,
+      userId: req.user?.id,
       fileCount: req.body?.files?.length,
     });
 
@@ -444,11 +471,13 @@ function getFileType(mimeType: string): string {
  * @access Private
  */
 router.put('/:conversationId/mark-read', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
 
-    await conversationService.markConversationAsRead(conversationId!, authenticatedReq.user);
+    await conversationService.markConversationAsRead(conversationId!, req.user);
 
     res.json({
       message: 'Conversation marked as read',
@@ -471,7 +500,9 @@ router.put('/:conversationId/mark-read', authenticate, async (req: Request, res:
  * @access Private
  */
 router.delete('/:conversationId/messages/:messageId', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { messageId } = req.params;
 
@@ -479,7 +510,7 @@ router.delete('/:conversationId/messages/:messageId', authenticate, async (req: 
       return res.status(400).json({ error: 'Message ID is required' });
     }
 
-    const result = await messageService.deleteMessage(messageId, authenticatedReq.user);
+    const result = await messageService.deleteMessage(messageId, req.user);
 
     if (!result.success) {
       if (result.message === 'Message not found or access denied') {
@@ -505,7 +536,9 @@ router.delete('/:conversationId/messages/:messageId', authenticate, async (req: 
  * @access Private
  */
 router.delete('/:conversationId/messages/batch', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { message_ids } = req.body;
 
@@ -517,7 +550,7 @@ router.delete('/:conversationId/messages/batch', authenticate, async (req: Reque
       return res.status(400).json({ error: 'Maximum 50 messages can be deleted at once' });
     }
 
-    const result = await messageService.deleteBatchMessages(message_ids, authenticatedReq.user);
+    const result = await messageService.deleteBatchMessages(message_ids, req.user);
 
     if (result.deletedCount === 0 && result.failedCount > 0) {
       return res.status(404).json({ 
@@ -545,7 +578,9 @@ router.delete('/:conversationId/messages/batch', authenticate, async (req: Reque
  * @access Private
  */
 router.post('/', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { type, participant_ids, name, description } = req.body as {
       type?: string;
@@ -576,7 +611,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
     // Validate that current user can access all participants
     const canAccessParticipants = await accessControlService.canAccessConversationParticipants(
-      authenticatedReq.user,
+      req.user,
       participant_ids
     );
 
@@ -592,7 +627,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Participant ID is required for direct conversations' });
       }
       const existingConversation = await conversationService.findDirectConversation(
-        authenticatedReq.user.id,
+        req.user.id,
         participant_ids[0]
       );
       if (existingConversation) {
@@ -603,8 +638,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     // Create the conversation
     const conversation = await conversationService.createConversation({
       type,
-      createdBy: authenticatedReq.user.id,
-      participantIds: [authenticatedReq.user.id, ...participant_ids],
+      createdBy: req.user.id,
+      participantIds: [req.user.id, ...participant_ids],
       name: type === 'group' ? name : undefined,
       description: type === 'group' ? description : undefined,
     });
@@ -623,7 +658,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
  * @access Private
  */
 router.post('/:conversationId/messages/reactions', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { messageIds } = req.body as { messageIds?: string[] };
@@ -641,7 +678,7 @@ router.post('/:conversationId/messages/reactions', authenticate, async (req: Req
     }
 
     // Verify user is a participant of the conversation
-    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    const isParticipant = await conversationService.isUserParticipant(conversationId, req.user.id);
     if (!isParticipant) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -668,7 +705,9 @@ router.post('/:conversationId/messages/reactions', authenticate, async (req: Req
  * @access Private
  */
 router.put('/:conversationId', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
     const { name, description, avatar_url } = req.body as {
@@ -682,7 +721,7 @@ router.put('/:conversationId', authenticate, async (req: Request, res: Response)
     }
 
     // Verify user is a participant of the conversation
-    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    const isParticipant = await conversationService.isUserParticipant(conversationId, req.user.id);
     if (!isParticipant) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -699,8 +738,8 @@ router.put('/:conversationId', authenticate, async (req: Request, res: Response)
     }
 
     // Check if user has permission to update (admin or creator)
-    const userRole = await conversationService.getUserRoleInConversation(conversationId, authenticatedReq.user.id);
-    if (userRole !== 'admin' && conversation.created_by !== authenticatedReq.user.id) {
+    const userRole = await conversationService.getUserRoleInConversation(conversationId, req.user.id);
+    if (userRole !== 'admin' && conversation.created_by !== req.user.id) {
       return res.status(403).json({ error: 'Only admins or group creators can update group details' });
     }
 
@@ -715,7 +754,7 @@ router.put('/:conversationId', authenticate, async (req: Request, res: Response)
     }
 
     // Update the conversation
-    await conversationService.updateConversation(conversationId, updateData, authenticatedReq.user.id);
+    await conversationService.updateConversation(conversationId, updateData, req.user.id);
 
     // Get updated conversation details
     const updatedConversation = await conversationService.getConversationById(conversationId);
@@ -746,7 +785,9 @@ router.put('/:conversationId', authenticate, async (req: Request, res: Response)
  * @access Private
  */
 router.delete('/:conversationId', authenticate, async (req: Request, res: Response) => {
-  const authenticatedReq = req as AuthenticatedRequest;
+  if (!ensureAuthenticated(req, res)) {
+    return;
+  }
   try {
     const { conversationId } = req.params;
 
@@ -755,13 +796,13 @@ router.delete('/:conversationId', authenticate, async (req: Request, res: Respon
     }
 
     // Verify user is a participant of the conversation
-    const isParticipant = await conversationService.isUserParticipant(conversationId, authenticatedReq.user.id);
+    const isParticipant = await conversationService.isUserParticipant(conversationId, req.user.id);
     if (!isParticipant) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // Delete/leave the conversation using the service (handles logic internally)
-    const result = await conversationService.deleteConversation(conversationId, authenticatedReq.user.id);
+    const result = await conversationService.deleteConversation(conversationId, req.user.id);
 
     const message = result.action === 'left' 
       ? 'Left the group conversation successfully' 
