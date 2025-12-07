@@ -13,18 +13,71 @@ type AuthenticatedUser = AuthenticatedRequest['user'];
 export class ReportCardService {
   constructor(private db: Knex) {}
 
-  private ensureAdmin(currentUser: AuthenticatedUser) {
-    if (!currentUser || currentUser.role !== 'admin') {
-      throw new Error('Admin access required');
+  private isHomeroomTeacher(settings: unknown, teacherId: string | undefined) {
+    if (!settings || !teacherId) {
+      return false;
     }
+
+    try {
+      const parsedSettings =
+        typeof settings === 'string' ? JSON.parse(settings) : settings;
+
+      return (
+        parsedSettings?.homeroom_teacher_id === teacherId &&
+        parsedSettings?.has_homeroom === true
+      );
+    } catch (error) {
+      console.warn('Error parsing class settings for homeroom check:', error);
+      return false;
+    }
+  }
+
+  private async ensureGenerationAccess(
+    classRow: any,
+    currentUser: AuthenticatedUser,
+  ) {
+    if (!currentUser) {
+      throw new Error('Access denied - authentication required');
+    }
+
+    if (
+      currentUser.school_id &&
+      classRow.school_id &&
+      currentUser.school_id !== classRow.school_id
+    ) {
+      throw new Error('Access denied to this class');
+    }
+
+    if (currentUser.role === 'admin') {
+      return;
+    }
+
+    if (currentUser.user_type === 'teacher') {
+      const assignment = await this.db('user_classes')
+        .where('user_id', currentUser.id)
+        .where('class_id', classRow.id)
+        .where('is_active', true)
+        .whereIn('role_in_class', ['teacher', 'assistant'])
+        .first();
+
+      if (assignment) {
+        return;
+      }
+
+      if (this.isHomeroomTeacher(classRow.settings, currentUser.id)) {
+        return;
+      }
+
+      throw new Error('Access denied - only admins or assigned teachers can generate report cards');
+    }
+
+    throw new Error('Access denied - only admins or teachers can generate report cards');
   }
 
   async generateReportCards(
     payload: GenerateReportCardsRequest,
     currentUser: AuthenticatedUser,
   ): Promise<{ report_cards: ReportCardSummary[]; generated_count: number }> {
-    this.ensureAdmin(currentUser);
-
     const { class_id, academic_period_id, student_ids, regenerate } = payload;
 
     if (!class_id || !academic_period_id) {
@@ -36,9 +89,7 @@ export class ReportCardService {
       throw new Error('Class not found');
     }
 
-    if (currentUser.school_id && classRow.school_id !== currentUser.school_id) {
-      throw new Error('Access denied to this class');
-    }
+    await this.ensureGenerationAccess(classRow, currentUser);
 
     const periodRow = await this.db('academic_periods as ap')
       .join('academic_years as ay', 'ap.academic_year_id', 'ay.id')
@@ -426,6 +477,68 @@ export class ReportCardService {
       .orderBy('subject_name', 'asc')
       .select('*');
 
+    const finalGradeIds = (subjectsRows as any[])
+      .map((s) => s.final_grade_id)
+      .filter((id): id is string => Boolean(id));
+
+    const finalGradeDetailsMap = new Map<string, ReportCardSubject['final_grade_details']>();
+
+    if (finalGradeIds.length > 0) {
+      const finalGradeRows = await this.db('final_grades as fg')
+        .leftJoin('grading_formulas as gf', 'fg.formula_id', 'gf.id')
+        .whereIn('fg.id', finalGradeIds)
+        .select(
+          'fg.id',
+          'fg.numeric_grade',
+          'fg.letter_grade',
+          'fg.is_passing',
+          'fg.component_breakdown',
+          'fg.computed_at',
+          'fg.computed_by',
+          'fg.formula_id',
+          'fg.formula_version',
+          'gf.expression as formula_expression',
+          'gf.rounding_rule as formula_rounding_rule',
+          'gf.decimal_places as formula_decimal_places',
+          'gf.pass_threshold as formula_pass_threshold',
+          'gf.description as formula_description',
+        );
+
+      for (const fgRow of finalGradeRows as any[]) {
+        let componentBreakdown: Record<string, any> | null = null;
+        const rawBreakdown = fgRow.component_breakdown;
+        if (rawBreakdown) {
+          try {
+            componentBreakdown =
+              typeof rawBreakdown === 'string' ? JSON.parse(rawBreakdown) : rawBreakdown;
+          } catch (error) {
+            console.warn('Failed to parse component_breakdown for final grade', fgRow.id, error);
+            componentBreakdown = null;
+          }
+        }
+
+        finalGradeDetailsMap.set(fgRow.id, {
+          numeric_grade: fgRow.numeric_grade,
+          letter_grade: fgRow.letter_grade,
+          is_passing: fgRow.is_passing,
+          component_breakdown: componentBreakdown,
+          computed_at: fgRow.computed_at ? new Date(fgRow.computed_at).toISOString() : null,
+          computed_by: fgRow.computed_by ?? null,
+          formula: fgRow.formula_id
+            ? {
+                id: fgRow.formula_id,
+                version: fgRow.formula_version,
+                expression: fgRow.formula_expression,
+                rounding_rule: fgRow.formula_rounding_rule,
+                decimal_places: fgRow.formula_decimal_places,
+                pass_threshold: fgRow.formula_pass_threshold,
+                description: fgRow.formula_description,
+              }
+            : null,
+        });
+      }
+    }
+
     const subjects: ReportCardSubject[] = (subjectsRows as any[]).map((s) => ({
       id: s.id,
       report_card_id: s.report_card_id,
@@ -443,6 +556,7 @@ export class ReportCardService {
       metadata: s.metadata,
       created_at: s.created_at,
       updated_at: s.updated_at,
+      final_grade_details: s.final_grade_id ? finalGradeDetailsMap.get(s.final_grade_id) : undefined,
     }));
 
     const detail: ReportCardDetail = {

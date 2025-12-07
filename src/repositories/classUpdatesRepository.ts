@@ -1,8 +1,8 @@
 import { Knex } from 'knex';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  ClassUpdate, 
-  ClassUpdateWithAuthor, 
+import {
+  ClassUpdate,
+  ClassUpdateWithAuthor,
   CreateClassUpdateRequest,
   ClassUpdateQueryParams,
   ClassUpdateCommentWithAuthor,
@@ -11,25 +11,25 @@ import {
 import { safeJsonParse, migrateReactions, safeJsonStringify } from '../utils/json';
 
 export class ClassUpdatesRepository {
-  constructor(private db: Knex) {}
+  constructor(private db: Knex) { }
 
   async findByClassId(
-    classId: string, 
-    options: ClassUpdateQueryParams & { 
-      page: number; 
-      limit: number; 
+    classId: string,
+    options: ClassUpdateQueryParams & {
+      page: number;
+      limit: number;
       offset: number;
       authorIds?: string[];
       search?: string;
       currentUserId?: string;
     }
   ): Promise<ClassUpdateWithAuthor[]> {
-    const { 
-      page, 
-      limit, 
-      offset, 
-      type, 
-      exclude_pinned, 
+    const {
+      page,
+      limit,
+      offset,
+      type,
+      exclude_pinned,
       authorIds,
       search,
       currentUserId
@@ -62,7 +62,7 @@ export class ClassUpdatesRepository {
     // Search functionality - search in title, content, and author name
     if (search) {
       const db = this.db;
-      query = query.where(function() {
+      query = query.where(function () {
         this.where('class_updates.title', 'ilike', `%${search}%`)
           .orWhere('class_updates.content', 'ilike', `%${search}%`)
           .orWhere(db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
@@ -90,7 +90,7 @@ export class ClassUpdatesRepository {
     // Order by pinned status only if the author is the current user
     const updates = await query
       .orderByRaw(
-        currentUserId 
+        currentUserId
           ? `CASE WHEN class_updates.author_id = ? AND class_updates.is_pinned = true THEN 0 ELSE 1 END`
           : `class_updates.is_pinned DESC`,
         currentUserId ? [currentUserId] : []
@@ -103,7 +103,7 @@ export class ClassUpdatesRepository {
     // Get comments count for each update
     const updateIds = updates.map(update => update.id);
     let commentCounts: Array<{ class_update_id: string; count: string }> = [];
-    
+
     if (updateIds.length > 0) {
       commentCounts = await this.db('class_update_comments')
         .whereIn('class_update_id', updateIds)
@@ -119,10 +119,67 @@ export class ClassUpdatesRepository {
       commentCountMap[item.class_update_id] = parseInt(item.count);
     });
 
-    // Format response with comment counts
+    // Get recent comments (limit 3 per update)
+    let recentCommentsMap: Record<string, ClassUpdateCommentWithAuthor[]> = {};
+
+    if (updateIds.length > 0) {
+      // Use window function to get top 3 comments per update
+      const recentComments = await this.db.raw(`
+        SELECT * FROM (
+          SELECT 
+            c.*,
+            u.first_name as author_first_name,
+            u.last_name as author_last_name,
+            u.email as author_email,
+            u.avatar_url as author_avatar,
+            u.user_type as author_user_type,
+            ROW_NUMBER() OVER (PARTITION BY c.class_update_id ORDER BY c.created_at DESC) as rn
+          FROM class_update_comments c
+          JOIN users u ON c.author_id = u.id
+          WHERE c.class_update_id IN (${updateIds.map(id => `'${id}'`).join(',')})
+          AND c.is_deleted = false
+        ) t
+        WHERE rn <= 3
+        ORDER BY t.created_at ASC
+      `);
+
+      // Group comments by update ID
+      if (recentComments && recentComments.rows) {
+        recentComments.rows.forEach((row: any) => {
+          if (!recentCommentsMap[row.class_update_id]) {
+            recentCommentsMap[row.class_update_id] = [];
+          }
+
+          recentCommentsMap[row.class_update_id].push({
+            id: row.id,
+            class_update_id: row.class_update_id,
+            author_id: row.author_id,
+            content: row.content,
+            reply_to_id: row.reply_to_id,
+            reactions: safeJsonParse(row.reactions, {}),
+            is_edited: row.is_edited || false,
+            edited_at: row.edited_at,
+            is_deleted: row.is_deleted,
+            deleted_at: row.deleted_at,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            author: {
+              id: row.author_id,
+              first_name: row.author_first_name,
+              last_name: row.author_last_name,
+              email: row.author_email,
+              avatar_url: row.author_avatar || "",
+              user_type: row.author_user_type
+            }
+          });
+        });
+      }
+    }
+
+    // Format response with comment counts and recent comments
     return updates.map(update => {
       const attachments = safeJsonParse(update.attachments, []);
-      
+
       return {
         id: update.id,
         class_id: update.class_id,
@@ -136,6 +193,7 @@ export class ClassUpdatesRepository {
         attachments: attachments,
         reactions: migrateReactions(safeJsonParse(update.reactions, {})),
         comment_count: commentCountMap[update.id] || 0,
+        recent_comments: recentCommentsMap[update.id] || [],
         created_at: update.created_at,
         updated_at: update.updated_at,
         author: {
@@ -165,9 +223,9 @@ export class ClassUpdatesRepository {
     const userClasses = await this.db('user_classes')
       .where('user_id', userId)
       .select('class_id');
-    
+
     const classIds = userClasses.map(uc => uc.class_id);
-    
+
     if (classIds.length === 0) {
       return [];
     }
@@ -199,7 +257,7 @@ export class ClassUpdatesRepository {
     // Search functionality - search in title, content, and author name
     if (search) {
       const db = this.db;
-      query = query.where(function() {
+      query = query.where(function () {
         this.where('class_updates.title', 'ilike', `%${search}%`)
           .orWhere('class_updates.content', 'ilike', `%${search}%`)
           .orWhere(db.raw(`CONCAT(users.first_name, ' ', users.last_name)`), 'ilike', `%${search}%`);
@@ -230,7 +288,7 @@ export class ClassUpdatesRepository {
     // Get comments count for each update
     const updateIds = updates.map(update => update.id);
     let commentCounts: Array<{ class_update_id: string; count: string }> = [];
-    
+
     if (updateIds.length > 0) {
       commentCounts = await this.db('class_update_comments')
         .whereIn('class_update_id', updateIds)
@@ -246,10 +304,67 @@ export class ClassUpdatesRepository {
       commentCountMap[item.class_update_id] = parseInt(item.count);
     });
 
+    // Get recent comments (limit 3 per update)
+    let recentCommentsMap: Record<string, ClassUpdateCommentWithAuthor[]> = {};
+
+    if (updateIds.length > 0) {
+      // Use window function to get top 3 comments per update
+      const recentComments = await this.db.raw(`
+        SELECT * FROM (
+          SELECT 
+            c.*,
+            u.first_name as author_first_name,
+            u.last_name as author_last_name,
+            u.email as author_email,
+            u.avatar_url as author_avatar,
+            u.user_type as author_user_type,
+            ROW_NUMBER() OVER (PARTITION BY c.class_update_id ORDER BY c.created_at DESC) as rn
+          FROM class_update_comments c
+          JOIN users u ON c.author_id = u.id
+          WHERE c.class_update_id IN (${updateIds.map(id => `'${id}'`).join(',')})
+          AND c.is_deleted = false
+        ) t
+        WHERE rn <= 3
+        ORDER BY t.created_at ASC
+      `);
+
+      // Group comments by update ID
+      if (recentComments && recentComments.rows) {
+        recentComments.rows.forEach((row: any) => {
+          if (!recentCommentsMap[row.class_update_id]) {
+            recentCommentsMap[row.class_update_id] = [];
+          }
+
+          recentCommentsMap[row.class_update_id].push({
+            id: row.id,
+            class_update_id: row.class_update_id,
+            author_id: row.author_id,
+            content: row.content,
+            reply_to_id: row.reply_to_id,
+            reactions: safeJsonParse(row.reactions, {}),
+            is_edited: row.is_edited || false,
+            edited_at: row.edited_at,
+            is_deleted: row.is_deleted,
+            deleted_at: row.deleted_at,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            author: {
+              id: row.author_id,
+              first_name: row.author_first_name,
+              last_name: row.author_last_name,
+              email: row.author_email,
+              avatar_url: row.author_avatar || "",
+              user_type: row.author_user_type
+            }
+          });
+        });
+      }
+    }
+
     // Format response with comment counts
     return updates.map(update => {
       const attachments = safeJsonParse(update.attachments, []);
-      
+
       return {
         id: update.id,
         class_id: update.class_id,
@@ -263,6 +378,7 @@ export class ClassUpdatesRepository {
         attachments: attachments,
         reactions: migrateReactions(safeJsonParse(update.reactions, {})),
         comment_count: commentCountMap[update.id] || 0,
+        recent_comments: recentCommentsMap[update.id] || [],
         created_at: update.created_at,
         updated_at: update.updated_at,
         author: {
@@ -278,11 +394,11 @@ export class ClassUpdatesRepository {
     });
   }
 
-  async create(data: CreateClassUpdateRequest & { 
-    id: string; 
-    author_id: string; 
-    created_at: Date; 
-    updated_at: Date; 
+  async create(data: CreateClassUpdateRequest & {
+    id: string;
+    author_id: string;
+    created_at: Date;
+    updated_at: Date;
   }): Promise<any> {
     const [newUpdate] = await this.db('class_updates')
       .insert({
@@ -359,7 +475,7 @@ export class ClassUpdatesRepository {
       .where('class_offerings.class_id', classId)
       .where('class_offering_teachers.is_active', true)
       .select('class_offering_teachers.teacher_id');
-    
+
     // Also get the primary teacher from class_offerings table
     const primaryTeacher = await this.db('class_offerings')
       .where('id', subjectOfferingId)
@@ -367,13 +483,13 @@ export class ClassUpdatesRepository {
       .whereNotNull('primary_teacher_id')
       .select('primary_teacher_id as teacher_id')
       .first();
-    
+
     // Combine both lists and remove duplicates
     const allTeachers = teachers.map(t => t.teacher_id);
     if (primaryTeacher && primaryTeacher.teacher_id) {
       allTeachers.push(primaryTeacher.teacher_id);
     }
-    
+
     // Return unique teacher IDs
     return [...new Set(allTeachers)];
   }
@@ -528,7 +644,7 @@ export class ClassUpdatesRepository {
 
   async createComment(updateId: string, authorId: string, data: CreateCommentRequest): Promise<ClassUpdateCommentWithAuthor> {
     const commentId = uuidv4();
-    
+
     await this.db('class_update_comments').insert({
       id: commentId,
       class_update_id: updateId,

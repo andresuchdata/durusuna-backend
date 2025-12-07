@@ -19,6 +19,24 @@ export interface ReportCard {
   updated_at: Date;
 }
 
+export interface ReportCardSubjectFinalGradeDetails {
+  numeric_grade?: number | null;
+  letter_grade?: string | null;
+  is_passing?: boolean | null;
+  component_breakdown?: Record<string, any> | null;
+  computed_at?: string | null;
+  computed_by?: string | null;
+  formula?: {
+    id?: string | null;
+    version?: number | null;
+    expression?: string | null;
+    rounding_rule?: string | null;
+    decimal_places?: number | null;
+    pass_threshold?: number | null;
+    description?: string | null;
+  } | null;
+}
+
 export interface ReportCardSubject {
   id: string;
   report_card_id: string;
@@ -36,6 +54,7 @@ export interface ReportCardSubject {
   metadata?: Record<string, any> | null;
   created_at: Date;
   updated_at: Date;
+  final_grade_details?: ReportCardSubjectFinalGradeDetails;
 }
 
 export interface GenerateReportCardsRequest {

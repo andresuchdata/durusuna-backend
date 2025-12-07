@@ -50,6 +50,7 @@ export interface ClassUpdateWithAuthor extends ClassUpdate {
     user_type: 'student' | 'teacher' | 'parent' | 'admin';
     role: 'user' | 'admin';
   };
+  recent_comments?: ClassUpdateCommentWithAuthor[];
 }
 
 export interface ClassUpdateComment {
