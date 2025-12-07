@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { authenticate } from '../shared/middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { validate } from '../utils/validation'
+import logger from '../shared/utils/logger';
 import { 
   createGradingComponentSchema,
   updateGradingComponentSchema,
@@ -21,6 +22,16 @@ const authenticateMiddleware: RequestHandler = (req, res, next) => {
 function sendErrorResponse(res: any, error: unknown) {
   const message = error instanceof Error ? error.message : 'Internal server error';
   res.status(500).json({ error: message });
+}
+
+function logServiceSnapshot(req: any, action: string) {
+  logger.info('[grading-route] service snapshot', {
+    action,
+    method: req.method,
+    path: req.originalUrl || req.url,
+    hasServices: Boolean(req.services),
+    serviceKeys: req.services ? Object.keys(req.services) : [],
+  });
 }
 
 // All routes require authentication
@@ -69,6 +80,7 @@ router.get('/reports/grade-distribution/:classOfferingId', getGradeDistribution)
 
 async function getGradingComponents(req: any, res: any) {
   try {
+    logServiceSnapshot(req, 'getGradingComponents');
     const { gradingService } = req.services;
     const result = await gradingService.getGradingComponents(req.query, req.user);
     res.json(result);
@@ -123,6 +135,7 @@ async function deleteGradingComponent(req: any, res: any) {
 
 async function getGradingFormulas(req: any, res: any) {
   try {
+    logServiceSnapshot(req, 'getGradingFormulas');
     const { gradingService } = req.services;
     const result = await gradingService.getGradingFormulas(req.query, req.user);
     res.json(result);
